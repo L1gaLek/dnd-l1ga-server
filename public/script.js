@@ -45,24 +45,27 @@ ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
 
   if (msg.type === 'init' || msg.type === 'state') {
-    const state = msg.state;
+    const newPlayers = (msg.state.players || []);
 
-    boardWidth = state.boardWidth || boardWidth;
-    boardHeight = state.boardHeight || boardHeight;
-
-    // Обновляем игроков
-    players = state.players.map(p => {
-      // сохраняем существующий элемент если он уже есть
+    // Сохраняем существующие DOM-элементы игроков
+    newPlayers.forEach(p => {
       const existing = players.find(pl => pl.id === p.id);
-      return { ...p, element: existing?.element || null };
+      if (existing) {
+        p.element = existing.element;
+      } else {
+        p.element = null;
+      }
     });
 
-    currentPlayerIndex = state.currentTurnIndex || 0;
+    players = newPlayers;
 
-    renderBoard(state);
+    boardWidth = msg.state.boardWidth || boardWidth;
+    boardHeight = msg.state.boardHeight || boardHeight;
+
+    renderBoard(msg.state);
     updatePlayerList();
     updateCurrentPlayer();
-    renderLog(state.log || []);
+    renderLog(msg.state.log || []);
   }
 };
 
@@ -124,7 +127,7 @@ createBoardBtn.addEventListener('click', () => {
 
 // ====================== ДОБАВЛЕНИЕ ИГРОКА ======================
 function addPlayer(name, color, size = 1) {
-  const player = { name, color, size, x: 0, y: 0, initiative: 0, element: null };
+  const player = { id: crypto.randomUUID(), name, color, size, x: 0, y: 0, initiative: 0, element: null };
   players.push(player);
   setPlayerPosition(player);
   updatePlayerList();
@@ -200,19 +203,30 @@ rollBtn.addEventListener('click', () => {
   const result = Math.floor(Math.random() * sides) + 1;
   rollResult.textContent = `Результат: ${result}`;
   addLog(`Игрок ${players[currentPlayerIndex].name} бросил d${sides}: ${result}`);
-  sendMessage({ type: 'rollDice', id: players[currentPlayerIndex]?.id, sides });
 });
 
 // ====================== КОНЕЦ ХОДА ======================
 endTurnBtn.addEventListener('click', () => {
   if (players.length === 0) return;
   addLog(`Игрок ${players[currentPlayerIndex].name} закончил ход.`);
+  currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+  updateCurrentPlayer();
+  addLog(`Ход игрока ${players[currentPlayerIndex].name}`);
   sendMessage({ type: 'endTurn' });
 });
 
 // ====================== ИНИЦИАТИВА ======================
 rollInitiativeBtn.addEventListener('click', () => {
   if (players.length === 0) return alert("Нет игроков для инициативы!");
+  players.forEach(p => {
+    p.initiative = Math.floor(Math.random() * 20) + 1;
+  });
+
+  players.sort((a,b) => b.initiative - a.initiative);
+  currentPlayerIndex = 0;
+  updatePlayerList();
+  updateCurrentPlayer();
+  addLog("Инициатива определена!");
   sendMessage({ type: 'rollInitiative' });
 });
 
@@ -260,10 +274,25 @@ function toggleWall(cell) {
 
 // ====================== СБРОС И ОЧИСТКА ======================
 resetGameBtn.addEventListener('click', () => {
+  players.forEach(p => { if(p.element) board.removeChild(p.element); });
+  players.length = 0;
+  selectedPlayer = null;
+
+  cells.forEach(cell => cell.classList.remove('wall'));
+  logList.innerHTML = '';
+
+  updatePlayerList();
+  updateCurrentPlayer();
+
+  addLog("Игра полностью сброшена!");
   sendMessage({ type: 'resetGame' });
 });
 
 clearBoardBtn.addEventListener('click', () => {
+  players.forEach(p => { if(p.element) board.removeChild(p.element); p.element = null; });
+  cells.forEach(cell => cell.classList.remove('wall'));
+
+  addLog("Поле очищено!");
   sendMessage({ type: 'clearBoard' });
 });
 
@@ -273,6 +302,7 @@ function renderBoard(state) {
   board.style.gridTemplateColumns = `repeat(${boardWidth},50px)`;
   board.style.gridTemplateRows = `repeat(${boardHeight},50px)`;
 
+  // клетки
   for(let y=0;y<boardHeight;y++){
     for(let x=0;x<boardWidth;x++){
       const cell = document.createElement('div');
@@ -284,6 +314,7 @@ function renderBoard(state) {
     }
   }
 
+  // игроки
   players.forEach(p => setPlayerPosition(p));
 }
 
