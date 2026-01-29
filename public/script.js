@@ -42,11 +42,10 @@ ws.onopen = () => console.log("🟢 Connected to server");
 ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
   if (msg.type === 'init' || msg.type === 'state') {
-    // обновляем состояние
+    // Обновляем состояние
     players = msg.state.players || [];
     boardWidth = msg.state.boardWidth || boardWidth;
     boardHeight = msg.state.boardHeight || boardHeight;
-    cells = [];
     renderBoard(msg.state);
     updatePlayerList();
     updateCurrentPlayer();
@@ -133,25 +132,32 @@ addPlayerBtn.addEventListener('click', () => {
 
 // ====================== ПЕРЕМЕЩЕНИЕ ИГРОКА ======================
 function setPlayerPosition(player) {
+  // Создаём элемент только один раз
   if (!player.element) {
     const el = document.createElement('div');
     el.classList.add('player');
     el.textContent = player.name[0];
     el.style.backgroundColor = player.color;
     el.style.position = 'absolute';
-    el.style.width = `${player.size*50}px`;
-    el.style.height = `${player.size*50}px`;
+    el.style.width = `${player.size * 50}px`;
+    el.style.height = `${player.size * 50}px`;
+
+    // выбор игрока
     el.addEventListener('mousedown', () => {
-      if (selectedPlayer) selectedPlayer.element.classList.remove('selected');
-      selectedPlayer = player;
-      el.classList.add('selected');
+      if (!editEnvironment) {
+        if (selectedPlayer && selectedPlayer.element) selectedPlayer.element.classList.remove('selected');
+        selectedPlayer = player;
+        el.classList.add('selected');
+      }
     });
+
     board.appendChild(el);
     player.element = el;
   }
 
-  player.element.style.left = `${player.x*51}px`;
-  player.element.style.top = `${player.y*51}px`;
+  // позиционирование
+  player.element.style.left = `${player.x * 51}px`;
+  player.element.style.top = `${player.y * 51}px`;
 }
 
 board.addEventListener('click', (e) => {
@@ -171,7 +177,7 @@ board.addEventListener('click', (e) => {
   selectedPlayer.y = y;
   setPlayerPosition(selectedPlayer);
   addLog(`Игрок ${selectedPlayer.name} переместился в (${x},${y})`);
-  sendMessage({ type: 'movePlayer', id: selectedPlayer.name, x, y });
+  sendMessage({ type: 'movePlayer', name: selectedPlayer.name, x, y });
 
   selectedPlayer.element.classList.remove('selected');
   selectedPlayer = null;
