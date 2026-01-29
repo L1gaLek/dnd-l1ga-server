@@ -45,16 +45,24 @@ ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
 
   if (msg.type === 'init' || msg.type === 'state') {
-    // Обновляем состояние игроков, оставляя element = null
-    players = (msg.state.players || []).map(p => ({ ...p, element: null }));
+    const state = msg.state;
 
-    boardWidth = msg.state.boardWidth || boardWidth;
-    boardHeight = msg.state.boardHeight || boardHeight;
+    boardWidth = state.boardWidth || boardWidth;
+    boardHeight = state.boardHeight || boardHeight;
 
-    renderBoard(msg.state);
+    // Обновляем игроков
+    players = state.players.map(p => {
+      // сохраняем существующий элемент если он уже есть
+      const existing = players.find(pl => pl.id === p.id);
+      return { ...p, element: existing?.element || null };
+    });
+
+    currentPlayerIndex = state.currentTurnIndex || 0;
+
+    renderBoard(state);
     updatePlayerList();
     updateCurrentPlayer();
-    renderLog(msg.state.log || []);
+    renderLog(state.log || []);
   }
 };
 
@@ -179,7 +187,7 @@ board.addEventListener('click', (e) => {
   selectedPlayer.y = y;
   setPlayerPosition(selectedPlayer);
   addLog(`Игрок ${selectedPlayer.name} переместился в (${x},${y})`);
-  sendMessage({ type: 'movePlayer', name: selectedPlayer.name, x, y });
+  sendMessage({ type: 'movePlayer', id: selectedPlayer.id, x, y });
 
   selectedPlayer.element.classList.remove('selected');
   selectedPlayer = null;
@@ -192,30 +200,19 @@ rollBtn.addEventListener('click', () => {
   const result = Math.floor(Math.random() * sides) + 1;
   rollResult.textContent = `Результат: ${result}`;
   addLog(`Игрок ${players[currentPlayerIndex].name} бросил d${sides}: ${result}`);
+  sendMessage({ type: 'rollDice', id: players[currentPlayerIndex]?.id, sides });
 });
 
 // ====================== КОНЕЦ ХОДА ======================
 endTurnBtn.addEventListener('click', () => {
   if (players.length === 0) return;
   addLog(`Игрок ${players[currentPlayerIndex].name} закончил ход.`);
-  currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-  updateCurrentPlayer();
-  addLog(`Ход игрока ${players[currentPlayerIndex].name}`);
   sendMessage({ type: 'endTurn' });
 });
 
 // ====================== ИНИЦИАТИВА ======================
 rollInitiativeBtn.addEventListener('click', () => {
   if (players.length === 0) return alert("Нет игроков для инициативы!");
-  players.forEach(p => {
-    p.initiative = Math.floor(Math.random() * 20) + 1;
-  });
-
-  players.sort((a,b) => b.initiative - a.initiative);
-  currentPlayerIndex = 0;
-  updatePlayerList();
-  updateCurrentPlayer();
-  addLog("Инициатива определена!");
   sendMessage({ type: 'rollInitiative' });
 });
 
@@ -263,30 +260,10 @@ function toggleWall(cell) {
 
 // ====================== СБРОС И ОЧИСТКА ======================
 resetGameBtn.addEventListener('click', () => {
-  players.forEach(p => {
-    if(p.element) board.removeChild(p.element);
-  });
-  players.length = 0;
-  selectedPlayer = null;
-
-  cells.forEach(cell => cell.classList.remove('wall'));
-  logList.innerHTML = '';
-
-  updatePlayerList();
-  updateCurrentPlayer();
-
-  addLog("Игра полностью сброшена!");
   sendMessage({ type: 'resetGame' });
 });
 
 clearBoardBtn.addEventListener('click', () => {
-  players.forEach(p => {
-    if(p.element) board.removeChild(p.element);
-    p.element = null;
-  });
-  cells.forEach(cell => cell.classList.remove('wall'));
-
-  addLog("Поле очищено!");
   sendMessage({ type: 'clearBoard' });
 });
 
@@ -296,7 +273,6 @@ function renderBoard(state) {
   board.style.gridTemplateColumns = `repeat(${boardWidth},50px)`;
   board.style.gridTemplateRows = `repeat(${boardHeight},50px)`;
 
-  // клетки
   for(let y=0;y<boardHeight;y++){
     for(let x=0;x<boardWidth;x++){
       const cell = document.createElement('div');
@@ -308,7 +284,6 @@ function renderBoard(state) {
     }
   }
 
-  // игроки
   players.forEach(p => setPlayerPosition(p));
 }
 
