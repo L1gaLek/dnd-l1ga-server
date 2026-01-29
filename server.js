@@ -184,7 +184,6 @@ wss.on('connection', ws => {
 
 const express = require("express");
 const http = require("http");
-const WebSocket = require("ws");
 
 const app = express();
 const server = http.createServer(app);
@@ -195,4 +194,5 @@ app.use(express.static("public"));
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
   console.log("🟢 Server running on port", PORT);
+
 });
