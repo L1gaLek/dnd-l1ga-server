@@ -1,5 +1,5 @@
 {
-  "name": "dnd-online-server",
+  "name": "dnd-l1ga-server",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
@@ -9,3 +9,4 @@
     "ws": "^8.15.1"
   }
 }
+
