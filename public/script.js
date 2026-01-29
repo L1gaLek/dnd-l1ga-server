@@ -41,11 +41,14 @@ ws.onopen = () => console.log("🟢 Connected to server");
 
 ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
+
   if (msg.type === 'init' || msg.type === 'state') {
-    // Обновляем состояние
-    players = msg.state.players || [];
+    // Привязываем DOM-элемент для каждого игрока
+    players = (msg.state.players || []).map(p => ({ ...p, element: null }));
+
     boardWidth = msg.state.boardWidth || boardWidth;
     boardHeight = msg.state.boardHeight || boardHeight;
+
     renderBoard(msg.state);
     updatePlayerList();
     updateCurrentPlayer();
@@ -111,7 +114,7 @@ createBoardBtn.addEventListener('click', () => {
 
 // ====================== ДОБАВЛЕНИЕ ИГРОКА ======================
 function addPlayer(name, color, size = 1) {
-  const player = { name, color, size, x: 0, y: 0, initiative: 0 };
+  const player = { name, color, size, x: 0, y: 0, initiative: 0, element: null };
   players.push(player);
   setPlayerPosition(player);
   updatePlayerList();
@@ -132,7 +135,6 @@ addPlayerBtn.addEventListener('click', () => {
 
 // ====================== ПЕРЕМЕЩЕНИЕ ИГРОКА ======================
 function setPlayerPosition(player) {
-  // Создаём элемент только один раз
   if (!player.element) {
     const el = document.createElement('div');
     el.classList.add('player');
@@ -142,7 +144,6 @@ function setPlayerPosition(player) {
     el.style.width = `${player.size * 50}px`;
     el.style.height = `${player.size * 50}px`;
 
-    // выбор игрока
     el.addEventListener('mousedown', () => {
       if (!editEnvironment) {
         if (selectedPlayer && selectedPlayer.element) selectedPlayer.element.classList.remove('selected');
@@ -155,7 +156,6 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  // позиционирование
   player.element.style.left = `${player.x * 51}px`;
   player.element.style.top = `${player.y * 51}px`;
 }
@@ -265,7 +265,7 @@ function renderBoard(state) {
   board.style.gridTemplateColumns = `repeat(${boardWidth},50px)`;
   board.style.gridTemplateRows = `repeat(${boardHeight},50px)`;
 
-  // рисуем клетки
+  // клетки
   for(let y=0;y<boardHeight;y++){
     for(let x=0;x<boardWidth;x++){
       const cell = document.createElement('div');
@@ -277,7 +277,7 @@ function renderBoard(state) {
     }
   }
 
-  // рисуем игроков
+  // игроки
   players.forEach(p => setPlayerPosition(p));
 }
 
