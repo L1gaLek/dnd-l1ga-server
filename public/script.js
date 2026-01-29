@@ -12,7 +12,6 @@ const createBoardBtn = document.getElementById('create-board');
 const boardWidthInput = document.getElementById('board-width');
 const boardHeightInput = document.getElementById('board-height');
 const rollInitiativeBtn = document.getElementById('roll-initiative');
-
 const currentPlayerSpan = document.getElementById('current-player');
 const logList = document.getElementById('log-list');
 const playerList = document.getElementById('player-list');
@@ -20,6 +19,9 @@ const playerList = document.getElementById('player-list');
 const editEnvBtn = document.getElementById('edit-environment');
 const addWallBtn = document.getElementById('add-wall');
 const removeWallBtn = document.getElementById('remove-wall');
+
+const resetGameBtn = document.getElementById('reset-game');
+const clearBoardBtn = document.getElementById('clear-board');
 
 // ====================== ПЕРЕМЕННЫЕ ======================
 let boardWidth = parseInt(boardWidthInput.value);
@@ -43,7 +45,7 @@ ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
 
   if (msg.type === 'init' || msg.type === 'state') {
-    // Привязываем DOM-элемент для каждого игрока
+    // Обновляем состояние игроков, оставляя element = null
     players = (msg.state.players || []).map(p => ({ ...p, element: null }));
 
     boardWidth = msg.state.boardWidth || boardWidth;
@@ -70,7 +72,7 @@ function addLog(text) {
 
 function updateCurrentPlayer() {
   if (players.length === 0) currentPlayerSpan.textContent = '-';
-  else currentPlayerSpan.textContent = players[currentPlayerIndex].name;
+  else currentPlayerSpan.textContent = players[currentPlayerIndex]?.name || '-';
 }
 
 function updatePlayerList() {
@@ -259,6 +261,35 @@ function toggleWall(cell) {
   }
 }
 
+// ====================== СБРОС И ОЧИСТКА ======================
+resetGameBtn.addEventListener('click', () => {
+  players.forEach(p => {
+    if(p.element) board.removeChild(p.element);
+  });
+  players.length = 0;
+  selectedPlayer = null;
+
+  cells.forEach(cell => cell.classList.remove('wall'));
+  logList.innerHTML = '';
+
+  updatePlayerList();
+  updateCurrentPlayer();
+
+  addLog("Игра полностью сброшена!");
+  sendMessage({ type: 'resetGame' });
+});
+
+clearBoardBtn.addEventListener('click', () => {
+  players.forEach(p => {
+    if(p.element) board.removeChild(p.element);
+    p.element = null;
+  });
+  cells.forEach(cell => cell.classList.remove('wall'));
+
+  addLog("Поле очищено!");
+  sendMessage({ type: 'clearBoard' });
+});
+
 // ====================== ОТОБРАЖЕНИЕ ПОЛЯ ======================
 function renderBoard(state) {
   board.innerHTML = '';
@@ -291,45 +322,3 @@ function renderLog(logs) {
     logList.appendChild(li);
   });
 }
-
-
-const resetGameBtn = document.getElementById('reset-game');
-const clearBoardBtn = document.getElementById('clear-board');
-
-// ======== Полный сброс игры ========
-resetGameBtn.addEventListener('click', () => {
-  // Очищаем игроков
-  players.forEach(p => {
-    if(p.element) board.removeChild(p.element);
-  });
-  players.length = 0;
-  selectedPlayer = null;
-
-  // Очищаем поле и стены
-  cells.forEach(cell => cell.classList.remove('wall'));
-
-  // Очищаем журнал
-  logList.innerHTML = '';
-
-  // Обновляем интерфейс
-  updatePlayerList();
-  updateCurrentPlayer();
-
-  addLog("Игра полностью сброшена!");
-  sendMessage({ type: 'resetGame' }); // уведомляем сервер
-});
-
-// ======== Очистка только поля ========
-clearBoardBtn.addEventListener('click', () => {
-  // Убираем игроков с поля
-  players.forEach(p => {
-    if(p.element) board.removeChild(p.element);
-    p.element = null; // чтобы они могли заново отображаться
-  });
-
-  // Убираем стены
-  cells.forEach(cell => cell.classList.remove('wall'));
-
-  addLog("Поле очищено!");
-  sendMessage({ type: 'clearBoard' }); // уведомляем сервер
-});
