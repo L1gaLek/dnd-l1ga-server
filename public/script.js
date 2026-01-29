@@ -358,4 +358,9 @@ function renderBoard() {
     el.style.top = `${p.y*51}px`;
     boardElement.appendChild(el);
   });
+
 }
+
+const socket = new WebSocket(
+  (location.protocol === "https:" ? "wss://" : "ws://") + location.host
+);
