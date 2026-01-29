@@ -45,19 +45,12 @@ ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
 
   if (msg.type === 'init' || msg.type === 'state') {
-    const newPlayers = (msg.state.players || []);
-
-    // Сохраняем существующие DOM-элементы игроков
-    newPlayers.forEach(p => {
+    // Обновляем состояние игроков, оставляя элемент null
+    players = (msg.state.players || []).map(p => {
+      // если игрок уже есть на поле, сохраняем element
       const existing = players.find(pl => pl.id === p.id);
-      if (existing) {
-        p.element = existing.element;
-      } else {
-        p.element = null;
-      }
+      return { ...p, element: existing ? existing.element : null };
     });
-
-    players = newPlayers;
 
     boardWidth = msg.state.boardWidth || boardWidth;
     boardHeight = msg.state.boardHeight || boardHeight;
@@ -81,6 +74,16 @@ function addLog(text) {
   logList.scrollTop = logList.scrollHeight;
 }
 
+function renderLog(logs) {
+  logList.innerHTML = '';
+  if (!logs) return;
+  logs.slice(-50).forEach(line => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    logList.appendChild(li);
+  });
+}
+
 function updateCurrentPlayer() {
   if (players.length === 0) currentPlayerSpan.textContent = '-';
   else currentPlayerSpan.textContent = players[currentPlayerIndex]?.name || '-';
@@ -97,11 +100,11 @@ function updatePlayerList() {
 
 // ====================== СОЗДАНИЕ ПОЛЯ ======================
 function createBoard(width, height) {
+  cells = [];
   board.innerHTML = '';
   board.style.gridTemplateColumns = `repeat(${width}, 50px)`;
   board.style.gridTemplateRows = `repeat(${height}, 50px)`;
 
-  cells = [];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const cell = document.createElement('div');
@@ -127,7 +130,7 @@ createBoardBtn.addEventListener('click', () => {
 
 // ====================== ДОБАВЛЕНИЕ ИГРОКА ======================
 function addPlayer(name, color, size = 1) {
-  const player = { id: crypto.randomUUID(), name, color, size, x: 0, y: 0, initiative: 0, element: null };
+  const player = { id: Date.now() + Math.random(), name, color, size, x: 0, y: 0, initiative: 0, element: null };
   players.push(player);
   setPlayerPosition(player);
   updatePlayerList();
@@ -221,7 +224,6 @@ rollInitiativeBtn.addEventListener('click', () => {
   players.forEach(p => {
     p.initiative = Math.floor(Math.random() * 20) + 1;
   });
-
   players.sort((a,b) => b.initiative - a.initiative);
   currentPlayerIndex = 0;
   updatePlayerList();
@@ -274,35 +276,36 @@ function toggleWall(cell) {
 
 // ====================== СБРОС И ОЧИСТКА ======================
 resetGameBtn.addEventListener('click', () => {
-  players.forEach(p => { if(p.element) board.removeChild(p.element); });
+  players.forEach(p => {
+    if(p.element) board.removeChild(p.element);
+  });
   players.length = 0;
   selectedPlayer = null;
-
   cells.forEach(cell => cell.classList.remove('wall'));
   logList.innerHTML = '';
-
   updatePlayerList();
   updateCurrentPlayer();
-
   addLog("Игра полностью сброшена!");
   sendMessage({ type: 'resetGame' });
 });
 
 clearBoardBtn.addEventListener('click', () => {
-  players.forEach(p => { if(p.element) board.removeChild(p.element); p.element = null; });
+  players.forEach(p => {
+    if(p.element) board.removeChild(p.element);
+    p.element = null;
+  });
   cells.forEach(cell => cell.classList.remove('wall'));
-
   addLog("Поле очищено!");
   sendMessage({ type: 'clearBoard' });
 });
 
 // ====================== ОТОБРАЖЕНИЕ ПОЛЯ ======================
 function renderBoard(state) {
+  // --- клетки ---
   board.innerHTML = '';
   board.style.gridTemplateColumns = `repeat(${boardWidth},50px)`;
   board.style.gridTemplateRows = `repeat(${boardHeight},50px)`;
 
-  // клетки
   for(let y=0;y<boardHeight;y++){
     for(let x=0;x<boardWidth;x++){
       const cell = document.createElement('div');
@@ -314,17 +317,6 @@ function renderBoard(state) {
     }
   }
 
-  // игроки
+  // --- игроки ---
   players.forEach(p => setPlayerPosition(p));
-}
-
-// ====================== ЖУРНАЛ ======================
-function renderLog(logs) {
-  logList.innerHTML='';
-  if(!logs) return;
-  logs.slice(-50).forEach(line => {
-    const li = document.createElement('li');
-    li.textContent = line;
-    logList.appendChild(li);
-  });
 }
