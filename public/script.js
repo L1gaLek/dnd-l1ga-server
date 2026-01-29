@@ -291,3 +291,45 @@ function renderLog(logs) {
     logList.appendChild(li);
   });
 }
+
+
+const resetGameBtn = document.getElementById('reset-game');
+const clearBoardBtn = document.getElementById('clear-board');
+
+// ======== Полный сброс игры ========
+resetGameBtn.addEventListener('click', () => {
+  // Очищаем игроков
+  players.forEach(p => {
+    if(p.element) board.removeChild(p.element);
+  });
+  players.length = 0;
+  selectedPlayer = null;
+
+  // Очищаем поле и стены
+  cells.forEach(cell => cell.classList.remove('wall'));
+
+  // Очищаем журнал
+  logList.innerHTML = '';
+
+  // Обновляем интерфейс
+  updatePlayerList();
+  updateCurrentPlayer();
+
+  addLog("Игра полностью сброшена!");
+  sendMessage({ type: 'resetGame' }); // уведомляем сервер
+});
+
+// ======== Очистка только поля ========
+clearBoardBtn.addEventListener('click', () => {
+  // Убираем игроков с поля
+  players.forEach(p => {
+    if(p.element) board.removeChild(p.element);
+    p.element = null; // чтобы они могли заново отображаться
+  });
+
+  // Убираем стены
+  cells.forEach(cell => cell.classList.remove('wall'));
+
+  addLog("Поле очищено!");
+  sendMessage({ type: 'clearBoard' }); // уведомляем сервер
+});
