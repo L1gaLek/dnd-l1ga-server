@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Мини D&D</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="main-container">
+  <!-- Журнал действий слева -->
+  <div id="action-log-container">
+    <div id="action-log">
+      <h3>Журнал действий:</h3>
+      <ul id="log-list"></ul>
+    </div>
+    <div id="player-list-container">
+      <h3>Игроки и инициатива:</h3>
+      <ul id="player-list"></ul>
+    </div>
+  </div>
+
+  <!-- Игровая область справа -->
+  <div id="game-container">
+    <div id="current-turn">
+      Текущий игрок: <span id="current-player">-</span>
+    </div>
+
+    <div id="board-settings">
+      <label>Ширина поля: <input type="number" id="board-width" value="10" min="1" max="20"></label>
+      <label>Высота поля: <input type="number" id="board-height" value="10" min="1" max="20"></label>
+      <button id="create-board">Создать поле</button>
+    </div>
+
+<div id="controls">
+  <select id="dice">
+    <option value="4">d4</option>
+    <option value="6">d6</option>
+    <option value="8">d8</option>
+    <option value="10">d10</option>
+    <option value="12">d12</option>
+    <option value="20">d20</option>
+    <option value="100">d100</option>
+  </select>
+  <button id="roll">Бросить кубик</button>
+  <button id="end-turn">Конец хода</button>
+  <span id="roll-result">Результат: -</span>
+</div>
+
+<!-- Новый блок управления окружением -->
+<div id="environment-controls">
+  <button id="edit-environment">Редактирование окружения: ВЫКЛ</button>
+  <button id="add-wall" disabled>Добавить стену</button>
+  <button id="remove-wall" disabled>Удалить стену</button>
+</div>
+
+    <div id="game-board"></div>
+
+    <div id="player-controls">
+      <input type="text" id="player-name" placeholder="Имя игрока">
+      <input type="color" id="player-color" value="#ff0000">
+      <label>Размер (в клетках): <input type="number" id="player-size" value="1" min="1" max="5"></label>
+      <button id="add-player">Добавить игрока</button>
+      <button id="roll-initiative">Бросить инициативу</button>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

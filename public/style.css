@@ -1,0 +1,166 @@
+body {
+  font-family: sans-serif;
+  display: flex;
+  justify-content: center;
+  margin: 20px;
+  background-color: #121212;
+  color: #ddd;
+}
+
+#main-container {
+  display: flex;
+  gap: 20px;
+}
+
+/* Журнал действий */
+#action-log-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#action-log {
+  width: 250px;
+  max-height: 300px;
+  overflow-y: auto;
+  background-color: #1e1e1e;
+  border: 1px solid #555;
+  padding: 10px;
+  color: #ddd;
+}
+
+#action-log h3 {
+  color: #fff;
+}
+
+#action-log ul {
+  list-style: none;
+  padding-left: 10px;
+}
+
+#action-log li {
+  margin-bottom: 4px;
+}
+
+#player-list-container {
+  width: 250px;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: #1e1e1e;
+  border: 1px solid #555;
+  padding: 10px;
+  color: #ddd;
+}
+
+#player-list-container h3 {
+  color: #fff;
+}
+
+#player-list {
+  list-style: none;
+  padding-left: 10px;
+}
+
+#player-list li {
+  margin-bottom: 4px;
+  color: #ddd;
+  font-weight: bold;
+}
+
+/* Игровая область */
+#game-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#current-turn {
+  margin-bottom: 10px;
+  font-weight: bold;
+  font-size: 18px;
+  color: #fff;
+}
+
+#board-settings, #controls, #player-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+button, input, select {
+  padding: 5px 10px;
+  background-color: #2c2c2c;
+  border: 1px solid #555;
+  color: #ddd;
+}
+
+button:hover {
+  background-color: #3d3d3d;
+  cursor: pointer;
+}
+
+#game-board {
+  position: relative;
+  display: grid;
+  gap: 1px;
+  border: 2px solid #555;
+  background-color: #111;
+}
+
+/* Клетки поля */
+.cell {
+  width: 50px;
+  height: 50px;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+}
+
+/* Игроки */
+.player {
+  position: absolute;
+  border-radius: 50%;
+  color: white;
+  font-weight: bold;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: grab;
+  border: 2px solid #888;
+  box-sizing: border-box;
+}
+
+.player.selected {
+  outline: 3px solid yellow;
+  cursor: grabbing;
+}
+
+.cell.wall {
+  background-color: #555 !important; /* серый цвет стены */
+}
+
+.wall.dragging {
+  opacity: 0.6;
+  outline: 2px dashed yellow;
+}
+
+.cell.hovering {
+  outline: 2px dashed #f0f;
+}
+
+#environment-controls {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+}
+
+#environment-controls button {
+  padding: 5px 10px;
+  background-color: #2c2c2c;
+  border: 1px solid #555;
+  color: #ddd;
+}
+
+#environment-controls button:hover {
+  background-color: #3d3d3d;
+  cursor: pointer;
+}
