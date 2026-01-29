@@ -2,6 +2,7 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
+const { v4: uuidv4 } = require("uuid"); // для уникальных id игроков
 
 // ================== EXPRESS SETUP ==================
 const app = express();
@@ -14,9 +15,11 @@ const wss = new WebSocket.Server({ server });
 
 // ================== GAME STATE ==================
 let gameState = {
-  players: [],
-  walls: [],
-  turnOrder: [],
+  boardWidth: 10,
+  boardHeight: 10,
+  players: [],      // {id, name, color, size, x, y, initiative}
+  walls: [],        // {x, y}
+  turnOrder: [],    // массив id игроков по инициативе
   currentTurnIndex: 0,
   log: []
 };
@@ -50,8 +53,17 @@ wss.on("connection", ws => {
     switch (data.type) {
 
       case "addPlayer":
-        gameState.players.push(data.player);
-        logEvent(`Игрок ${data.player.name} присоединился`);
+        const newPlayer = {
+          id: uuidv4(),
+          name: data.player.name,
+          color: data.player.color,
+          size: data.player.size || 1,
+          x: 0,
+          y: 0,
+          initiative: 0
+        };
+        gameState.players.push(newPlayer);
+        logEvent(`Игрок ${newPlayer.name} присоединился`);
         broadcast({ type: "state", state: gameState });
         break;
 
@@ -60,15 +72,17 @@ wss.on("connection", ws => {
         if (p) {
           p.x = data.x;
           p.y = data.y;
-          logEvent(`${p.name} переместился`);
+          logEvent(`${p.name} переместился в (${p.x},${p.y})`);
           broadcast({ type: "state", state: gameState });
         }
         break;
 
       case "addWall":
-        gameState.walls.push(data.wall);
-        logEvent(`Стена добавлена (${data.wall.x}, ${data.wall.y})`);
-        broadcast({ type: "state", state: gameState });
+        if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
+          gameState.walls.push({ ...data.wall });
+          logEvent(`Стена добавлена (${data.wall.x}, ${data.wall.y})`);
+          broadcast({ type: "state", state: gameState });
+        }
         break;
 
       case "removeWall":
@@ -92,15 +106,55 @@ wss.on("connection", ws => {
         break;
 
       case "endTurn":
-        gameState.currentTurnIndex =
-          (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-        logEvent("Конец хода");
+        if (gameState.turnOrder.length > 0) {
+          gameState.currentTurnIndex =
+            (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
+          const currentPlayer = gameState.players.find(
+            p => p.id === gameState.turnOrder[gameState.currentTurnIndex]
+          );
+          logEvent(`Ход игрока ${currentPlayer?.name || '-'}`);
+          broadcast({ type: "state", state: gameState });
+        }
+        break;
+
+      case "rollDice":
+        const sides = data.sides || 6;
+        const roller = gameState.players.find(p => p.id === data.id);
+        if (roller) {
+          const result = Math.floor(Math.random() * sides) + 1;
+          logEvent(`${roller.name} бросил d${sides}: ${result}`);
+          broadcast({ type: "state", state: gameState });
+        }
+        break;
+
+      case "resizeBoard":
+        gameState.boardWidth = data.width || gameState.boardWidth;
+        gameState.boardHeight = data.height || gameState.boardHeight;
+        logEvent(`Размер поля изменен: ${gameState.boardWidth}x${gameState.boardHeight}`);
+        broadcast({ type: "state", state: gameState });
+        break;
+
+      case "clearBoard":
+        gameState.walls = [];
+        gameState.players.forEach(pl => { pl.x = 0; pl.y = 0; });
+        logEvent("Поле очищено");
+        broadcast({ type: "state", state: gameState });
+        break;
+
+      case "resetGame":
+        gameState.players = [];
+        gameState.walls = [];
+        gameState.turnOrder = [];
+        gameState.currentTurnIndex = 0;
+        gameState.log = ["Игра полностью сброшена"];
         broadcast({ type: "state", state: gameState });
         break;
 
       case "log":
-        logEvent(data.text);
-        broadcast({ type: "state", state: gameState });
+        if(data.text) {
+          logEvent(data.text);
+          broadcast({ type: "state", state: gameState });
+        }
         break;
     }
   });
