@@ -65,7 +65,7 @@ body {
 #game-container {
   display: flex;
   flex-direction: column;
-  align-items: center; /* центрируем поле и элементы над/под ним */
+  align-items: flex-start; /* ⬅ прижимаем всё к верху */
   gap: 10px;
   flex: 1;
 }
@@ -147,3 +147,4 @@ button:hover {
 .cell.hovering {
   outline: 2px dashed #f0f;
 }
+
