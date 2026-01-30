@@ -48,6 +48,8 @@ let editEnvironment = false;
 let wallMode = null;
 let mouseDown = false;
 
+let myName = null;
+
 const playerElements = new Map();
 
 // ================== JOIN GAME ==================
@@ -67,11 +69,13 @@ joinBtn.addEventListener('click', () => {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
 
-    if (msg.type === "registered") {
-      myId = msg.id;
-      myRole = msg.role;
-      myNameSpan.textContent = msg.name;
-      myRoleSpan.textContent = msg.role;
+if (msg.type === "registered") {
+  myId = msg.id;
+  myRole = msg.role;
+  myName = msg.name;
+
+  myNameSpan.textContent = myName;
+  myRoleSpan.textContent = myRole;
 
       loginDiv.style.display = "none";
       gameUI.style.display = "block";
@@ -91,7 +95,70 @@ joinBtn.addEventListener('click', () => {
       boardHeight = msg.state.boardHeight || boardHeight;
       players = msg.state.players;
       renderBoard(msg.state);
-      updatePlayerList();
+
+function updatePlayerList() {
+  playerList.innerHTML = '';
+
+  const grouped = {};
+
+  players.forEach(p => {
+    const owner = p.owner || 'Без владельца';
+    if (!grouped[owner]) grouped[owner] = [];
+    grouped[owner].push(p);
+  });
+
+  Object.entries(grouped).forEach(([owner, ownerPlayers]) => {
+    const ownerLi = document.createElement('li');
+    ownerLi.style.fontWeight = 'bold';
+    ownerLi.style.marginTop = '6px';
+    ownerLi.textContent = `${owner} (${ownerPlayers.length}):`;
+    playerList.appendChild(ownerLi);
+
+    ownerPlayers.forEach(p => {
+      const li = document.createElement('li');
+      li.style.paddingLeft = '14px';
+      li.textContent = `• ${p.name} (${p.initiative || 0})`;
+
+      li.addEventListener('click', () => {
+        selectedPlayer = p;
+        if (p.x === null || p.y === null) {
+          p.x = 0;
+          p.y = 0;
+          sendMessage({ type: 'movePlayer', id: p.id, x: p.x, y: p.y });
+        }
+      });
+
+      if (myRole === "GM" || myRole === "DnD-Player") {
+        const removeFromBoardBtn = document.createElement('button');
+        removeFromBoardBtn.textContent = 'С поля';
+        removeFromBoardBtn.style.marginLeft = '5px';
+        removeFromBoardBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          sendMessage({ type: 'removePlayerFromBoard', id: p.id });
+        });
+
+        const removeCompletelyBtn = document.createElement('button');
+        removeCompletelyBtn.textContent = 'Удалить';
+        removeCompletelyBtn.style.marginLeft = '5px';
+        removeCompletelyBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          sendMessage({ type: 'removePlayerCompletely', id: p.id });
+          const el = playerElements.get(p.id);
+          if (el) {
+            el.remove();
+            playerElements.delete(p.id);
+          }
+        });
+
+        li.appendChild(removeFromBoardBtn);
+        li.appendChild(removeCompletelyBtn);
+      }
+
+      playerList.appendChild(li);
+    });
+  });
+}
+
       updateCurrentPlayer(msg.state);
       renderLog(msg.state.log || []);
     }
@@ -258,7 +325,16 @@ function setPlayerPosition(player) {
 addPlayerBtn.addEventListener('click', () => {
   const name = playerNameInput.value.trim();
   if (!name) return alert("Введите имя");
-  const player = { id: crypto.randomUUID(), name, color: playerColorInput.value, size: parseInt(playerSizeInput.value), x:null, y:null, initiative:0 };
+  const player = {
+  id: crypto.randomUUID(),
+  name,
+  owner: myName, // 👈 ВАЖНО
+  color: playerColorInput.value,
+  size: parseInt(playerSizeInput.value),
+  x: null,
+  y: null,
+  initiative: 0
+};
   sendMessage({ type:'addPlayer', player });
   playerNameInput.value='';
 });
@@ -334,3 +410,4 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
