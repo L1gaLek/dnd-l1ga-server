@@ -23,11 +23,22 @@ let gameState = {
   log: []
 };
 
+// ================== USERS ==================
+let users = []; // {id, name, role, ws}
+
 // ================== HELPERS ==================
 function broadcast() {
   const msg = JSON.stringify({ type: "state", state: gameState });
   wss.clients.forEach(c => {
     if (c.readyState === WebSocket.OPEN) c.send(msg);
+  });
+}
+
+function broadcastUsers() {
+  const userList = users.map(u => ({ id: u.id, name: u.name, role: u.role }));
+  const msg = JSON.stringify({ type: "users", users: userList });
+  users.forEach(u => {
+    if (u.ws.readyState === WebSocket.OPEN) u.ws.send(msg);
   });
 }
 
@@ -48,6 +59,31 @@ wss.on("connection", ws => {
 
     switch (data.type) {
 
+      // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
+      case "register": {
+        const { name, role } = data;
+
+        if (!name || !role) {
+          ws.send(JSON.stringify({ type: "error", message: "Имя и роль обязательны" }));
+          return;
+        }
+
+        // Только один GM
+        if (role === "GM" && users.some(u => u.role === "GM")) {
+          ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
+          return;
+        }
+
+        const id = uuidv4();
+        users.push({ id, name, role, ws });
+
+        ws.send(JSON.stringify({ type: "registered", id, role, name }));
+        broadcastUsers();
+        logEvent(`${name} присоединился как ${role}`);
+        break;
+      }
+
+      // ================= ИГРОВОЙ ЛОГИК =================
       case "resizeBoard":
         gameState.boardWidth = data.width;
         gameState.boardHeight = data.height;
@@ -148,12 +184,12 @@ wss.on("connection", ws => {
       }
 
       case "resetGame":
-        // Полностью сбрасываем всех игроков, стены и ход
         gameState.players = [];
         gameState.walls = [];
         gameState.turnOrder = [];
         gameState.currentTurnIndex = 0;
         gameState.log = ["Игра полностью сброшена"];
+        logEvent("Сброс игры");
         broadcast();
         break;
 
@@ -164,6 +200,12 @@ wss.on("connection", ws => {
         break;
 
     }
+  });
+
+  ws.on("close", () => {
+    // удаляем пользователя при отключении
+    users = users.filter(u => u.ws !== ws);
+    broadcastUsers();
   });
 });
 
