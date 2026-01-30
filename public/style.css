@@ -1,88 +1,78 @@
 body {
   font-family: sans-serif;
-  display: flex;
-  justify-content: center;
   margin: 20px;
   background-color: #121212;
   color: #ddd;
 }
 
+/* Основной контейнер */
 #main-container {
   display: flex;
   gap: 20px;
+  align-items: flex-start; /* выравнивание по верху */
 }
 
-/* Журнал действий */
+/* Левая панель с журналом и игроками */
 #action-log-container {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 20px;
+  width: 250px; /* фиксированная ширина */
+}
+
+#action-log, #player-list-container {
+  background-color: #1e1e1e;
+  border: 1px solid #555;
+  padding: 10px;
+  color: #ddd;
+  border-radius: 5px;
+  overflow-y: auto;
 }
 
 #action-log {
-  width: 250px;
-  max-height: 300px;
-  overflow-y: auto;
-  background-color: #1e1e1e;
-  border: 1px solid #555;
-  padding: 10px;
-  color: #ddd;
-}
-
-#action-log h3 {
-  color: #fff;
-}
-
-#action-log ul {
-  list-style: none;
-  padding-left: 10px;
-}
-
-#action-log li {
-  margin-bottom: 4px;
+  max-height: 400px;
 }
 
 #player-list-container {
-  width: 250px;
   max-height: 200px;
-  overflow-y: auto;
-  background-color: #1e1e1e;
-  border: 1px solid #555;
-  padding: 10px;
-  color: #ddd;
 }
 
-#player-list-container h3 {
+#action-log h3, #player-list-container h3 {
+  margin-top: 0;
   color: #fff;
 }
 
-#player-list {
+#action-log ul, #player-list {
   list-style: none;
   padding-left: 10px;
+  margin: 0;
 }
 
-#player-list li {
+#action-log li, #player-list li {
   margin-bottom: 4px;
-  color: #ddd;
   font-weight: bold;
 }
 
-/* Игровая область */
+/* Игровая область справа */
 #game-container {
+  flex: 1; /* занимает оставшееся место */
   display: flex;
   flex-direction: column;
-  align-items: center;
+  gap: 10px;
+  align-items: flex-start;
 }
 
+/* Текущий игрок */
 #current-turn {
-  margin-bottom: 10px;
   font-weight: bold;
   font-size: 18px;
   color: #fff;
 }
 
-#board-settings, #controls, #player-controls {
+/* Настройки поля и игрока */
+#board-settings, #controls, #player-controls, #environment-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 10px;
 }
@@ -92,6 +82,7 @@ button, input, select {
   background-color: #2c2c2c;
   border: 1px solid #555;
   color: #ddd;
+  border-radius: 3px;
 }
 
 button:hover {
@@ -99,6 +90,7 @@ button:hover {
   cursor: pointer;
 }
 
+/* Поле игры */
 #game-board {
   position: relative;
   display: grid;
@@ -134,8 +126,9 @@ button:hover {
   cursor: grabbing;
 }
 
+/* Стены и подсветка */
 .cell.wall {
-  background-color: #555 !important; /* серый цвет стены */
+  background-color: #555 !important;
 }
 
 .wall.dragging {
@@ -145,22 +138,4 @@ button:hover {
 
 .cell.hovering {
   outline: 2px dashed #f0f;
-}
-
-#environment-controls {
-  margin-top: 10px;
-  display: flex;
-  gap: 10px;
-}
-
-#environment-controls button {
-  padding: 5px 10px;
-  background-color: #2c2c2c;
-  border: 1px solid #555;
-  color: #ddd;
-}
-
-#environment-controls button:hover {
-  background-color: #3d3d3d;
-  cursor: pointer;
 }
