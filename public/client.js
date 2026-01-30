@@ -337,7 +337,7 @@ addPlayerBtn.addEventListener('click', () => {
   const player = {
     id: crypto.randomUUID(),
     name,
-    owner: myName, // 👈 владелец игрока
+    owner: myName, // владелец игрока
     color: playerColorInput.value,
     size: parseInt(playerSizeInput.value),
     x: null,
@@ -345,31 +345,27 @@ addPlayerBtn.addEventListener('click', () => {
     initiative: 0
   };
 
-  playerOwners.set(player.id, myName);
   sendMessage({ type: 'addPlayer', player });
   playerNameInput.value = '';
 });
 
-// ================== STATE HANDLER ==================
+// ================== WS HANDLER ==================
 ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
 
   if (msg.type === "state") {
-    boardWidth = msg.state.boardWidth || boardWidth;
-    boardHeight = msg.state.boardHeight || boardHeight;
+    const state = msg.state;
 
-    // Обновляем массив игроков и их владельцев
-    players = msg.state.players.map(p => {
-      if (!p.owner && playerOwners.has(p.id)) {
-        p.owner = playerOwners.get(p.id);
-      }
-      return p;
-    });
+    boardWidth = state.boardWidth || boardWidth;
+    boardHeight = state.boardHeight || boardHeight;
 
-    renderBoard(msg.state);
+    // используем игроков с owner от сервера
+    players = state.players.map(p => ({ ...p }));
+
+    renderBoard(state);
     updatePlayerList();
-    updateCurrentPlayer(msg.state);
-    renderLog(msg.state.log || []);
+    updateCurrentPlayer(state);
+    renderLog(state.log || []);
   }
 
   if (msg.type === "users") updateUserList(msg.users);
@@ -380,7 +376,7 @@ ws.onmessage = (event) => {
 function updatePlayerList() {
   playerList.innerHTML = '';
 
-  // Группируем игроков по владельцам
+  // группируем игроков по владельцам
   const grouped = {};
   players.forEach(p => {
     const owner = p.owner || 'Без владельца';
@@ -424,7 +420,6 @@ function updatePlayerList() {
         removeCompletelyBtn.addEventListener('click', e => {
           e.stopPropagation();
           sendMessage({ type: 'removePlayerCompletely', id: p.id });
-          playerOwners.delete(p.id);
           const el = playerElements.get(p.id);
           if (el) { el.remove(); playerElements.delete(p.id); }
         });
@@ -510,6 +505,7 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
 
 
 
