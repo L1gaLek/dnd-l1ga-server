@@ -54,16 +54,17 @@ wss.on("connection", ws => {
         break;
 
       case "addPlayer":
+        // Игрок создается только в списке (x и y могут быть null)
         gameState.players.push({
-          id: uuidv4(),
+          id: data.player.id || uuidv4(),
           name: data.player.name,
           color: data.player.color,
           size: data.player.size,
-          x: 0,
-          y: 0,
+          x: data.player.x ?? null,
+          y: data.player.y ?? null,
           initiative: 0
         });
-        logEvent(`Игрок ${data.player.name} добавлен`);
+        logEvent(`Игрок ${data.player.name} добавлен в список`);
         broadcast();
         break;
 
@@ -72,10 +73,27 @@ wss.on("connection", ws => {
         if (!p) return;
         p.x = data.x;
         p.y = data.y;
-        logEvent(`${p.name} переместился в (${p.x},${p.y})`);
+        logEvent(`${p.name} перемещен в (${p.x},${p.y})`);
         broadcast();
         break;
       }
+
+      case "removePlayerFromBoard": {
+        const p = gameState.players.find(p => p.id === data.id);
+        if (!p) return;
+        p.x = null;
+        p.y = null;
+        logEvent(`${p.name} удален с поля`);
+        broadcast();
+        break;
+      }
+
+      case "removePlayerCompletely":
+        gameState.players = gameState.players.filter(p => p.id !== data.id);
+        gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
+        logEvent(`Игрок полностью удален`);
+        broadcast();
+        break;
 
       case "addWall":
         if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
