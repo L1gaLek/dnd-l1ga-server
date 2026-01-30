@@ -211,6 +211,9 @@ editEnvBtn.addEventListener('click', () => {
   addWallBtn.disabled = !editEnvironment;
   removeWallBtn.disabled = !editEnvironment;
   wallMode = null;
+
+  // обновляем текст кнопки
+  editEnvBtn.textContent = editEnvironment ? "Редактирование: ВКЛ" : "Редактирование: ВЫКЛ";
 });
 
 addWallBtn.addEventListener('click', () => wallMode = 'add');
@@ -254,3 +257,4 @@ resetGameBtn.addEventListener('click', () => {
 });
 
 clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
+
