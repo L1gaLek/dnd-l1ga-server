@@ -131,6 +131,7 @@ function updatePlayerList() {
 
 // ====================== ПОЛЕ ======================
 function renderBoard(state) {
+  // удаляем старые клетки
   board.querySelectorAll('.cell').forEach(c => c.remove());
 
   board.style.gridTemplateColumns = `repeat(${boardWidth}, 50px)`;
@@ -151,6 +152,7 @@ function renderBoard(state) {
     }
   }
 
+  // обновляем позиции игроков
   players.forEach(p => setPlayerPosition(p));
 }
 
@@ -311,8 +313,6 @@ function toggleWall(cell) {
 
 // ====================== СБРОС ======================
 resetGameBtn.addEventListener('click', () => {
-  playerElements.forEach(el => el.remove());
-  playerElements.clear();
   sendMessage({ type: 'resetGame' });
 });
 
