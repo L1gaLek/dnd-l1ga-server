@@ -6,160 +6,127 @@ const WebSocket = require("ws");
 // ================== EXPRESS ==================
 const app = express();
 app.use(express.static("public"));
-
 const server = http.createServer(app);
 
 // ================== WEBSOCKET ==================
 const wss = new WebSocket.Server({ server });
 
 // ================== GAME STATE ==================
-const gameState = {
-  players: [],        // { id, name, x, y, initiative }
-  walls: [],          // { x, y }
-  turnOrder: [],      // [playerId]
+let gameState = {
+  boardWidth: 10,
+  boardHeight: 10,
+  players: [],
+  walls: [],
+  turnOrder: [],
   currentTurnIndex: 0,
   log: []
 };
 
 // ================== HELPERS ==================
-function broadcastState() {
-  const payload = JSON.stringify({
-    type: "state",
-    state: gameState
-  });
-
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(payload);
-    }
+function broadcast() {
+  const msg = JSON.stringify({ type: "state", state: gameState });
+  wss.clients.forEach(c => {
+    if (c.readyState === WebSocket.OPEN) c.send(msg);
   });
 }
 
-function addLog(text) {
+function logEvent(text) {
   gameState.log.push(`${new Date().toLocaleTimeString()} — ${text}`);
-  if (gameState.log.length > 100) {
-    gameState.log.shift();
-  }
+  if (gameState.log.length > 100) gameState.log.shift();
 }
 
-// ================== WS HANDLER ==================
+// ================== WS HANDLERS ==================
 wss.on("connection", ws => {
-  console.log("🟢 Client connected");
+  ws.send(JSON.stringify({ type: "init", state: gameState }));
 
-  // отправляем ПОЛНОЕ состояние
-  ws.send(JSON.stringify({
-    type: "init",
-    state: gameState
-  }));
-
-  ws.on("message", message => {
+  ws.on("message", msg => {
     let data;
-    try {
-      data = JSON.parse(message);
-    } catch {
-      return;
-    }
+    try { data = JSON.parse(msg); } catch { return; }
 
     switch (data.type) {
 
-      case "addPlayer": {
-        // защита от дубликатов
-        if (gameState.players.some(p => p.id === data.player.id)) return;
-
-        gameState.players.push({
-          id: data.player.id,
-          name: data.player.name,
-          x: data.player.x ?? 0,
-          y: data.player.y ?? 0,
-          initiative: null
-        });
-
-        addLog(`Игрок ${data.player.name} добавлен`);
-        broadcastState();
+      case "resizeBoard":
+        gameState.boardWidth = data.width;
+        gameState.boardHeight = data.height;
+        gameState.walls = [];
+        logEvent("Поле изменено");
+        broadcast();
         break;
-      }
+
+      case "addPlayer":
+        gameState.players.push({
+          id: Date.now() + Math.random(),
+          name: data.player.name,
+          color: data.player.color,
+          size: data.player.size,
+          x: 0,
+          y: 0,
+          initiative: 0
+        });
+        logEvent(`Игрок ${data.player.name} добавлен`);
+        broadcast();
+        break;
 
       case "movePlayer": {
-        const player = gameState.players.find(p => p.id === data.id);
-        if (!player) return;
-
-        player.x = data.x;
-        player.y = data.y;
-
-        addLog(`${player.name} переместился`);
-        broadcastState();
+        const p = gameState.players.find(p => p.id === data.id);
+        if (!p) return;
+        p.x = data.x;
+        p.y = data.y;
+        logEvent(`${p.name} переместился`);
+        broadcast();
         break;
       }
 
-      case "addWall": {
-        gameState.walls.push({ x: data.x, y: data.y });
-        addLog(`Добавлена стена (${data.x}, ${data.y})`);
-        broadcastState();
+      case "addWall":
+        if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
+          gameState.walls.push(data.wall);
+          logEvent(`Стена добавлена (${data.wall.x},${data.wall.y})`);
+          broadcast();
+        }
         break;
-      }
 
-      case "removeWall": {
+      case "removeWall":
         gameState.walls = gameState.walls.filter(
-          w => !(w.x === data.x && w.y === data.y)
+          w => !(w.x === data.wall.x && w.y === data.wall.y)
         );
-        addLog(`Удалена стена (${data.x}, ${data.y})`);
-        broadcastState();
+        logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
+        broadcast();
         break;
-      }
 
-      case "rollInitiative": {
-        gameState.players.forEach(p => {
-          p.initiative = Math.floor(Math.random() * 20) + 1;
-        });
-
+      case "rollInitiative":
+        gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
         gameState.turnOrder = [...gameState.players]
-          .sort((a, b) => b.initiative - a.initiative)
-          .map(p => p.id);
-
+          .sort((a,b)=>b.initiative-a.initiative)
+          .map(p=>p.id);
         gameState.currentTurnIndex = 0;
-        addLog("Бросок инициативы");
-        broadcastState();
+        logEvent("Инициатива брошена");
+        broadcast();
         break;
-      }
 
-      case "endTurn": {
-        if (gameState.turnOrder.length === 0) return;
-
+      case "endTurn":
         gameState.currentTurnIndex =
           (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-
-        addLog("Конец хода");
-        broadcastState();
+        logEvent("Конец хода");
+        broadcast();
         break;
-      }
 
-      case "clearField": {
-        gameState.walls = [];
-        addLog("Поле очищено");
-        broadcastState();
-        break;
-      }
-
-      case "resetGame": {
+      case "resetGame":
         gameState.players = [];
         gameState.walls = [];
         gameState.turnOrder = [];
         gameState.currentTurnIndex = 0;
         gameState.log = [];
-
-        broadcastState();
+        broadcast();
         break;
-      }
-    }
-  });
 
-  ws.on("close", () => {
-    console.log("🔴 Client disconnected");
+      case "clearBoard":
+        gameState.walls = [];
+        broadcast();
+        break;
+    }
   });
 });
 
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log(`🟢 Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log("🟢 Server on", PORT));
