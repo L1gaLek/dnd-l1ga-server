@@ -8,7 +8,7 @@ const loginError = document.getElementById('loginError');
 const gameUI = document.getElementById('main-container');
 const myNameSpan = document.getElementById('myName');
 const myRoleSpan = document.getElementById('myRole');
-const userList = document.getElementById('player-list'); // используем player-list для списка пользователей
+const userList = document.getElementById('player-list'); // список пользователей
 
 const board = document.getElementById('game-board');
 const playerList = document.getElementById('player-list');
@@ -33,8 +33,6 @@ let myRole;
 let players = [];
 let boardWidth = 10;
 let boardHeight = 10;
-
-// DOM-элементы игроков
 const playerElements = new Map();
 
 // ================== JOIN GAME ==================
@@ -49,9 +47,7 @@ joinBtn.addEventListener('click', () => {
 
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
 
-  ws.onopen = () => {
-    ws.send(JSON.stringify({ type: "register", name, role }));
-  };
+  ws.onopen = () => ws.send(JSON.stringify({ type: "register", name, role }));
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -60,26 +56,17 @@ joinBtn.addEventListener('click', () => {
       case "registered":
         myId = msg.id;
         myRole = msg.role;
-
         myNameSpan.textContent = msg.name;
         myRoleSpan.textContent = msg.role;
 
-        // Показываем главное окно после успешного входа
         loginDiv.style.display = "none";
         gameUI.style.display = "block";
 
         setupRoleUI(myRole);
 
-        // Если сервер прислал состояние, отрисовываем поле и игроков
-        if (msg.state) {
-          if (msg.state.boardWidth) boardWidth = msg.state.boardWidth;
-          if (msg.state.boardHeight) boardHeight = msg.state.boardHeight;
-          players = msg.state.players;
-          renderBoard(msg.state);
-          updatePlayerList();
-          updateCurrentPlayer(msg.state);
-          renderLog(msg.state.log || []);
-        }
+        // сразу создаем поле с текущими размерами
+        renderBoard({ boardWidth, boardHeight, players });
+        updatePlayerList();
         break;
 
       case "error":
@@ -108,22 +95,6 @@ joinBtn.addEventListener('click', () => {
   };
 });
 
-// ================== CREATE BOARD BUTTON ==================
-createBoardBtn.addEventListener('click', () => {
-  const width = parseInt(boardWidthInput.value);
-  const height = parseInt(boardHeightInput.value);
-
-  if (!width || !height) return;
-
-  // Отправляем серверу событие изменения размера поля
-  ws.send(JSON.stringify({ type: "resizeBoard", width, height }));
-});
-
-// ================== OTHER NOTES ==================
-// Теперь игровое поле создается сразу после входа.
-// Кнопка "Создать поле" обновляет размер у всех игроков.
-// Игроки можно добавлять и перемещать как раньше.
-
 // ================== USERS ==================
 function updateUserList(users) {
   userList.innerHTML = '';
@@ -145,9 +116,7 @@ function setupRoleUI(role) {
     resetGameBtn.style.display = 'none';
     clearBoardBtn.style.display = 'none';
   } else if (role === "DnD-Player") {
-    resetGameBtn.style.display = 'none'; // игрок не может сбрасывать игру
-  } else if (role === "GM") {
-    // GM видит все кнопки
+    resetGameBtn.style.display = 'none';
   }
 }
 
@@ -259,3 +228,31 @@ function setPlayerPosition(player) {
   }
 }
 
+// ================== CREATE BOARD BUTTON ==================
+createBoardBtn.addEventListener('click', () => {
+  const width = parseInt(boardWidthInput.value);
+  const height = parseInt(boardHeightInput.value);
+
+  if (!width || !height) return;
+  ws.send(JSON.stringify({ type: "resizeBoard", width, height }));
+});
+
+// ================== ADD PLAYER BUTTON ==================
+addPlayerBtn.addEventListener('click', () => {
+  const nameInput = document.getElementById('player-name');
+  const colorInput = document.getElementById('player-color');
+  const sizeInput = document.getElementById('player-size');
+
+  const name = nameInput.value.trim();
+  const color = colorInput.value;
+  const size = parseInt(sizeInput.value) || 1;
+
+  if (!name) return;
+
+  ws.send(JSON.stringify({
+    type: 'addPlayer',
+    player: { name, color, size, x: 0, y: 0 }
+  }));
+
+  nameInput.value = '';
+});
