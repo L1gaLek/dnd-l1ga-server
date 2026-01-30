@@ -1,3 +1,4 @@
+// ================== ELEMENTS ==================
 const loginDiv = document.getElementById('login');
 const joinBtn = document.getElementById('joinBtn');
 const usernameInput = document.getElementById('username');
@@ -8,11 +9,33 @@ const gameUI = document.getElementById('game-ui');
 const myNameSpan = document.getElementById('myName');
 const myRoleSpan = document.getElementById('myRole');
 const userList = document.getElementById('userList');
-const board = document.getElementById('game-board');
 
+const board = document.getElementById('game-board');
+const playerList = document.getElementById('player-list');
+const logList = document.getElementById('log-list');
+const currentPlayerSpan = document.getElementById('current-player');
+
+// Игровые кнопки
+const addPlayerBtn = document.getElementById('add-player');
+const rollBtn = document.getElementById('roll');
+const endTurnBtn = document.getElementById('end-turn');
+const rollInitiativeBtn = document.getElementById('roll-initiative');
+const createBoardBtn = document.getElementById('create-board');
+const boardWidthInput = document.getElementById('board-width');
+const boardHeightInput = document.getElementById('board-height');
+const resetGameBtn = document.getElementById('reset-game');
+const clearBoardBtn = document.getElementById('clear-board');
+
+// ================== VARIABLES ==================
 let ws;
 let myId;
 let myRole;
+let players = [];
+let boardWidth = 10;
+let boardHeight = 10;
+
+// DOM-элементы игроков
+const playerElements = new Map();
 
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
@@ -52,12 +75,20 @@ joinBtn.addEventListener('click', () => {
         break;
 
       case "state":
-        // сюда можно интегрировать твой renderBoard и обновление игроков
+        // обновляем состояние игры
+        if (msg.state.boardWidth) boardWidth = msg.state.boardWidth;
+        if (msg.state.boardHeight) boardHeight = msg.state.boardHeight;
+        players = msg.state.players;
+        renderBoard(msg.state);
+        updatePlayerList();
+        updateCurrentPlayer(msg.state);
+        renderLog(msg.state.log || []);
         break;
     }
   };
 });
 
+// ================== USERS ==================
 function updateUserList(users) {
   userList.innerHTML = '';
   users.forEach(u => {
@@ -67,15 +98,128 @@ function updateUserList(users) {
   });
 }
 
+// ================== ROLE UI ==================
 function setupRoleUI(role) {
   if (role === "Spectator") {
-    // Скрываем кнопки управления
-    // Например:
-    // document.getElementById('add-player').style.display = 'none';
-    // document.getElementById('roll').style.display = 'none';
+    // Скрываем кнопки управления игроками
+    addPlayerBtn.style.display = 'none';
+    rollBtn.style.display = 'none';
+    endTurnBtn.style.display = 'none';
+    rollInitiativeBtn.style.display = 'none';
+    createBoardBtn.style.display = 'none';
+    resetGameBtn.style.display = 'none';
+    clearBoardBtn.style.display = 'none';
   } else if (role === "DnD-Player") {
-    // Игрок видит только свои кнопки и поле
+    // Игрок видит свои кнопки и поле
+    resetGameBtn.style.display = 'none'; // не может сбрасывать игру
   } else if (role === "GM") {
-    // GM видит все кнопки и поле
+    // GM видит все кнопки
+    // ничего скрывать не нужно
+  }
+}
+
+// ================== GAME LOG ==================
+function renderLog(logs) {
+  logList.innerHTML = '';
+  logs.slice(-50).forEach(line => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    logList.appendChild(li);
+  });
+}
+
+// ================== CURRENT PLAYER ==================
+function updateCurrentPlayer(state) {
+  if (!state || !state.turnOrder || state.turnOrder.length === 0) {
+    currentPlayerSpan.textContent = '-';
+    return;
+  }
+  const id = state.turnOrder[state.currentTurnIndex];
+  const p = players.find(pl => pl.id === id);
+  currentPlayerSpan.textContent = p ? p.name : '-';
+}
+
+// ================== PLAYERS ==================
+function updatePlayerList() {
+  playerList.innerHTML = '';
+  players.forEach(p => {
+    const li = document.createElement('li');
+    li.textContent = `${p.name} (${p.initiative || 0})`;
+
+    // кнопки для GM и DnD-Player
+    if (myRole === "GM" || myRole === "DnD-Player") {
+      const removeFromBoardBtn = document.createElement('button');
+      removeFromBoardBtn.textContent = 'С поля';
+      removeFromBoardBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        ws.send(JSON.stringify({ type: 'removePlayerFromBoard', id: p.id }));
+      });
+
+      const removeCompletelyBtn = document.createElement('button');
+      removeCompletelyBtn.textContent = 'Удалить полностью';
+      removeCompletelyBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        ws.send(JSON.stringify({ type: 'removePlayerCompletely', id: p.id }));
+      });
+
+      li.appendChild(removeFromBoardBtn);
+      li.appendChild(removeCompletelyBtn);
+    }
+
+    playerList.appendChild(li);
+  });
+}
+
+// ================== BOARD ==================
+function renderBoard(state) {
+  board.innerHTML = '';
+  board.style.gridTemplateColumns = `repeat(${boardWidth}, 50px)`;
+  board.style.gridTemplateRows = `repeat(${boardHeight}, 50px)`;
+
+  for (let y = 0; y < boardHeight; y++) {
+    for (let x = 0; x < boardWidth; x++) {
+      const cell = document.createElement('div');
+      cell.classList.add('cell');
+      cell.dataset.x = x;
+      cell.dataset.y = y;
+      board.appendChild(cell);
+    }
+  }
+
+  // игроки
+  players.forEach(p => setPlayerPosition(p));
+}
+
+function setPlayerPosition(player) {
+  let el = playerElements.get(player.id);
+  if (!el) {
+    el = document.createElement('div');
+    el.classList.add('player');
+    el.textContent = player.name[0];
+    el.style.backgroundColor = player.color;
+    el.style.position = 'absolute';
+    el.style.width = `${player.size * 50}px`;
+    el.style.height = `${player.size * 50}px`;
+    board.appendChild(el);
+    playerElements.set(player.id, el);
+  }
+
+  if (player.x === null || player.y === null) {
+    el.style.display = 'none';
+    return;
+  } else {
+    el.style.display = 'flex';
+  }
+
+  let maxX = boardWidth - player.size;
+  let maxY = boardHeight - player.size;
+
+  let x = Math.min(Math.max(player.x, 0), maxX);
+  let y = Math.min(Math.max(player.y, 0), maxY);
+
+  const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+  if (cell) {
+    el.style.left = `${cell.offsetLeft}px`;
+    el.style.top = `${cell.offsetTop}px`;
   }
 }
