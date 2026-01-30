@@ -47,10 +47,9 @@ ws.onmessage = (event) => {
 
   const state = msg.state;
 
-  boardWidth = state.boardWidth || boardWidth;
-  boardHeight = state.boardHeight || boardHeight;
+  boardWidth = state.boardWidth;
+  boardHeight = state.boardHeight;
 
-  // ===== ИГРОКИ (ВАЖНО: сохраняем DOM-элементы)
   players = state.players.map(p => {
     const existing = players.find(pl => pl.id === p.id);
     return { ...p, element: existing?.element || null };
@@ -250,3 +249,4 @@ function renderLog(logs = []) {
     logList.appendChild(li);
   });
 }
+
