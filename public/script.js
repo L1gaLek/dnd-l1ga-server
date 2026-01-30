@@ -50,7 +50,18 @@ ws.onmessage = (event) => {
     boardWidth = state.boardWidth || boardWidth;
     boardHeight = state.boardHeight || boardHeight;
 
-    // синхронизация игроков и их DOM
+// синхронизация игроков и их DOM
+    const existingIds = new Set(state.players.map(p => p.id));
+
+    // удаляем DOM элементы игроков, которых уже нет
+    playerElements.forEach((el, id) => {
+      if (!existingIds.has(id)) {
+        el.remove();
+        playerElements.delete(id);
+      }
+    });
+
+    // обновляем массив игроков
     players = state.players.map(p => {
       const el = playerElements.get(p.id);
       return { ...p, element: el || null };
@@ -326,3 +337,4 @@ resetGameBtn.addEventListener('click', () => {
 
   sendMessage({ type: 'resetGame' });
 });
+
