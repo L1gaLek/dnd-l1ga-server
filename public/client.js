@@ -333,22 +333,110 @@ function setPlayerPosition(player) {
 addPlayerBtn.addEventListener('click', () => {
   const name = playerNameInput.value.trim();
   if (!name) return alert("Введите имя");
+
   const player = {
-  id: crypto.randomUUID(),
-  name,
-  owner: myName, // 👈 ВАЖНО
-  color: playerColorInput.value,
-  size: parseInt(playerSizeInput.value),
-  x: null,
-  y: null,
-  initiative: 0
+    id: crypto.randomUUID(),
+    name,
+    owner: myName, // 👈 владелец игрока
+    color: playerColorInput.value,
+    size: parseInt(playerSizeInput.value),
+    x: null,
+    y: null,
+    initiative: 0
+  };
+
+  playerOwners.set(player.id, myName);
+  sendMessage({ type: 'addPlayer', player });
+  playerNameInput.value = '';
+});
+
+// ================== STATE HANDLER ==================
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === "state") {
+    boardWidth = msg.state.boardWidth || boardWidth;
+    boardHeight = msg.state.boardHeight || boardHeight;
+
+    // Обновляем массив игроков и их владельцев
+    players = msg.state.players.map(p => {
+      if (!p.owner && playerOwners.has(p.id)) {
+        p.owner = playerOwners.get(p.id);
+      }
+      return p;
+    });
+
+    renderBoard(msg.state);
+    updatePlayerList();
+    updateCurrentPlayer(msg.state);
+    renderLog(msg.state.log || []);
+  }
+
+  if (msg.type === "users") updateUserList(msg.users);
+  if (msg.type === "error") loginError.textContent = msg.message;
 };
 
-playerOwners.set(player.id, myName);
-  
-  sendMessage({ type:'addPlayer', player });
-  playerNameInput.value='';
-});
+// ================== PLAYER LIST ==================
+function updatePlayerList() {
+  playerList.innerHTML = '';
+
+  // Группируем игроков по владельцам
+  const grouped = {};
+  players.forEach(p => {
+    const owner = p.owner || 'Без владельца';
+    if (!grouped[owner]) grouped[owner] = [];
+    grouped[owner].push(p);
+  });
+
+  Object.entries(grouped).forEach(([owner, ownerPlayers]) => {
+    const ownerLi = document.createElement('li');
+    ownerLi.style.fontWeight = 'bold';
+    ownerLi.style.marginTop = '6px';
+    ownerLi.textContent = `${owner} (${ownerPlayers.length}):`;
+    playerList.appendChild(ownerLi);
+
+    ownerPlayers.forEach(p => {
+      const li = document.createElement('li');
+      li.style.paddingLeft = '14px';
+      li.textContent = `• ${p.name} (${p.initiative || 0})`;
+
+      li.addEventListener('click', () => {
+        selectedPlayer = p;
+        if (p.x === null || p.y === null) {
+          p.x = 0;
+          p.y = 0;
+          sendMessage({ type: 'movePlayer', id: p.id, x: p.x, y: p.y });
+        }
+      });
+
+      if (myRole === "GM" || myRole === "DnD-Player") {
+        const removeFromBoardBtn = document.createElement('button');
+        removeFromBoardBtn.textContent = 'С поля';
+        removeFromBoardBtn.style.marginLeft = '5px';
+        removeFromBoardBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          sendMessage({ type: 'removePlayerFromBoard', id: p.id });
+        });
+
+        const removeCompletelyBtn = document.createElement('button');
+        removeCompletelyBtn.textContent = 'Удалить';
+        removeCompletelyBtn.style.marginLeft = '5px';
+        removeCompletelyBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          sendMessage({ type: 'removePlayerCompletely', id: p.id });
+          playerOwners.delete(p.id);
+          const el = playerElements.get(p.id);
+          if (el) { el.remove(); playerElements.delete(p.id); }
+        });
+
+        li.appendChild(removeFromBoardBtn);
+        li.appendChild(removeCompletelyBtn);
+      }
+
+      playerList.appendChild(li);
+    });
+  });
+}
 
 // ================== MOVE PLAYER ==================
 board.addEventListener('click', e => {
@@ -422,5 +510,6 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
 
 
