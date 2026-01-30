@@ -19,20 +19,20 @@ const playerList = document.getElementById('player-list');
 const editEnvBtn = document.getElementById('edit-environment');
 const addWallBtn = document.getElementById('add-wall');
 const removeWallBtn = document.getElementById('remove-wall');
-
 const resetGameBtn = document.getElementById('reset-game');
 const clearBoardBtn = document.getElementById('clear-board');
 
 // ====================== ПЕРЕМЕННЫЕ ======================
 let boardWidth = parseInt(boardWidthInput.value);
 let boardHeight = parseInt(boardHeightInput.value);
-
 let players = [];
 let selectedPlayer = null;
-
 let editEnvironment = false;
 let wallMode = null;
 let mouseDown = false;
+
+// DOM-элементы игроков (id -> element)
+const playerElements = new Map();
 
 // ====================== WEBSOCKET ======================
 const ws = new WebSocket(
@@ -43,37 +43,48 @@ ws.onopen = () => console.log("🟢 Connected to server");
 
 ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
-  if (msg.type !== 'init' && msg.type !== 'state') return;
 
-  const state = msg.state;
+  if (msg.type === 'init' || msg.type === 'state') {
+    const state = msg.state;
 
-  boardWidth = state.boardWidth;
-  boardHeight = state.boardHeight;
+    boardWidth = state.boardWidth || boardWidth;
+    boardHeight = state.boardHeight || boardHeight;
 
-  players = state.players.map(p => {
-    const existing = players.find(pl => pl.id === p.id);
-    return { ...p, element: existing?.element || null };
-  });
+    // обновляем игроков, сохраняем DOM-элементы
+    players = state.players.map(p => {
+      const el = playerElements.get(p.id);
+      return { ...p, element: el || null };
+    });
 
-  renderBoard(state);
-  updatePlayerList();
-  updateCurrentPlayer(state);
-  renderLog(state.log);
+    renderBoard(state);
+    updatePlayerList();
+    updateCurrentPlayer(state);
+    renderLog(state.log || []);
+  }
 };
 
-// ====================== УТИЛИТЫ ======================
+// ====================== ВСПОМОГАТЕЛЬНЫЕ ======================
 function sendMessage(msg) {
   ws.send(JSON.stringify(msg));
 }
 
+function renderLog(logs) {
+  logList.innerHTML = '';
+  logs.slice(-50).forEach(line => {
+    const li = document.createElement('li');
+    li.textContent = line;
+    logList.appendChild(li);
+  });
+}
+
 function updateCurrentPlayer(state) {
-  if (!state.turnOrder?.length) {
+  if (!state || !state.turnOrder || state.turnOrder.length === 0) {
     currentPlayerSpan.textContent = '-';
     return;
   }
   const id = state.turnOrder[state.currentTurnIndex];
   const p = players.find(pl => pl.id === id);
-  currentPlayerSpan.textContent = p?.name || '-';
+  currentPlayerSpan.textContent = p ? p.name : '-';
 }
 
 function updatePlayerList() {
@@ -87,9 +98,11 @@ function updatePlayerList() {
 
 // ====================== ПОЛЕ ======================
 function renderBoard(state) {
-  board.innerHTML = '';
-  board.style.gridTemplateColumns = `repeat(${boardWidth},50px)`;
-  board.style.gridTemplateRows = `repeat(${boardHeight},50px)`;
+  // удаляем ТОЛЬКО клетки
+  board.querySelectorAll('.cell').forEach(c => c.remove());
+
+  board.style.gridTemplateColumns = `repeat(${boardWidth}, 50px)`;
+  board.style.gridTemplateRows = `repeat(${boardHeight}, 50px)`;
 
   for (let y = 0; y < boardHeight; y++) {
     for (let x = 0; x < boardWidth; x++) {
@@ -98,7 +111,7 @@ function renderBoard(state) {
       cell.dataset.x = x;
       cell.dataset.y = y;
 
-      if (state.walls?.some(w => w.x === x && w.y === y)) {
+      if (state.walls?.find(w => w.x === x && w.y === y)) {
         cell.classList.add('wall');
       }
 
@@ -106,91 +119,91 @@ function renderBoard(state) {
     }
   }
 
+  // позиционируем игроков, не удаляя их
   players.forEach(p => setPlayerPosition(p));
 }
 
-createBoardBtn.addEventListener('click', () => {
-  boardWidth = parseInt(boardWidthInput.value);
-  boardHeight = parseInt(boardHeightInput.value);
-  sendMessage({ type: 'resizeBoard', width: boardWidth, height: boardHeight });
-});
-
 // ====================== ИГРОКИ ======================
 function setPlayerPosition(player) {
-  if (!player.element) {
-    const el = document.createElement('div');
+  let el = playerElements.get(player.id);
+
+  if (!el) {
+    el = document.createElement('div');
     el.classList.add('player');
     el.textContent = player.name[0];
     el.style.backgroundColor = player.color;
+    el.style.position = 'absolute';
     el.style.width = `${player.size * 50}px`;
     el.style.height = `${player.size * 50}px`;
-    el.style.position = 'absolute';
 
     el.addEventListener('mousedown', () => {
-      if (editEnvironment) return;
-      if (selectedPlayer?.element) {
-        selectedPlayer.element.classList.remove('selected');
+      if (!editEnvironment) {
+        if (selectedPlayer) {
+          const prev = playerElements.get(selectedPlayer.id);
+          if (prev) prev.classList.remove('selected');
+        }
+        selectedPlayer = player;
+        el.classList.add('selected');
       }
-      selectedPlayer = player;
-      el.classList.add('selected');
     });
 
     board.appendChild(el);
+    playerElements.set(player.id, el);
     player.element = el;
   }
 
-  player.element.style.left = `${player.x * 50}px`;
-  player.element.style.top = `${player.y * 50}px`;
+  el.style.left = `${player.x * 50}px`;
+  el.style.top = `${player.y * 50}px`;
 }
 
-addPlayerBtn.addEventListener('click', () => {
-  const name = playerNameInput.value.trim();
-  const color = playerColorInput.value;
-  const size = parseInt(playerSizeInput.value);
-  if (!name) return;
-
-  sendMessage({
-    type: 'addPlayer',
-    player: { name, color, size, x: 0, y: 0 }
-  });
-
-  playerNameInput.value = '';
-});
-
-// ====================== ПЕРЕМЕЩЕНИЕ ======================
+// ====================== ПЕРЕМЕЩЕНИЕ ИГРОКА ======================
 board.addEventListener('click', e => {
   if (!selectedPlayer) return;
   const cell = e.target.closest('.cell');
   if (!cell) return;
 
-  const x = +cell.dataset.x;
-  const y = +cell.dataset.y;
+  const x = parseInt(cell.dataset.x);
+  const y = parseInt(cell.dataset.y);
 
-  sendMessage({
-    type: 'movePlayer',
-    id: selectedPlayer.id,
-    x,
-    y
-  });
+  sendMessage({ type: 'movePlayer', id: selectedPlayer.id, x, y });
 
-  selectedPlayer.element.classList.remove('selected');
+  const el = playerElements.get(selectedPlayer.id);
+  if (el) el.classList.remove('selected');
   selectedPlayer = null;
+});
+
+// ====================== ДОБАВЛЕНИЕ ИГРОКА ======================
+addPlayerBtn.addEventListener('click', () => {
+  const name = playerNameInput.value.trim();
+  if (!name) return alert("Введите имя");
+
+  const player = {
+    id: crypto.randomUUID(),
+    name,
+    color: playerColorInput.value,
+    size: parseInt(playerSizeInput.value),
+    x: 0,
+    y: 0,
+    initiative: 0
+  };
+
+  sendMessage({ type: 'addPlayer', player });
+  playerNameInput.value = '';
 });
 
 // ====================== КУБИК ======================
 rollBtn.addEventListener('click', () => {
   const sides = parseInt(dice.value);
-  sendMessage({ type: 'rollDice', sides });
+  const result = Math.floor(Math.random() * sides) + 1;
+  rollResult.textContent = `Результат: ${result}`;
+  sendMessage({ type: 'log', text: `Бросок d${sides}: ${result}` });
 });
 
-// ====================== ХОД / ИНИЦИАТИВА ======================
-endTurnBtn.addEventListener('click', () => {
-  sendMessage({ type: 'endTurn' });
-});
+// ====================== ХОД ======================
+endTurnBtn.addEventListener('click', () => sendMessage({ type: 'endTurn' }));
 
-rollInitiativeBtn.addEventListener('click', () => {
-  sendMessage({ type: 'rollInitiative' });
-});
+// ====================== ИНИЦИАТИВА ======================
+rollInitiativeBtn.addEventListener('click', () => sendMessage({ type: 'rollInitiative' }));
 
 // ====================== СТЕНЫ ======================
 editEnvBtn.addEventListener('click', () => {
@@ -212,13 +225,13 @@ board.addEventListener('mousedown', e => {
 });
 
 board.addEventListener('mouseover', e => {
-  if (!mouseDown) return;
+  if (!mouseDown || !editEnvironment || !wallMode) return;
   const cell = e.target.closest('.cell');
   if (!cell) return;
   toggleWall(cell);
 });
 
-document.addEventListener('mouseup', () => mouseDown = false);
+board.addEventListener('mouseup', () => mouseDown = false);
 
 function toggleWall(cell) {
   const x = +cell.dataset.x;
@@ -226,27 +239,18 @@ function toggleWall(cell) {
 
   if (wallMode === 'add') {
     sendMessage({ type: 'addWall', wall: { x, y } });
-  } else {
+    cell.classList.add('wall');
+  } else if (wallMode === 'remove') {
     sendMessage({ type: 'removeWall', wall: { x, y } });
+    cell.classList.remove('wall');
   }
 }
 
 // ====================== СБРОС ======================
 resetGameBtn.addEventListener('click', () => {
+  playerElements.forEach(el => el.remove());
+  playerElements.clear();
   sendMessage({ type: 'resetGame' });
 });
 
-clearBoardBtn.addEventListener('click', () => {
-  sendMessage({ type: 'clearBoard' });
-});
-
-// ====================== ЛОГ ======================
-function renderLog(logs = []) {
-  logList.innerHTML = '';
-  logs.slice(-50).forEach(l => {
-    const li = document.createElement('li');
-    li.textContent = l;
-    logList.appendChild(li);
-  });
-}
-
+clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
