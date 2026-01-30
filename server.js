@@ -100,6 +100,7 @@ wss.on("connection", ws => {
           x: data.player.x ?? null,
           y: data.player.y ?? null,
           initiative: 0
+          owner: data.player.owner || null  // 🔑 добавлено
         });
         logEvent(`Игрок ${data.player.name} добавлен в список`);
         broadcast();
@@ -212,3 +213,4 @@ wss.on("connection", ws => {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
