@@ -115,11 +115,18 @@ function updatePlayerList() {
 
     // кнопка удалить полностью
     const removeCompletelyBtn = document.createElement('button');
-    removeCompletelyBtn.textContent = 'Удалить полностью';
+    removeCompletelyBtn.textContent = 'Удалить';
     removeCompletelyBtn.style.marginLeft = '5px';
     removeCompletelyBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       sendMessage({ type: 'removePlayerCompletely', id: p.id });
+
+      // Удаляем DOM элемент игрока с поля сразу
+      const el = playerElements.get(p.id);
+      if (el) {
+        el.remove();
+        playerElements.delete(p.id);
+      }
     });
 
     li.appendChild(removeFromBoardBtn);
@@ -313,7 +320,9 @@ function toggleWall(cell) {
 
 // ====================== СБРОС ======================
 resetGameBtn.addEventListener('click', () => {
+  // удаляем DOM элементы игроков у себя
+  playerElements.forEach(el => el.remove());
+  playerElements.clear();
+
   sendMessage({ type: 'resetGame' });
 });
-
-clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
