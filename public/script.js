@@ -206,14 +206,14 @@ addPlayerBtn.addEventListener('click', () => {
   if (!name) return alert("Введите имя");
 
   const player = {
-    id: crypto.randomUUID(),
-    name,
-    color: playerColorInput.value,
-    size: parseInt(playerSizeInput.value),
-    x: 0,
-    y: 0,
-    initiative: 0
-  };
+  id: crypto.randomUUID(),
+  name,
+  color: playerColorInput.value,
+  size: parseInt(playerSizeInput.value),
+  x: null,   // ещё не на поле
+  y: null,
+  initiative: 0
+};
 
   sendMessage({ type: 'addPlayer', player });
   playerNameInput.value = '';
@@ -285,6 +285,7 @@ resetGameBtn.addEventListener('click', () => {
 });
 
 clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
+
 
 
 
