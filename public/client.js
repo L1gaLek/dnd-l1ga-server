@@ -1,14 +1,14 @@
 // ================== ELEMENTS ==================
-const loginDiv = document.getElementById('login');
+const loginDiv = document.getElementById('login-container');
 const joinBtn = document.getElementById('joinBtn');
 const usernameInput = document.getElementById('username');
 const roleSelect = document.getElementById('role');
 const loginError = document.getElementById('loginError');
 
-const gameUI = document.getElementById('game-ui');
+const gameUI = document.getElementById('main-container');
 const myNameSpan = document.getElementById('myName');
 const myRoleSpan = document.getElementById('myRole');
-const userList = document.getElementById('userList');
+const userList = document.getElementById('player-list'); // используем player-list для списка пользователей
 
 const board = document.getElementById('game-board');
 const playerList = document.getElementById('player-list');
@@ -42,8 +42,12 @@ joinBtn.addEventListener('click', () => {
   const name = usernameInput.value.trim();
   const role = roleSelect.value;
 
-  if (!name) return loginError.textContent = "Введите имя";
+  if (!name) {
+    loginError.textContent = "Введите имя";
+    return;
+  }
 
+  // создаем WebSocket
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
 
   ws.onopen = () => {
@@ -57,6 +61,7 @@ joinBtn.addEventListener('click', () => {
       case "registered":
         myId = msg.id;
         myRole = msg.role;
+
         myNameSpan.textContent = msg.name;
         myRoleSpan.textContent = msg.role;
 
@@ -75,7 +80,6 @@ joinBtn.addEventListener('click', () => {
         break;
 
       case "state":
-        // обновляем состояние игры
         if (msg.state.boardWidth) boardWidth = msg.state.boardWidth;
         if (msg.state.boardHeight) boardHeight = msg.state.boardHeight;
         players = msg.state.players;
@@ -85,6 +89,11 @@ joinBtn.addEventListener('click', () => {
         renderLog(msg.state.log || []);
         break;
     }
+  };
+
+  ws.onerror = (e) => {
+    loginError.textContent = "Ошибка соединения с сервером";
+    console.error(e);
   };
 });
 
@@ -101,7 +110,6 @@ function updateUserList(users) {
 // ================== ROLE UI ==================
 function setupRoleUI(role) {
   if (role === "Spectator") {
-    // Скрываем кнопки управления игроками
     addPlayerBtn.style.display = 'none';
     rollBtn.style.display = 'none';
     endTurnBtn.style.display = 'none';
@@ -110,11 +118,9 @@ function setupRoleUI(role) {
     resetGameBtn.style.display = 'none';
     clearBoardBtn.style.display = 'none';
   } else if (role === "DnD-Player") {
-    // Игрок видит свои кнопки и поле
-    resetGameBtn.style.display = 'none'; // не может сбрасывать игру
+    resetGameBtn.style.display = 'none'; // игрок не может сбрасывать игру
   } else if (role === "GM") {
     // GM видит все кнопки
-    // ничего скрывать не нужно
   }
 }
 
@@ -146,7 +152,6 @@ function updatePlayerList() {
     const li = document.createElement('li');
     li.textContent = `${p.name} (${p.initiative || 0})`;
 
-    // кнопки для GM и DnD-Player
     if (myRole === "GM" || myRole === "DnD-Player") {
       const removeFromBoardBtn = document.createElement('button');
       removeFromBoardBtn.textContent = 'С поля';
@@ -173,11 +178,15 @@ function updatePlayerList() {
 // ================== BOARD ==================
 function renderBoard(state) {
   board.innerHTML = '';
+  board.style.position = 'relative';
+  board.style.width = `${boardWidth*50}px`;
+  board.style.height = `${boardHeight*50}px`;
+  board.style.display = 'grid';
   board.style.gridTemplateColumns = `repeat(${boardWidth}, 50px)`;
   board.style.gridTemplateRows = `repeat(${boardHeight}, 50px)`;
 
-  for (let y = 0; y < boardHeight; y++) {
-    for (let x = 0; x < boardWidth; x++) {
+  for (let y=0; y<boardHeight; y++) {
+    for (let x=0; x<boardWidth; x++) {
       const cell = document.createElement('div');
       cell.classList.add('cell');
       cell.dataset.x = x;
@@ -186,7 +195,6 @@ function renderBoard(state) {
     }
   }
 
-  // игроки
   players.forEach(p => setPlayerPosition(p));
 }
 
@@ -198,8 +206,8 @@ function setPlayerPosition(player) {
     el.textContent = player.name[0];
     el.style.backgroundColor = player.color;
     el.style.position = 'absolute';
-    el.style.width = `${player.size * 50}px`;
-    el.style.height = `${player.size * 50}px`;
+    el.style.width = `${player.size*50}px`;
+    el.style.height = `${player.size*50}px`;
     board.appendChild(el);
     playerElements.set(player.id, el);
   }
@@ -211,11 +219,11 @@ function setPlayerPosition(player) {
     el.style.display = 'flex';
   }
 
-  let maxX = boardWidth - player.size;
-  let maxY = boardHeight - player.size;
+  const maxX = boardWidth - player.size;
+  const maxY = boardHeight - player.size;
 
-  let x = Math.min(Math.max(player.x, 0), maxX);
-  let y = Math.min(Math.max(player.y, 0), maxY);
+  const x = Math.min(Math.max(player.x, 0), maxX);
+  const y = Math.min(Math.max(player.y, 0), maxY);
 
   const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
   if (cell) {
