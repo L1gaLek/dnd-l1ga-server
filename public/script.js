@@ -87,11 +87,49 @@ function updateCurrentPlayer(state) {
   currentPlayerSpan.textContent = p ? p.name : '-';
 }
 
+// ====================== СПИСОК ИГРОКОВ ======================
 function updatePlayerList() {
   playerList.innerHTML = '';
   players.forEach(p => {
     const li = document.createElement('li');
     li.textContent = `${p.name} (${p.initiative || 0})`;
+
+    // клик по имени → выделение и добавление на поле, если ещё нет
+    li.addEventListener('click', () => {
+      selectedPlayer = p;
+      if (p.x === null || p.y === null) {
+        p.x = 0;
+        p.y = 0;
+        sendMessage({ type: 'movePlayer', id: p.id, x: p.x, y: p.y });
+      }
+    });
+
+    // кнопка убрать с поля
+    const removeFromBoardBtn = document.createElement('button');
+    removeFromBoardBtn.textContent = 'С поля';
+    removeFromBoardBtn.style.marginLeft = '5px';
+    removeFromBoardBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sendMessage({ type: 'removePlayerFromBoard', id: p.id });
+    });
+
+    // кнопка удалить полностью
+    const removeCompletelyBtn = document.createElement('button');
+    removeCompletelyBtn.textContent = 'Удалить полностью';
+    removeCompletelyBtn.style.marginLeft = '5px';
+    removeCompletelyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sendMessage({ type: 'removePlayerCompletely', id: p.id });
+      const el = playerElements.get(p.id);
+      if (el) {
+        el.remove();
+        playerElements.delete(p.id);
+      }
+    });
+
+    li.appendChild(removeFromBoardBtn);
+    li.appendChild(removeCompletelyBtn);
+
     playerList.appendChild(li);
   });
 }
@@ -119,7 +157,7 @@ function renderBoard(state) {
     }
   }
 
-  // позиционируем игроков, не удаляя их
+  // позиционируем игроков
   players.forEach(p => setPlayerPosition(p));
 }
 
@@ -131,7 +169,6 @@ createBoardBtn.addEventListener('click', () => {
   if (isNaN(width) || width < 1 || width > 20) return alert("Введите корректную ширину (1–20)");
   if (isNaN(height) || height < 1 || height > 20) return alert("Введите корректную высоту (1–20)");
 
-  // отправляем на сервер
   sendMessage({ type: 'resizeBoard', width, height });
 });
 
@@ -164,14 +201,20 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  // корректируем координаты, чтобы игрок не выходил за пределы поля
+  // игрок пока не на поле
+  if (player.x === null || player.y === null) {
+    el.style.display = 'none';
+    return;
+  } else {
+    el.style.display = 'flex';
+  }
+
   let maxX = boardWidth - player.size;
   let maxY = boardHeight - player.size;
 
   let x = Math.min(Math.max(player.x, 0), maxX);
   let y = Math.min(Math.max(player.y, 0), maxY);
 
-  // находим верхнюю левую клетку, чтобы точно позиционировать игрока
   const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
   if (cell) {
     el.style.left = `${cell.offsetLeft}px`;
@@ -188,11 +231,9 @@ board.addEventListener('click', e => {
   let x = parseInt(cell.dataset.x);
   let y = parseInt(cell.dataset.y);
 
-  // ограничиваем движение по границам поля
   if (x + selectedPlayer.size > boardWidth) x = boardWidth - selectedPlayer.size;
   if (y + selectedPlayer.size > boardHeight) y = boardHeight - selectedPlayer.size;
 
-  // отправляем координаты на сервер
   sendMessage({ type: 'movePlayer', id: selectedPlayer.id, x, y });
 
   const el = playerElements.get(selectedPlayer.id);
@@ -206,14 +247,14 @@ addPlayerBtn.addEventListener('click', () => {
   if (!name) return alert("Введите имя");
 
   const player = {
-  id: crypto.randomUUID(),
-  name,
-  color: playerColorInput.value,
-  size: parseInt(playerSizeInput.value),
-  x: null,   // ещё не на поле
-  y: null,
-  initiative: 0
-};
+    id: crypto.randomUUID(),
+    name,
+    color: playerColorInput.value,
+    size: parseInt(playerSizeInput.value),
+    x: null,
+    y: null,
+    initiative: 0
+  };
 
   sendMessage({ type: 'addPlayer', player });
   playerNameInput.value = '';
@@ -240,7 +281,6 @@ editEnvBtn.addEventListener('click', () => {
   removeWallBtn.disabled = !editEnvironment;
   wallMode = null;
 
-  // обновляем текст кнопки
   editEnvBtn.textContent = editEnvironment ? "Редактирование: ВКЛ" : "Редактирование: ВЫКЛ";
 });
 
@@ -285,7 +325,3 @@ resetGameBtn.addEventListener('click', () => {
 });
 
 clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
-
-
-
-
