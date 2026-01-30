@@ -152,8 +152,9 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  el.style.left = `${player.x * 50}px`;
-  el.style.top = `${player.y * 50}px`;
+  // центрируем игрока в занимаемых клетках
+  el.style.left = `${player.x * 50 + (50 * player.size - 50)/2}px`;
+  el.style.top  = `${player.y * 50 + (50 * player.size - 50)/2}px`;
 }
 
 // ====================== ПЕРЕМЕЩЕНИЕ ИГРОКА ======================
@@ -162,9 +163,14 @@ board.addEventListener('click', e => {
   const cell = e.target.closest('.cell');
   if (!cell) return;
 
-  const x = parseInt(cell.dataset.x);
-  const y = parseInt(cell.dataset.y);
+  let x = parseInt(cell.dataset.x);
+  let y = parseInt(cell.dataset.y);
 
+  // ограничиваем движение по границам поля
+  if (x + selectedPlayer.size > boardWidth) x = boardWidth - selectedPlayer.size;
+  if (y + selectedPlayer.size > boardHeight) y = boardHeight - selectedPlayer.size;
+
+  // отправляем координаты на сервер
   sendMessage({ type: 'movePlayer', id: selectedPlayer.id, x, y });
 
   const el = playerElements.get(selectedPlayer.id);
@@ -257,6 +263,3 @@ resetGameBtn.addEventListener('click', () => {
 });
 
 clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
-
-
-
