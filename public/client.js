@@ -51,6 +51,7 @@ let mouseDown = false;
 let myName = null;
 
 const playerElements = new Map();
+const playerOwners = new Map(); // playerId -> ownerName
 
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
@@ -90,10 +91,16 @@ if (msg.type === "registered") {
 
     if (msg.type === "users") updateUserList(msg.users);
 
-    if (msg.type === "state") {
-      boardWidth = msg.state.boardWidth || boardWidth;
-      boardHeight = msg.state.boardHeight || boardHeight;
-      players = msg.state.players;
+if (msg.type === "state") {
+  boardWidth = msg.state.boardWidth || boardWidth;
+  boardHeight = msg.state.boardHeight || boardHeight;
+
+  players = msg.state.players.map(p => {
+    if (!p.owner && playerOwners.has(p.id)) {
+      p.owner = playerOwners.get(p.id);
+    }
+    return p;
+  });
       renderBoard(msg.state);
 
 function updatePlayerList() {
@@ -143,6 +150,7 @@ function updatePlayerList() {
         removeCompletelyBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           sendMessage({ type: 'removePlayerCompletely', id: p.id });
+          playerOwners.delete(p.id);
           const el = playerElements.get(p.id);
           if (el) {
             el.remove();
@@ -335,6 +343,9 @@ addPlayerBtn.addEventListener('click', () => {
   y: null,
   initiative: 0
 };
+
+playerOwners.set(player.id, myName);
+  
   sendMessage({ type:'addPlayer', player });
   playerNameInput.value='';
 });
@@ -405,9 +416,11 @@ createBoardBtn.addEventListener('click', () => {
 resetGameBtn.addEventListener('click', () => {
   playerElements.forEach(el => el.remove());
   playerElements.clear();
+  playerOwners.clear();
   sendMessage({ type:'resetGame' });
 });
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
 
