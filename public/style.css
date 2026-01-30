@@ -20,6 +20,12 @@ body {
   width: 250px; /* фиксированная ширина */
 }
 
+#content-row {
+  display: flex;
+  align-items: flex-start; /* 🔑 теперь ВЕРХ СОВПАДАЕТ */
+  gap: 20px;
+}
+
 /* Статус (Вы | Роль) */
 #status-bar {
   font-weight: bold;
@@ -150,5 +156,6 @@ button:hover {
 .cell.hovering {
   outline: 2px dashed #f0f;
 }
+
 
 
