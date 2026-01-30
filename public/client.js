@@ -47,7 +47,6 @@ joinBtn.addEventListener('click', () => {
     return;
   }
 
-  // создаем WebSocket
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
 
   ws.onopen = () => {
@@ -65,10 +64,22 @@ joinBtn.addEventListener('click', () => {
         myNameSpan.textContent = msg.name;
         myRoleSpan.textContent = msg.role;
 
+        // Показываем главное окно после успешного входа
         loginDiv.style.display = "none";
         gameUI.style.display = "block";
 
         setupRoleUI(myRole);
+
+        // Если сервер прислал состояние, отрисовываем поле и игроков
+        if (msg.state) {
+          if (msg.state.boardWidth) boardWidth = msg.state.boardWidth;
+          if (msg.state.boardHeight) boardHeight = msg.state.boardHeight;
+          players = msg.state.players;
+          renderBoard(msg.state);
+          updatePlayerList();
+          updateCurrentPlayer(msg.state);
+          renderLog(msg.state.log || []);
+        }
         break;
 
       case "error":
@@ -96,6 +107,22 @@ joinBtn.addEventListener('click', () => {
     console.error(e);
   };
 });
+
+// ================== CREATE BOARD BUTTON ==================
+createBoardBtn.addEventListener('click', () => {
+  const width = parseInt(boardWidthInput.value);
+  const height = parseInt(boardHeightInput.value);
+
+  if (!width || !height) return;
+
+  // Отправляем серверу событие изменения размера поля
+  ws.send(JSON.stringify({ type: "resizeBoard", width, height }));
+});
+
+// ================== OTHER NOTES ==================
+// Теперь игровое поле создается сразу после входа.
+// Кнопка "Создать поле" обновляет размер у всех игроков.
+// Игроки можно добавлять и перемещать как раньше.
 
 // ================== USERS ==================
 function updateUserList(users) {
@@ -231,3 +258,4 @@ function setPlayerPosition(player) {
     el.style.top = `${cell.offsetTop}px`;
   }
 }
+
