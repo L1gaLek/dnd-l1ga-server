@@ -22,6 +22,9 @@ const removeWallBtn = document.getElementById('remove-wall');
 const resetGameBtn = document.getElementById('reset-game');
 const clearBoardBtn = document.getElementById('clear-board');
 
+const CELL_SIZE = 50; // ширина/высота клетки
+const GAP = 0; // заменить на фактический gap, если есть
+
 // ====================== ПЕРЕМЕННЫЕ ======================
 let boardWidth = parseInt(boardWidthInput.value);
 let boardHeight = parseInt(boardHeightInput.value);
@@ -152,8 +155,8 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  el.style.left = `${player.x * 50}px`;
-  el.style.top = `${player.y * 50}px`;
+  el.style.left = `${player.x * (CELL_SIZE + GAP)}px`;
+  el.style.top = `${player.y * (CELL_SIZE + GAP)}px`;
 }
 
 // ====================== ПЕРЕМЕЩЕНИЕ ИГРОКА ======================
@@ -257,4 +260,5 @@ resetGameBtn.addEventListener('click', () => {
 });
 
 clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
+
 
