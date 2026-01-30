@@ -32,12 +32,14 @@ function broadcast() {
 }
 
 function logEvent(text) {
-  gameState.log.push(`${new Date().toLocaleTimeString()} — ${text}`);
+  const time = new Date().toLocaleTimeString();
+  gameState.log.push(`${time} — ${text}`);
   if (gameState.log.length > 100) gameState.log.shift();
 }
 
 // ================== WS HANDLERS ==================
 wss.on("connection", ws => {
+  // Инициализация у нового клиента
   ws.send(JSON.stringify({ type: "init", state: gameState }));
 
   ws.on("message", msg => {
@@ -54,7 +56,6 @@ wss.on("connection", ws => {
         break;
 
       case "addPlayer":
-        // Игрок создается только в списке (x и y могут быть null)
         gameState.players.push({
           id: data.player.id || uuidv4(),
           name: data.player.name,
@@ -88,12 +89,15 @@ wss.on("connection", ws => {
         break;
       }
 
-      case "removePlayerCompletely":
-        gameState.players = gameState.players.filter(p => p.id !== data.id);
+      case "removePlayerCompletely": {
+        const p = gameState.players.find(p => p.id === data.id);
+        if (!p) return;
+        gameState.players = gameState.players.filter(pl => pl.id !== data.id);
         gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
-        logEvent(`Игрок полностью удален`);
+        logEvent(`Игрок ${p.name} полностью удален`);
         broadcast();
         break;
+      }
 
       case "addWall":
         if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
@@ -144,6 +148,7 @@ wss.on("connection", ws => {
       }
 
       case "resetGame":
+        // Полностью сбрасываем всех игроков, стены и ход
         gameState.players = [];
         gameState.walls = [];
         gameState.turnOrder = [];
@@ -154,8 +159,10 @@ wss.on("connection", ws => {
 
       case "clearBoard":
         gameState.walls = [];
+        logEvent("Доска очищена от стен");
         broadcast();
         break;
+
     }
   });
 });
