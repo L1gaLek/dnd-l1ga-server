@@ -123,6 +123,18 @@ function renderBoard(state) {
   players.forEach(p => setPlayerPosition(p));
 }
 
+// изменение габаритов поля игрового
+createBoardBtn.addEventListener('click', () => {
+  const width = parseInt(boardWidthInput.value);
+  const height = parseInt(boardHeightInput.value);
+
+  if (isNaN(width) || width < 1 || width > 20) return alert("Введите корректную ширину (1–20)");
+  if (isNaN(height) || height < 1 || height > 20) return alert("Введите корректную высоту (1–20)");
+
+  // отправляем на сервер
+  sendMessage({ type: 'resizeBoard', width, height });
+});
+
 // ====================== ИГРОКИ ======================
 function setPlayerPosition(player) {
   let el = playerElements.get(player.id);
@@ -273,5 +285,6 @@ resetGameBtn.addEventListener('click', () => {
 });
 
 clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
+
 
 
