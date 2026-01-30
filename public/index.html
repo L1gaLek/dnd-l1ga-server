@@ -22,7 +22,11 @@
 
 <!-- ================== MAIN GAME ================== -->
 <div id="main-container" style="display:none;">
-  <!-- Журнал действий слева -->
+  <div id="status-bar">
+    <span>Вы: <strong id="myName">-</strong></span> |
+    <span>Роль: <strong id="myRole">-</strong></span>
+  </div>
+
   <div id="action-log-container">
     <div id="action-log">
       <h3>Журнал действий:</h3>
@@ -34,7 +38,6 @@
     </div>
   </div>
 
-  <!-- Игровая область справа -->
   <div id="game-container">
     <div id="current-turn">
       Текущий игрок: <span id="current-player">-</span>
@@ -61,7 +64,6 @@
       <span id="roll-result">Результат: -</span>
     </div>
 
-    <!-- Новый блок управления окружением -->
     <div id="environment-controls">
       <button id="edit-environment">Редактирование окружения: ВЫКЛ</button>
       <button id="add-wall" disabled>Добавить стену</button>
