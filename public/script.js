@@ -126,6 +126,7 @@ function renderBoard(state) {
 // ====================== ИГРОКИ ======================
 function setPlayerPosition(player) {
   let el = playerElements.get(player.id);
+  const cellSize = 50; // размер клетки в px
 
   if (!el) {
     el = document.createElement('div');
@@ -133,8 +134,8 @@ function setPlayerPosition(player) {
     el.textContent = player.name[0];
     el.style.backgroundColor = player.color;
     el.style.position = 'absolute';
-    el.style.width = `${player.size * 50}px`;
-    el.style.height = `${player.size * 50}px`;
+    el.style.width = `${player.size * cellSize}px`;
+    el.style.height = `${player.size * cellSize}px`;
 
     el.addEventListener('mousedown', () => {
       if (!editEnvironment) {
@@ -152,9 +153,17 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  // центрируем игрока в занимаемых клетках
-  el.style.left = `${player.x * 50 + (50 * player.size - 50)/2}px`;
-  el.style.top  = `${player.y * 50 + (50 * player.size - 50)/2}px`;
+  // корректное центрирование игрока по занимаемой области
+  let maxX = boardWidth - player.size;
+  let maxY = boardHeight - player.size;
+
+  // ограничиваем координаты, чтобы игрок не выходил за поле
+  let x = Math.min(Math.max(player.x, 0), maxX);
+  let y = Math.min(Math.max(player.y, 0), maxY);
+
+  // смещение, чтобы центр был внутри занимаемой области
+  el.style.left = `${x * cellSize}px`;
+  el.style.top = `${y * cellSize}px`;
 }
 
 // ====================== ПЕРЕМЕЩЕНИЕ ИГРОКА ======================
@@ -263,3 +272,4 @@ resetGameBtn.addEventListener('click', () => {
 });
 
 clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
+
