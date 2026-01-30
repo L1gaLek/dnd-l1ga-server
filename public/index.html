@@ -7,7 +7,21 @@
 </head>
 <body>
 
-<div id="main-container">
+<!-- ================== LOGIN ================== -->
+<div id="login-container">
+  <h2>Вход в игру</h2>
+  <input type="text" id="username" placeholder="Введите имя">
+  <select id="role">
+    <option value="GM">GM</option>
+    <option value="DnD-Player">Игрок</option>
+    <option value="Spectator">Наблюдатель</option>
+  </select>
+  <button id="joinBtn">Войти</button>
+  <p id="loginError" style="color:red;"></p>
+</div>
+
+<!-- ================== MAIN GAME ================== -->
+<div id="main-container" style="display:none;">
   <!-- Журнал действий слева -->
   <div id="action-log-container">
     <div id="action-log">
@@ -32,29 +46,29 @@
       <button id="create-board">Создать поле</button>
     </div>
 
-<div id="controls">
-  <select id="dice">
-    <option value="4">d4</option>
-    <option value="6">d6</option>
-    <option value="8">d8</option>
-    <option value="10">d10</option>
-    <option value="12">d12</option>
-    <option value="20">d20</option>
-    <option value="100">d100</option>
-  </select>
-  <button id="roll">Бросить кубик</button>
-  <button id="end-turn">Конец хода</button>
-  <span id="roll-result">Результат: -</span>
-</div>
+    <div id="controls">
+      <select id="dice">
+        <option value="4">d4</option>
+        <option value="6">d6</option>
+        <option value="8">d8</option>
+        <option value="10">d10</option>
+        <option value="12">d12</option>
+        <option value="20">d20</option>
+        <option value="100">d100</option>
+      </select>
+      <button id="roll">Бросить кубик</button>
+      <button id="end-turn">Конец хода</button>
+      <span id="roll-result">Результат: -</span>
+    </div>
 
-<!-- Новый блок управления окружением -->
-<div id="environment-controls">
-  <button id="edit-environment">Редактирование окружения: ВЫКЛ</button>
-  <button id="add-wall" disabled>Добавить стену</button>
-  <button id="remove-wall" disabled>Удалить стену</button>
-  <button id="reset-game">Сбросить игру полностью</button>
-<button id="clear-board">Очистить поле</button>
-</div>
+    <!-- Новый блок управления окружением -->
+    <div id="environment-controls">
+      <button id="edit-environment">Редактирование окружения: ВЫКЛ</button>
+      <button id="add-wall" disabled>Добавить стену</button>
+      <button id="remove-wall" disabled>Удалить стену</button>
+      <button id="reset-game">Сбросить игру полностью</button>
+      <button id="clear-board">Очистить поле</button>
+    </div>
 
     <div id="game-board"></div>
 
@@ -68,7 +82,6 @@
   </div>
 </div>
 
-<script src="script.js"></script>
+<script src="client.js"></script>
 </body>
 </html>
-
