@@ -50,14 +50,14 @@ ws.onmessage = (event) => {
     boardWidth = state.boardWidth || boardWidth;
     boardHeight = state.boardHeight || boardHeight;
 
-    // синхронизируем players и DOM-элементы
+    // синхронизация игроков и их DOM
     players = state.players.map(p => {
-      let el = playerElements.get(p.id);
+      const el = playerElements.get(p.id);
       return { ...p, element: el || null };
     });
 
-    renderBoard(state);        // рендерим поле и игроков
-    updatePlayerList();        // обновляем список игроков
+    renderBoard(state);
+    updatePlayerList();
     updateCurrentPlayer(state);
     renderLog(state.log || []);
   }
@@ -87,30 +87,43 @@ function updateCurrentPlayer(state) {
   currentPlayerSpan.textContent = p ? p.name : '-';
 }
 
+// ====================== СПИСОК ИГРОКОВ ======================
 function updatePlayerList() {
   playerList.innerHTML = '';
   players.forEach(p => {
     const li = document.createElement('li');
     li.textContent = `${p.name} (${p.initiative || 0})`;
 
-    // клик по списку: добавление игрока на поле
+    // клик по имени → выделение и добавление на поле, если ещё нет
     li.addEventListener('click', () => {
-      if (p.x === null && p.y === null) {
-        // ставим игрока в (0,0) по умолчанию
-        sendMessage({ type: 'movePlayer', id: p.id, x: 0, y: 0 });
-      } else {
-        // выбираем игрока для перемещения
-        selectedPlayer = p;
+      selectedPlayer = p;
+      if (p.x === null || p.y === null) {
+        p.x = 0;
+        p.y = 0;
+        sendMessage({ type: 'movePlayer', id: p.id, x: p.x, y: p.y });
       }
     });
 
-    // контекстное меню для удаления
-    li.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      const action = prompt("Введите 1 чтобы удалить с поля, 2 чтобы удалить полностью:");
-      if (action === '1') sendMessage({ type: 'removePlayerFromBoard', id: p.id });
-      if (action === '2') sendMessage({ type: 'removePlayerCompletely', id: p.id });
+    // кнопка убрать с поля
+    const removeFromBoardBtn = document.createElement('button');
+    removeFromBoardBtn.textContent = 'С поля';
+    removeFromBoardBtn.style.marginLeft = '5px';
+    removeFromBoardBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sendMessage({ type: 'removePlayerFromBoard', id: p.id });
     });
+
+    // кнопка удалить полностью
+    const removeCompletelyBtn = document.createElement('button');
+    removeCompletelyBtn.textContent = 'Удалить полностью';
+    removeCompletelyBtn.style.marginLeft = '5px';
+    removeCompletelyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sendMessage({ type: 'removePlayerCompletely', id: p.id });
+    });
+
+    li.appendChild(removeFromBoardBtn);
+    li.appendChild(removeCompletelyBtn);
 
     playerList.appendChild(li);
   });
@@ -118,7 +131,6 @@ function updatePlayerList() {
 
 // ====================== ПОЛЕ ======================
 function renderBoard(state) {
-  // удаляем клетки
   board.querySelectorAll('.cell').forEach(c => c.remove());
 
   board.style.gridTemplateColumns = `repeat(${boardWidth}, 50px)`;
@@ -139,14 +151,10 @@ function renderBoard(state) {
     }
   }
 
-  // рендер игроков
-  players.forEach(p => {
-    if (!playerElements.has(p.id)) setPlayerPosition(p);
-    else setPlayerPosition(p);
-  });
+  players.forEach(p => setPlayerPosition(p));
 }
 
-// изменение габаритов поля
+// изменение размеров поля
 createBoardBtn.addEventListener('click', () => {
   const width = parseInt(boardWidthInput.value);
   const height = parseInt(boardHeightInput.value);
@@ -186,22 +194,23 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  // корректируем координаты, если игрок на поле
-  if (player.x !== null && player.y !== null) {
-    let maxX = boardWidth - player.size;
-    let maxY = boardHeight - player.size;
-
-    let x = Math.min(Math.max(player.x, 0), maxX);
-    let y = Math.min(Math.max(player.y, 0), maxY);
-
-    const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-    if (cell) {
-      el.style.left = `${cell.offsetLeft}px`;
-      el.style.top = `${cell.offsetTop}px`;
-      el.style.display = 'flex';
-    }
+  if (player.x === null || player.y === null) {
+    el.style.display = 'none';
+    return;
   } else {
-    el.style.display = 'none'; // скрываем игрока если его нет на поле
+    el.style.display = 'flex';
+  }
+
+  let maxX = boardWidth - player.size;
+  let maxY = boardHeight - player.size;
+
+  let x = Math.min(Math.max(player.x, 0), maxX);
+  let y = Math.min(Math.max(player.y, 0), maxY);
+
+  const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+  if (cell) {
+    el.style.left = `${cell.offsetLeft}px`;
+    el.style.top = `${cell.offsetTop}px`;
   }
 }
 
@@ -234,7 +243,7 @@ addPlayerBtn.addEventListener('click', () => {
     name,
     color: playerColorInput.value,
     size: parseInt(playerSizeInput.value),
-    x: null, // ещё не на поле
+    x: null,
     y: null,
     initiative: 0
   };
