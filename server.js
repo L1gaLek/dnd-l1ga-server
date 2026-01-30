@@ -59,29 +59,30 @@ wss.on("connection", ws => {
 
     switch (data.type) {
 
-      // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
-      case "register": {
-        const { name, role } = data;
+// ================== РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
+case "register": {
+  const { name, role } = data;
 
-        if (!name || !role) {
-          ws.send(JSON.stringify({ type: "error", message: "Имя и роль обязательны" }));
-          return;
-        }
+  if (!name || !role) {
+    ws.send(JSON.stringify({ type: "error", message: "Имя и роль обязательны" }));
+    return;
+  }
 
-        // Только один GM
-        if (role === "GM" && users.some(u => u.role === "GM")) {
-          ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
-          return;
-        }
+  // Только один GM
+  if (role === "GM" && users.some(u => u.role === "GM")) {
+    ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
+    return;
+  }
 
-        const id = uuidv4();
-        users.push({ id, name, role, ws });
+  const id = uuidv4();
+  users.push({ id, name, role, ws });
+  ws.userName = name; // 🔑 сохраняем имя пользователя на WS
 
-        ws.send(JSON.stringify({ type: "registered", id, role, name }));
-        broadcastUsers();
-        logEvent(`${name} присоединился как ${role}`);
-        break;
-      }
+  ws.send(JSON.stringify({ type: "registered", id, role, name }));
+  broadcastUsers();
+  logEvent(`${name} присоединился как ${role}`);
+  break;
+}
 
       // ================= ИГРОВОЙ ЛОГИК =================
       case "resizeBoard":
@@ -91,20 +92,26 @@ wss.on("connection", ws => {
         broadcast();
         break;
 
-      case "addPlayer":
-       gameState.players.push({
-  id: data.player.id || uuidv4(),
-  name: data.player.name,
-  color: data.player.color,
-  size: data.player.size,
-  x: data.player.x ?? null,
-  y: data.player.y ?? null,
-  initiative: 0,
-  owner: data.player.owner || null
-});
-        logEvent(`Игрок ${data.player.name} добавлен в список`);
-        broadcast();
-        break;
+// ================== ДОБАВЛЕНИЕ ИГРОКА =================
+case "addPlayer": {
+  // Если owner не указан, берем имя пользователя, который добавляет
+  if (!data.player.owner && ws.userName) data.player.owner = ws.userName;
+
+  gameState.players.push({
+    id: data.player.id || uuidv4(),
+    name: data.player.name,
+    color: data.player.color,
+    size: data.player.size,
+    x: data.player.x ?? null,
+    y: data.player.y ?? null,
+    initiative: 0,
+    owner: data.player.owner
+  });
+
+  logEvent(`Игрок ${data.player.name} добавлен в список (владелец: ${data.player.owner})`);
+  broadcast();
+  break;
+}
 
       case "movePlayer": {
         const p = gameState.players.find(p => p.id === data.id);
@@ -213,5 +220,6 @@ wss.on("connection", ws => {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
