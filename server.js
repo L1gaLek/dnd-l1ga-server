@@ -92,16 +92,16 @@ wss.on("connection", ws => {
         break;
 
       case "addPlayer":
-        gameState.players.push({
-          id: data.player.id || uuidv4(),
-          name: data.player.name,
-          color: data.player.color,
-          size: data.player.size,
-          x: data.player.x ?? null,
-          y: data.player.y ?? null,
-          initiative: 0
-          owner: data.player.owner || null  // 🔑 добавлено
-        });
+       gameState.players.push({
+  id: data.player.id || uuidv4(),
+  name: data.player.name,
+  color: data.player.color,
+  size: data.player.size,
+  x: data.player.x ?? null,
+  y: data.player.y ?? null,
+  initiative: 0,
+  owner: data.player.owner || null
+});
         logEvent(`Игрок ${data.player.name} добавлен в список`);
         broadcast();
         break;
@@ -213,4 +213,5 @@ wss.on("connection", ws => {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
