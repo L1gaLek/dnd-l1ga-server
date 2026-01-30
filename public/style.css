@@ -65,9 +65,12 @@ body {
 #game-container {
   display: flex;
   flex-direction: column;
-  align-items: flex-start; /* ⬅ прижимаем всё к верху */
+  align-items: center;      /* ⬅ центрируем СОДЕРЖИМОЕ */
   gap: 10px;
-  flex: 1;
+
+  /* КЛЮЧЕВОЕ */
+  margin: 0 auto;           /* ⬅ центрируем колонку */
+  max-width: fit-content;   /* ⬅ ширина = контент (поле) */
 }
 
 /* Текущий игрок */
@@ -147,4 +150,5 @@ button:hover {
 .cell.hovering {
   outline: 2px dashed #f0f;
 }
+
 
