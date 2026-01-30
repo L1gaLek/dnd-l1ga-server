@@ -8,8 +8,8 @@ body {
 /* Основной контейнер */
 #main-container {
   display: flex;
-  gap: 20px;
   align-items: flex-start; /* выравнивание по верху */
+  gap: 20px;
 }
 
 /* Левая панель с журналом и игроками */
@@ -20,6 +20,14 @@ body {
   width: 250px; /* фиксированная ширина */
 }
 
+/* Статус (Вы | Роль) */
+#status-bar {
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
+/* Журнал и список игроков */
 #action-log, #player-list-container {
   background-color: #1e1e1e;
   border: 1px solid #555;
@@ -53,13 +61,13 @@ body {
   font-weight: bold;
 }
 
-/* Игровая область справа */
+/* Игровая область */
 #game-container {
-  flex: 1; /* занимает оставшееся место */
   display: flex;
   flex-direction: column;
+  align-items: center; /* центрируем поле и элементы над/под ним */
   gap: 10px;
-  align-items: flex-start;
+  flex: 1;
 }
 
 /* Текущий игрок */
