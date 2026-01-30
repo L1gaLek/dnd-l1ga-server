@@ -39,7 +39,6 @@ const removeWallBtn = document.getElementById('remove-wall');
 let ws;
 let myId;
 let myRole;
-let myName;
 let players = [];
 let boardWidth = parseInt(boardWidthInput.value) || 10;
 let boardHeight = parseInt(boardHeightInput.value) || 10;
@@ -50,7 +49,6 @@ let wallMode = null;
 let mouseDown = false;
 
 const playerElements = new Map();
-const playerOwners = new Map(); // playerId -> ownerName
 
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
@@ -72,10 +70,8 @@ joinBtn.addEventListener('click', () => {
     if (msg.type === "registered") {
       myId = msg.id;
       myRole = msg.role;
-      myName = msg.name;
-
-      myNameSpan.textContent = myName;
-      myRoleSpan.textContent = myRole;
+      myNameSpan.textContent = msg.name;
+      myRoleSpan.textContent = msg.role;
 
       loginDiv.style.display = "none";
       gameUI.style.display = "block";
@@ -87,9 +83,18 @@ joinBtn.addEventListener('click', () => {
     }
 
     if (msg.type === "error") loginError.textContent = msg.message;
+
     if (msg.type === "users") updateUserList(msg.users);
 
-    if (msg.type === "state") handleState(msg.state);
+    if (msg.type === "state") {
+      boardWidth = msg.state.boardWidth || boardWidth;
+      boardHeight = msg.state.boardHeight || boardHeight;
+      players = msg.state.players;
+      renderBoard(msg.state);
+      updatePlayerList();
+      updateCurrentPlayer(msg.state);
+      renderLog(msg.state.log || []);
+    }
   };
 
   ws.onerror = (e) => {
@@ -118,9 +123,7 @@ function setupRoleUI(role) {
     createBoardBtn.style.display = 'none';
     resetGameBtn.style.display = 'none';
     clearBoardBtn.style.display = 'none';
-  } else if (role === "DnD-Player") {
-    resetGameBtn.style.display = 'none';
-  }
+  } else if (role === "DnD-Player") resetGameBtn.style.display = 'none';
 }
 
 // ================== LOG ==================
@@ -144,75 +147,52 @@ function updateCurrentPlayer(state) {
   currentPlayerSpan.textContent = p ? p.name : '-';
 }
 
-// ================== STATE HANDLER ==================
-function handleState(state) {
-  boardWidth = state.boardWidth || boardWidth;
-  boardHeight = state.boardHeight || boardHeight;
+// ================== PLAYER LIST ==================
+function updatePlayerList() {
+  playerList.innerHTML = '';
+  players.forEach(p => {
+    const li = document.createElement('li');
+    li.textContent = `${p.name} (${p.initiative || 0})`;
 
-  players = state.players.map(p => {
-    if (!p.owner && playerOwners.has(p.id)) {
-      p.owner = playerOwners.get(p.id);
-    }
-    if (p.owner) playerOwners.set(p.id, p.owner);
-    return p;
-  });
-
-  renderBoard(state);
-  updatePlayerList();
-  updateCurrentPlayer(state);
-  renderLog(state.log || []);
-}
-
-// ================== PLAYER POSITION ==================
-function setPlayerPosition(player) {
-  let el = playerElements.get(player.id);
-  if (!el) {
-    el = document.createElement('div');
-    el.classList.add('player');
-    el.textContent = player.name[0];
-    el.style.backgroundColor = player.color;
-    el.style.position = 'absolute';
-    el.style.width = `${player.size*50}px`;
-    el.style.height = `${player.size*50}px`;
-    el.style.display = 'flex';
-    el.style.justifyContent = 'center';
-    el.style.alignItems = 'center';
-
-    el.addEventListener('mousedown', () => {
-      if (!editEnvironment) {
-        if (selectedPlayer) {
-          const prev = playerElements.get(selectedPlayer.id);
-          if (prev) prev.classList.remove('selected');
-        }
-        selectedPlayer = player;
-        el.classList.add('selected');
+    li.addEventListener('click', () => {
+      selectedPlayer = p;
+      if (p.x === null || p.y === null) {
+        p.x = 0;
+        p.y = 0;
+        sendMessage({ type: 'movePlayer', id: p.id, x: p.x, y: p.y });
       }
     });
 
-    board.appendChild(el);
-    playerElements.set(player.id, el);
-    player.element = el;
-  }
+    if (myRole === "GM" || myRole === "DnD-Player") {
+      const removeFromBoardBtn = document.createElement('button');
+      removeFromBoardBtn.textContent = 'С поля';
+      removeFromBoardBtn.style.marginLeft = '5px';
+      removeFromBoardBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendMessage({ type: 'removePlayerFromBoard', id: p.id });
+      });
 
-  if (player.x === null || player.y === null) {
-    el.style.display = 'none';
-    return;
-  }
+      const removeCompletelyBtn = document.createElement('button');
+      removeCompletelyBtn.textContent = 'Удалить';
+      removeCompletelyBtn.style.marginLeft = '5px';
+      removeCompletelyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sendMessage({ type: 'removePlayerCompletely', id: p.id });
+        const el = playerElements.get(p.id);
+        if (el) { el.remove(); playerElements.delete(p.id); }
+      });
 
-  el.style.display = 'flex';
-  let x = Math.min(Math.max(player.x, 0), boardWidth - player.size);
-  let y = Math.min(Math.max(player.y, 0), boardHeight - player.size);
+      li.appendChild(removeFromBoardBtn);
+      li.appendChild(removeCompletelyBtn);
+    }
 
-  const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-  if (cell) {
-    el.style.left = `${cell.offsetLeft}px`;
-    el.style.top = `${cell.offsetTop}px`;
-  }
+    playerList.appendChild(li);
+  });
 }
 
-// ================== RENDER BOARD ==================
+// ================== BOARD ==================
 function renderBoard(state) {
-  board.innerHTML = '';
+  board.querySelectorAll('.cell').forEach(c => c.remove());
   board.style.position = 'relative';
   board.style.width = `${boardWidth*50}px`;
   board.style.height = `${boardHeight*50}px`;
@@ -234,25 +214,53 @@ function renderBoard(state) {
   players.forEach(p => setPlayerPosition(p));
 }
 
+// ================== PLAYER POSITION ==================
+function setPlayerPosition(player) {
+  let el = playerElements.get(player.id);
+  if (!el) {
+    el = document.createElement('div');
+    el.classList.add('player');
+    el.textContent = player.name[0];
+    el.style.backgroundColor = player.color;
+    el.style.position = 'absolute';
+    el.style.width = `${player.size*50}px`;
+    el.style.height = `${player.size*50}px`;
+
+    el.addEventListener('mousedown', () => {
+      if (!editEnvironment) {
+        if (selectedPlayer) {
+          const prev = playerElements.get(selectedPlayer.id);
+          if (prev) prev.classList.remove('selected');
+        }
+        selectedPlayer = player;
+        el.classList.add('selected');
+      }
+    });
+
+    board.appendChild(el);
+    playerElements.set(player.id, el);
+    player.element = el;
+  }
+
+  if (player.x === null || player.y === null) { el.style.display='none'; return; }
+  el.style.display='flex';
+
+  let maxX = boardWidth - player.size;
+  let maxY = boardHeight - player.size;
+  let x = Math.min(Math.max(player.x, 0), maxX);
+  let y = Math.min(Math.max(player.y, 0), maxY);
+
+  const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+  if (cell) { el.style.left = `${cell.offsetLeft}px`; el.style.top = `${cell.offsetTop}px`; }
+}
+
 // ================== ADD PLAYER ==================
 addPlayerBtn.addEventListener('click', () => {
   const name = playerNameInput.value.trim();
   if (!name) return alert("Введите имя");
-
-  const player = {
-    id: crypto.randomUUID(),
-    name,
-    owner: myName,
-    color: playerColorInput.value,
-    size: parseInt(playerSizeInput.value),
-    x: null,
-    y: null,
-    initiative: 0
-  };
-
-  playerOwners.set(player.id, myName);
+  const player = { id: crypto.randomUUID(), name, color: playerColorInput.value, size: parseInt(playerSizeInput.value), x:null, y:null, initiative:0 };
   sendMessage({ type:'addPlayer', player });
-  playerNameInput.value = '';
+  playerNameInput.value='';
 });
 
 // ================== MOVE PLAYER ==================
@@ -263,7 +271,6 @@ board.addEventListener('click', e => {
 
   let x = parseInt(cell.dataset.x);
   let y = parseInt(cell.dataset.y);
-
   if (x + selectedPlayer.size > boardWidth) x = boardWidth - selectedPlayer.size;
   if (y + selectedPlayer.size > boardHeight) y = boardHeight - selectedPlayer.size;
 
@@ -322,7 +329,6 @@ createBoardBtn.addEventListener('click', () => {
 resetGameBtn.addEventListener('click', () => {
   playerElements.forEach(el => el.remove());
   playerElements.clear();
-  playerOwners.clear();
   sendMessage({ type:'resetGame' });
 });
 
