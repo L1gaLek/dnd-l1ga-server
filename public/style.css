@@ -175,5 +175,19 @@ button:hover {
 }
 
 
+#gm-controls button {
+  margin-right: 5px;
+  padding: 5px 10px;
+}
+
+#gm-controls button.active {
+  background-color: red;
+  color: white;
+}
+
+#gm-controls button.ready {
+  background-color: green;
+  color: white;
+}
 
 
