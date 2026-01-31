@@ -91,13 +91,6 @@ if (msg.type === "init" || msg.type === "state") {
   renderBoard(msg.state);
   updatePlayerList();
   updateCurrentPlayer(msg.state);
-
-const myTurn =
-  myRole === "GM" ||
-  players.find(p => p.id === state.turnOrder[state.currentTurnIndex])?.ownerId === myId;
-
-board.style.pointerEvents = myTurn ? 'auto' : 'none';
-  
   renderLog(msg.state.log || []);
 }
   };
@@ -327,10 +320,7 @@ rollBtn.addEventListener('click', () => {
 endTurnBtn.addEventListener('click', () => sendMessage({ type:'endTurn' }));
 
 // ================== INITIATIVE ==================
-rollInitiativeBtn.addEventListener('click', () => {
-  if (!selectedPlayer) return alert("Выберите игрока");
-  sendMessage({ type: 'rollInitiative', id: selectedPlayer.id });
-});
+rollInitiativeBtn.addEventListener('click', () => sendMessage({ type:'rollInitiative' }));
 
 // ================== WALLS ==================
 editEnvBtn.addEventListener('click', () => {
@@ -372,7 +362,6 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
-
 
 
 
