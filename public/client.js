@@ -83,15 +83,16 @@ if (msg.type === "registered") {
 
     if (msg.type === "users") updateUserList(msg.users);
 
-    if (msg.type === "state") {
-      boardWidth = msg.state.boardWidth || boardWidth;
-      boardHeight = msg.state.boardHeight || boardHeight;
-      players = msg.state.players;
-      renderBoard(msg.state);
-      updatePlayerList();
-      updateCurrentPlayer(msg.state);
-      renderLog(msg.state.log || []);
-    }
+if (msg.type === "init" || msg.type === "state") {
+  boardWidth = msg.state.boardWidth;
+  boardHeight = msg.state.boardHeight;
+  players = msg.state.players;
+
+  renderBoard(msg.state);
+  updatePlayerList();
+  updateCurrentPlayer(msg.state);
+  renderLog(msg.state.log || []);
+}
   };
 
   ws.onerror = (e) => {
@@ -361,5 +362,6 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
 
 
