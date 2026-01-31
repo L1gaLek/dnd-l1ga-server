@@ -24,9 +24,25 @@ let gameState = {
 };
 
 // ================== USERS ==================
-let users = []; // { id, name, role, ws }
+let users = []; // {id, name, role, ws}
 
 // ================== HELPERS ==================
+function sendFullState(ws) {
+  ws.send(JSON.stringify({
+    type: "init",
+    state: gameState
+  }));
+
+  ws.send(JSON.stringify({
+    type: "users",
+    users: users.map(u => ({
+      id: u.id,
+      name: u.name,
+      role: u.role
+    }))
+  }));
+}
+
 function broadcastState() {
   const msg = JSON.stringify({ type: "state", state: gameState });
   wss.clients.forEach(c => {
@@ -35,10 +51,17 @@ function broadcastState() {
 }
 
 function broadcastUsers() {
-  const list = users.map(u => ({ id: u.id, name: u.name, role: u.role }));
-  const msg = JSON.stringify({ type: "users", users: list });
-  users.forEach(u => {
-    if (u.ws.readyState === WebSocket.OPEN) u.ws.send(msg);
+  const msg = JSON.stringify({
+    type: "users",
+    users: users.map(u => ({
+      id: u.id,
+      name: u.name,
+      role: u.role
+    }))
+  });
+
+  wss.clients.forEach(c => {
+    if (c.readyState === WebSocket.OPEN) c.send(msg);
   });
 }
 
@@ -51,47 +74,51 @@ function logEvent(text) {
 // ================== WS ==================
 wss.on("connection", ws => {
 
-  ws.on("message", raw => {
+  // 🔑 СРАЗУ шлём полное состояние
+  sendFullState(ws);
+
+  ws.on("message", msg => {
     let data;
-    try { data = JSON.parse(raw); } catch { return; }
+    try { data = JSON.parse(msg); } catch { return; }
 
     switch (data.type) {
 
-      // ---------- REGISTER ----------
+      // ===== REG =====
       case "register": {
-        const { name, role } = data;
-        if (!name || !role) return;
-
-        if (role === "GM" && users.some(u => u.role === "GM")) {
+        if (data.role === "GM" && users.some(u => u.role === "GM")) {
           ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
           return;
         }
 
-        const id = uuidv4();
-        users.push({ id, name, role, ws });
+        const user = {
+          id: uuidv4(),
+          name: data.name,
+          role: data.role,
+          ws
+        };
 
-        ws.send(JSON.stringify({ type: "registered", id, name, role }));
+        users.push(user);
 
-        // 🔑 КРИТИЧЕСКИ ВАЖНО
-        ws.send(JSON.stringify({ type: "init", state: gameState }));
+        ws.send(JSON.stringify({
+          type: "registered",
+          id: user.id,
+          name: user.name,
+          role: user.role
+        }));
+
+        logEvent(`${user.name} подключился (${user.role})`);
+
+        // 🔑 ОБЯЗАТЕЛЬНО
+        sendFullState(ws);
         broadcastUsers();
-        logEvent(`${name} подключился как ${role}`);
         broadcastState();
         break;
       }
 
-      // ---------- BOARD ----------
-      case "resizeBoard":
-        gameState.boardWidth = data.width;
-        gameState.boardHeight = data.height;
-        logEvent("Размер поля изменён");
-        broadcastState();
-        break;
-
-      // ---------- PLAYERS ----------
+      // ===== GAME =====
       case "addPlayer": {
-        const user = users.find(u => u.ws === ws);
-        if (!user) return;
+        const owner = users.find(u => u.ws === ws);
+        if (!owner) return;
 
         gameState.players.push({
           id: uuidv4(),
@@ -101,11 +128,11 @@ wss.on("connection", ws => {
           x: null,
           y: null,
           initiative: 0,
-          ownerId: user.id,
-          ownerName: user.name
+          ownerId: owner.id,
+          ownerName: owner.name
         });
 
-        logEvent(`Игрок ${data.player.name} создан (${user.name})`);
+        logEvent(`Игрок ${data.player.name} создан (${owner.name})`);
         broadcastState();
         break;
       }
@@ -119,37 +146,13 @@ wss.on("connection", ws => {
         break;
       }
 
-      case "removePlayerFromBoard": {
-        const p = gameState.players.find(p => p.id === data.id);
-        if (!p) return;
-        p.x = null;
-        p.y = null;
-        broadcastState();
-        break;
-      }
-
-      case "removePlayerCompletely":
-        gameState.players = gameState.players.filter(p => p.id !== data.id);
-        gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
-        broadcastState();
-        break;
-
-      // ---------- WALLS ----------
       case "addWall":
-        if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
+        if (!gameState.walls.some(w => w.x === data.wall.x && w.y === data.wall.y)) {
           gameState.walls.push(data.wall);
           broadcastState();
         }
         break;
 
-      case "removeWall":
-        gameState.walls = gameState.walls.filter(
-          w => !(w.x === data.wall.x && w.y === data.wall.y)
-        );
-        broadcastState();
-        break;
-
-      // ---------- INITIATIVE ----------
       case "rollInitiative":
         gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
         gameState.turnOrder = [...gameState.players]
@@ -158,34 +161,15 @@ wss.on("connection", ws => {
         gameState.currentTurnIndex = 0;
         broadcastState();
         break;
-
-      case "endTurn":
-        if (gameState.turnOrder.length) {
-          gameState.currentTurnIndex =
-            (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-          broadcastState();
-        }
-        break;
-
-      // ---------- RESET ----------
-      case "resetGame":
-        gameState.players = [];
-        gameState.walls = [];
-        gameState.turnOrder = [];
-        gameState.currentTurnIndex = 0;
-        gameState.log = ["Игра сброшена"];
-        broadcastState();
-        break;
     }
   });
 
   ws.on("close", () => {
     users = users.filter(u => u.ws !== ws);
     broadcastUsers();
-    broadcastState(); // 🔑 ОБЯЗАТЕЛЬНО
   });
 });
 
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log("🟢 Server running on", PORT));
+server.listen(PORT, () => console.log("🟢 Server on", PORT));
