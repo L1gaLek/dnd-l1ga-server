@@ -21,6 +21,7 @@ let gameState = {
   turnOrder: [],    // массив id игроков по инициативе
   currentTurnIndex: 0,
   log: []
+  phase: "idle" | "initiative" | "placement" | "combat"
 };
 
 // ================== USERS ==================
@@ -281,4 +282,5 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
