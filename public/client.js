@@ -69,63 +69,82 @@ joinBtn.addEventListener('click', () => {
   ws.onopen = () => ws.send(JSON.stringify({ type: "register", name, role }));
 
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === "init" || msg.type === "state") {
+  const msg = JSON.parse(event.data);
 
-if (msg.type === "registered") {
-  myId = msg.id;
-  myRole = msg.role;
-  myNameSpan.textContent = msg.name;
-  myRoleSpan.textContent = msg.role;
+  if (msg.type === "registered") {
+    myId = msg.id;
+    myRole = msg.role;
 
-  loginDiv.style.display = "none";
-  gameUI.style.display = "block";
+    myNameSpan.textContent = msg.name;
+    myRoleSpan.textContent = msg.role;
 
-  setupRoleUI(myRole);
-}
+    loginDiv.style.display = "none";
+    gameUI.style.display = "block";
 
-    if (msg.type === "error") loginError.textContent = msg.message;
+    setupRoleUI(myRole);
 
-    if (msg.type === "users") updateUserList(msg.users);
+    // 🔹 ИНИЦИАЛИЗАЦИЯ UI ФАЗ БОЯ (ТОЛЬКО ЗДЕСЬ!)
+    const gmInitiativeBtn = document.getElementById("gm-initiative");
+    const gmStartCombatBtn = document.getElementById("gm-start-combat");
+    const initiativeWarning = document.getElementById("initiative-warning");
 
-if (msg.type === "init" || msg.type === "state") {
-  boardWidth = msg.state.boardWidth;
-  boardHeight = msg.state.boardHeight;
-  players = msg.state.players;
+    if (myRole === "GM") {
+      gmInitiativeBtn.onclick = () => {
+        sendMessage({ type: "startInitiative" });
+      };
 
-  renderBoard(msg.state);
-  updatePlayerList();
-  updateCurrentPlayer(msg.state);
-  renderLog(msg.state.log || []);
-}
-  };
-
-  ws.onerror = (e) => {
-    loginError.textContent = "Ошибка соединения с сервером";
-    console.error(e);
-  };
-
-// 🔔 Предупреждение игрокам
-initiativeWarning.style.display =
-  msg.state.phase === "initiative" && myRole === "DnD-Player"
-    ? "block"
-    : "none";
-
-// 🎨 Кнопка инициативы GM
-if (myRole === "GM" && gmInitiativeBtn) {
-  if (msg.state.phase === "initiative") {
-    const allRolled = msg.state.players.every(p => p.initiative > 0);
-    gmInitiativeBtn.style.backgroundColor = allRolled ? "green" : "darkred";
-  } else {
-    gmInitiativeBtn.style.backgroundColor = "";
+      gmStartCombatBtn.onclick = () => {
+        sendMessage({ type: "startCombat" });
+      };
+    } else {
+      gmInitiativeBtn.style.display = "none";
+      gmStartCombatBtn.style.display = "none";
+    }
   }
-}
 
-// ⚔️ Кнопка начала боя
-if (gmStartCombatBtn) {
-  gmStartCombatBtn.disabled = msg.state.phase !== "placement";
-}
-    
+  if (msg.type === "users") {
+    updateUserList(msg.users);
+  }
+
+  if (msg.type === "init" || msg.type === "state") {
+    const state = msg.state;
+
+    boardWidth = state.boardWidth;
+    boardHeight = state.boardHeight;
+    players = state.players;
+
+    renderBoard(state);
+    updatePlayerList();
+    updateCurrentPlayer(state);
+    renderLog(state.log || []);
+
+    // 🔔 ПРЕДУПРЕЖДЕНИЕ ИГРОКАМ
+    const initiativeWarning = document.getElementById("initiative-warning");
+    if (initiativeWarning) {
+      initiativeWarning.style.display =
+        state.phase === "initiative" && myRole === "DnD-Player"
+          ? "block"
+          : "none";
+    }
+
+    // 🎨 ЦВЕТ КНОПКИ GM
+    const gmInitiativeBtn = document.getElementById("gm-initiative");
+    if (myRole === "GM" && gmInitiativeBtn) {
+      if (state.phase === "initiative") {
+        const allRolled = state.players.every(p => p.initiative > 0);
+        gmInitiativeBtn.style.backgroundColor =
+          allRolled ? "green" : "darkred";
+      } else {
+        gmInitiativeBtn.style.backgroundColor = "";
+      }
+    }
+
+    // ⚔️ КНОПКА НАЧАЛА БОЯ
+    const gmStartCombatBtn = document.getElementById("gm-start-combat");
+    if (gmStartCombatBtn) {
+      gmStartCombatBtn.disabled = state.phase !== "placement";
+    }
+  }
 };
 
 // ================== USERS ==================
@@ -401,6 +420,7 @@ if (gmStartCombatBtn) {
     sendMessage({ type: "startCombat" });
   };
 }
+
 
 
 
