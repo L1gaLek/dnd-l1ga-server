@@ -35,10 +35,6 @@ const editEnvBtn = document.getElementById('edit-environment');
 const addWallBtn = document.getElementById('add-wall');
 const removeWallBtn = document.getElementById('remove-wall');
 
-const gmInitiativeBtn = document.getElementById("gm-initiative");
-const gmStartCombatBtn = document.getElementById("gm-start-combat");
-const initiativeWarning = document.getElementById("initiative-warning");
-
 // ================== VARIABLES ==================
 let ws;
 let myId;
@@ -69,93 +65,41 @@ joinBtn.addEventListener('click', () => {
   ws.onopen = () => ws.send(JSON.stringify({ type: "register", name, role }));
 
   ws.onmessage = (event) => {
-  const msg = JSON.parse(event.data);
+    const msg = JSON.parse(event.data);
 
-  if (msg.type === "registered") {
-    myId = msg.id;
-    myRole = msg.role;
+if (msg.type === "registered") {
+  myId = msg.id;
+  myRole = msg.role;
+  myNameSpan.textContent = msg.name;
+  myRoleSpan.textContent = msg.role;
 
-    myNameSpan.textContent = msg.name;
-    myRoleSpan.textContent = msg.role;
+  loginDiv.style.display = "none";
+  gameUI.style.display = "block";
 
-    loginDiv.style.display = "none";
-    gameUI.style.display = "block";
+  setupRoleUI(myRole);
+}
 
-    setupRoleUI(myRole);
-  } else if (msg.type === "error") {
-    loginError.textContent = msg.message;
-  } else if (msg.type === "users") {
-    updateUserList(msg.users);
-  } else if (msg.type === "init" || msg.type === "state") {
-    boardWidth = msg.state.boardWidth;
-    boardHeight = msg.state.boardHeight;
-    players = msg.state.players;
+    if (msg.type === "error") loginError.textContent = msg.message;
 
-    // 🔹 ИНИЦИАЛИЗАЦИЯ UI ФАЗ БОЯ (ТОЛЬКО ЗДЕСЬ!)
-    const gmInitiativeBtn = document.getElementById("gm-initiative");
-    const gmStartCombatBtn = document.getElementById("gm-start-combat");
-    const initiativeWarning = document.getElementById("initiative-warning");
+    if (msg.type === "users") updateUserList(msg.users);
 
-    if (myRole === "GM") {
-      gmInitiativeBtn.onclick = () => {
-        sendMessage({ type: "startInitiative" });
-      };
+if (msg.type === "init" || msg.type === "state") {
+  boardWidth = msg.state.boardWidth;
+  boardHeight = msg.state.boardHeight;
+  players = msg.state.players;
 
-      gmStartCombatBtn.onclick = () => {
-        sendMessage({ type: "startCombat" });
-      };
-    } else {
-      gmInitiativeBtn.style.display = "none";
-      gmStartCombatBtn.style.display = "none";
-    }
-  }
+  renderBoard(msg.state);
+  updatePlayerList();
+  updateCurrentPlayer(msg.state);
+  renderLog(msg.state.log || []);
+}
+  };
 
-  if (msg.type === "users") {
-    updateUserList(msg.users);
-  }
-
-  if (msg.type === "init" || msg.type === "state") {
-    const state = msg.state;
-
-    boardWidth = state.boardWidth;
-    boardHeight = state.boardHeight;
-    players = state.players;
-
-    renderBoard(state);
-    updatePlayerList();
-    updateCurrentPlayer(state);
-    renderLog(state.log || []);
-     }
-};
-
-    // 🔔 ПРЕДУПРЕЖДЕНИЕ ИГРОКАМ
-    const initiativeWarning = document.getElementById("initiative-warning");
-    if (initiativeWarning) {
-      initiativeWarning.style.display =
-        state.phase === "initiative" && myRole === "DnD-Player"
-          ? "block"
-          : "none";
-    }
-
-    // 🎨 ЦВЕТ КНОПКИ GM
-    const gmInitiativeBtn = document.getElementById("gm-initiative");
-    if (myRole === "GM" && gmInitiativeBtn) {
-      if (state.phase === "initiative") {
-        const allRolled = state.players.every(p => p.initiative > 0);
-        gmInitiativeBtn.style.backgroundColor =
-          allRolled ? "green" : "darkred";
-      } else {
-        gmInitiativeBtn.style.backgroundColor = "";
-      }
-    }
-
-    // ⚔️ КНОПКА НАЧАЛА БОЯ
-    const gmStartCombatBtn = document.getElementById("gm-start-combat");
-    if (gmStartCombatBtn) {
-      gmStartCombatBtn.disabled = state.phase !== "placement";
-    }
-  }
-};
+  ws.onerror = (e) => {
+    loginError.textContent = "Ошибка соединения с сервером";
+    console.error(e);
+  };
+});
 
 // ================== USERS ==================
 function updateUserList(users) {
@@ -418,21 +362,6 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
-
-if (gmInitiativeBtn) {
-  gmInitiativeBtn.onclick = () => {
-    sendMessage({ type: "startInitiative" });
-  };
-}
-
-if (gmStartCombatBtn) {
-  gmStartCombatBtn.onclick = () => {
-    sendMessage({ type: "startCombat" });
-  };
-}
-
-
-
 
 
 
