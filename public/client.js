@@ -35,6 +35,10 @@ const editEnvBtn = document.getElementById('edit-environment');
 const addWallBtn = document.getElementById('add-wall');
 const removeWallBtn = document.getElementById('remove-wall');
 
+const gmInitiativeBtn = document.getElementById("gm-initiative");
+const gmStartCombatBtn = document.getElementById("gm-start-combat");
+const initiativeWarning = document.getElementById("initiative-warning");
+
 // ================== VARIABLES ==================
 let ws;
 let myId;
@@ -66,6 +70,7 @@ joinBtn.addEventListener('click', () => {
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
+    if (msg.type === "init" || msg.type === "state") {
 
 if (msg.type === "registered") {
   myId = msg.id;
@@ -99,6 +104,29 @@ if (msg.type === "init" || msg.type === "state") {
     loginError.textContent = "Ошибка соединения с сервером";
     console.error(e);
   };
+
+// 🔔 Предупреждение игрокам
+initiativeWarning.style.display =
+  msg.state.phase === "initiative" && myRole === "DnD-Player"
+    ? "block"
+    : "none";
+
+// 🎨 Кнопка инициативы GM
+if (myRole === "GM" && gmInitiativeBtn) {
+  if (msg.state.phase === "initiative") {
+    const allRolled = msg.state.players.every(p => p.initiative > 0);
+    gmInitiativeBtn.style.backgroundColor = allRolled ? "green" : "darkred";
+  } else {
+    gmInitiativeBtn.style.backgroundColor = "";
+  }
+}
+
+// ⚔️ Кнопка начала боя
+if (gmStartCombatBtn) {
+  gmStartCombatBtn.disabled = msg.state.phase !== "placement";
+}
+    
+    
 });
 
 // ================== USERS ==================
@@ -363,5 +391,16 @@ resetGameBtn.addEventListener('click', () => {
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
+if (gmInitiativeBtn) {
+  gmInitiativeBtn.onclick = () => {
+    sendMessage({ type: "startInitiative" });
+  };
+}
+
+if (gmStartCombatBtn) {
+  gmStartCombatBtn.onclick = () => {
+    sendMessage({ type: "startCombat" });
+  };
+}
 
 
