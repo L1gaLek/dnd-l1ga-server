@@ -126,8 +126,7 @@ if (gmStartCombatBtn) {
   gmStartCombatBtn.disabled = msg.state.phase !== "placement";
 }
     
-    
-});
+};
 
 // ================== USERS ==================
 function updateUserList(users) {
@@ -402,5 +401,6 @@ if (gmStartCombatBtn) {
     sendMessage({ type: "startCombat" });
   };
 }
+
 
 
