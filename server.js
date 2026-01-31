@@ -230,7 +230,7 @@ case "rollInitiative": {
   break;
 }
 
-ccase "endTurn": {
+case "endTurn": {
   const currentId = getCurrentPlayerId();
   const current = gameState.players.find(p => p.id === currentId);
   if (!current) return;
@@ -311,5 +311,6 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
