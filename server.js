@@ -62,10 +62,6 @@ function ownsPlayer(ws, player) {
   return u && player.ownerId === u.id;
 }
 
-function getCurrentPlayerId() {
-  return gameState.turnOrder[gameState.currentTurnIndex] || null;
-}
-
 // ================== WS HANDLERS ==================
 wss.on("connection", ws => {
   // Инициализация у нового клиента
@@ -128,7 +124,7 @@ case "resizeBoard":
     size: data.player.size,
     x: null,
     y: null,
-    initiative: null,
+    initiative: 0,
 
     // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
     ownerId: user.id,
@@ -144,12 +140,7 @@ case "movePlayer": {
   const p = gameState.players.find(p => p.id === data.id);
   if (!p) return;
 
-  const currentId = getCurrentPlayerId();
-
-if (!isGM(ws)) {
-  if (!ownsPlayer(ws, p)) return;
-  if (p.id !== currentId) return;
-}
+  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
 
   p.x = data.x;
   p.y = data.y;
@@ -202,53 +193,32 @@ case "removeWall":
   );
   logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
   broadcast();
-  break;    
+  break;
 
-case "rollInitiative": {
-  const p = gameState.players.find(p => p.id === data.id);
-  if (!p) return;
+case "rollInitiative":
+  if (!isGM(ws)) return;
 
-  // права
-  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+  gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
+  gameState.turnOrder = [...gameState.players]
+    .sort((a,b)=>b.initiative - a.initiative)
+    .map(p=>p.id);
+  gameState.currentTurnIndex = 0;
+  logEvent("Инициатива брошена");
+  broadcast();
+  break;
 
-  // бросок
-  p.initiative = Math.floor(Math.random() * 20) + 1;
-  logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
+case "endTurn":
+  if (!isGM(ws)) return;
 
-  // пересобираем очередь ТОЛЬКО из тех, кто кинул
-  gameState.turnOrder = gameState.players
-    .filter(pl => pl.initiative !== null)
-    .sort((a, b) => b.initiative - a.initiative)
-    .map(pl => pl.id);
-
-  // защита индекса
-  if (gameState.currentTurnIndex >= gameState.turnOrder.length) {
-    gameState.currentTurnIndex = 0;
+  if (gameState.turnOrder.length > 0) {
+    gameState.currentTurnIndex =
+      (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
+    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+    const current = gameState.players.find(p => p.id === currentId);
+    logEvent(`Ход игрока ${current?.name || '-'}`);
+    broadcast();
   }
-
-  broadcast();
   break;
-}
-
-case "endTurn": {
-  const currentId = getCurrentPlayerId();
-  const current = gameState.players.find(p => p.id === currentId);
-  if (!current) return;
-
-  // может пропустить только текущий игрок или GM
-  if (!isGM(ws) && !ownsPlayer(ws, current)) return;
-
-  gameState.currentTurnIndex =
-    (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-
-  const next = gameState.players.find(
-    p => p.id === getCurrentPlayerId()
-  );
-
-  logEvent(`Ход переходит к ${next?.name || "-"}`);
-  broadcast();
-  break;
-}
 
       case "rollDice": {
         const sides = data.sides || 6;
@@ -311,6 +281,4 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
-
 
