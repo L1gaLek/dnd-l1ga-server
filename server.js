@@ -24,10 +24,10 @@ let gameState = {
 };
 
 // ================== USERS ==================
-let users = []; // {id, name, role, ws}
+let users = []; // { id, name, role, ws }
 
 // ================== HELPERS ==================
-function broadcast() {
+function broadcastState() {
   const msg = JSON.stringify({ type: "state", state: gameState });
   wss.clients.forEach(c => {
     if (c.readyState === WebSocket.OPEN) c.send(msg);
@@ -35,8 +35,8 @@ function broadcast() {
 }
 
 function broadcastUsers() {
-  const userList = users.map(u => ({ id: u.id, name: u.name, role: u.role }));
-  const msg = JSON.stringify({ type: "users", users: userList });
+  const list = users.map(u => ({ id: u.id, name: u.name, role: u.role }));
+  const msg = JSON.stringify({ type: "users", users: list });
   users.forEach(u => {
     if (u.ws.readyState === WebSocket.OPEN) u.ws.send(msg);
   });
@@ -51,9 +51,9 @@ function logEvent(text) {
 // ================== WS ==================
 wss.on("connection", ws => {
 
-  ws.on("message", msg => {
+  ws.on("message", raw => {
     let data;
-    try { data = JSON.parse(msg); } catch { return; }
+    try { data = JSON.parse(raw); } catch { return; }
 
     switch (data.type) {
 
@@ -70,13 +70,13 @@ wss.on("connection", ws => {
         const id = uuidv4();
         users.push({ id, name, role, ws });
 
-        ws.send(JSON.stringify({ type: "registered", id, role, name }));
+        ws.send(JSON.stringify({ type: "registered", id, name, role }));
 
-        // 🔑 КЛЮЧЕВОЕ
+        // 🔑 КРИТИЧЕСКИ ВАЖНО
         ws.send(JSON.stringify({ type: "init", state: gameState }));
         broadcastUsers();
-        logEvent(`${name} вошёл как ${role}`);
-        broadcast();
+        logEvent(`${name} подключился как ${role}`);
+        broadcastState();
         break;
       }
 
@@ -84,8 +84,8 @@ wss.on("connection", ws => {
       case "resizeBoard":
         gameState.boardWidth = data.width;
         gameState.boardHeight = data.height;
-        logEvent("Поле изменено");
-        broadcast();
+        logEvent("Размер поля изменён");
+        broadcastState();
         break;
 
       // ---------- PLAYERS ----------
@@ -106,7 +106,7 @@ wss.on("connection", ws => {
         });
 
         logEvent(`Игрок ${data.player.name} создан (${user.name})`);
-        broadcast();
+        broadcastState();
         break;
       }
 
@@ -115,7 +115,7 @@ wss.on("connection", ws => {
         if (!p) return;
         p.x = data.x;
         p.y = data.y;
-        broadcast();
+        broadcastState();
         break;
       }
 
@@ -124,21 +124,21 @@ wss.on("connection", ws => {
         if (!p) return;
         p.x = null;
         p.y = null;
-        broadcast();
+        broadcastState();
         break;
       }
 
       case "removePlayerCompletely":
         gameState.players = gameState.players.filter(p => p.id !== data.id);
         gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
-        broadcast();
+        broadcastState();
         break;
 
       // ---------- WALLS ----------
       case "addWall":
         if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
           gameState.walls.push(data.wall);
-          broadcast();
+          broadcastState();
         }
         break;
 
@@ -146,39 +146,35 @@ wss.on("connection", ws => {
         gameState.walls = gameState.walls.filter(
           w => !(w.x === data.wall.x && w.y === data.wall.y)
         );
-        broadcast();
+        broadcastState();
         break;
 
       // ---------- INITIATIVE ----------
       case "rollInitiative":
         gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
         gameState.turnOrder = [...gameState.players]
-          .sort((a,b)=>b.initiative - a.initiative)
-          .map(p=>p.id);
+          .sort((a, b) => b.initiative - a.initiative)
+          .map(p => p.id);
         gameState.currentTurnIndex = 0;
-        broadcast();
+        broadcastState();
         break;
 
       case "endTurn":
         if (gameState.turnOrder.length) {
           gameState.currentTurnIndex =
             (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-          broadcast();
+          broadcastState();
         }
         break;
 
       // ---------- RESET ----------
       case "resetGame":
-        gameState = {
-          boardWidth: 10,
-          boardHeight: 10,
-          players: [],
-          walls: [],
-          turnOrder: [],
-          currentTurnIndex: 0,
-          log: ["Игра сброшена"]
-        };
-        broadcast();
+        gameState.players = [];
+        gameState.walls = [];
+        gameState.turnOrder = [];
+        gameState.currentTurnIndex = 0;
+        gameState.log = ["Игра сброшена"];
+        broadcastState();
         break;
     }
   });
@@ -186,10 +182,10 @@ wss.on("connection", ws => {
   ws.on("close", () => {
     users = users.filter(u => u.ws !== ws);
     broadcastUsers();
-    broadcast(); // 🔑 ОБЯЗАТЕЛЬНО
+    broadcastState(); // 🔑 ОБЯЗАТЕЛЬНО
   });
 });
 
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log("🟢 Server on", PORT));
+server.listen(PORT, () => console.log("🟢 Server running on", PORT));
