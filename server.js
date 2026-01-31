@@ -59,6 +59,17 @@ wss.on("connection", ws => {
 
     switch (data.type) {
 
+if (msg.type === "init" || msg.type === "state") {
+  boardWidth = msg.state.boardWidth;
+  boardHeight = msg.state.boardHeight;
+  players = msg.state.players;
+
+  renderBoard(msg.state);
+  updatePlayerList();
+  updateCurrentPlayer(msg.state);
+  renderLog(msg.state.log || []);
+}        
+
       // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
       case "register": {
         const { name, role } = data;
@@ -221,4 +232,5 @@ wss.on("connection", ws => {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
