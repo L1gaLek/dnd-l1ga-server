@@ -202,9 +202,7 @@ case "removeWall":
   );
   logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
   broadcast();
-  break;
-
-  { type: "rollInitiative", id: playerId }      
+  break;    
 
 case "rollInitiative": {
   const p = gameState.players.find(p => p.id === data.id);
@@ -313,4 +311,5 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
