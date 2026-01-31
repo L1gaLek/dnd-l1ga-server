@@ -22,8 +22,12 @@ let gameState = {
   currentTurnIndex: 0,
   phase: "idle",
   log: []
-  phase: "idle" | "initiative" | "placement" | "combat"
+  phase: "idle",
 };
+
+if (!["idle", "initiative", "placement", "combat"].includes(gameState.phase)) {
+  gameState.phase = "idle";
+}
 
 case "startInitiative":
   if (!isGM(ws)) return;
@@ -344,6 +348,7 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
