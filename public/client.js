@@ -35,10 +35,6 @@ const editEnvBtn = document.getElementById('edit-environment');
 const addWallBtn = document.getElementById('add-wall');
 const removeWallBtn = document.getElementById('remove-wall');
 
-const gmInitiativeBtn = document.getElementById("gm-initiative");
-const gmStartCombatBtn = document.getElementById("gm-start-combat");
-const initiativeWarning = document.getElementById("initiative-warning");
-
 // ================== VARIABLES ==================
 let ws;
 let myId;
@@ -367,33 +363,5 @@ resetGameBtn.addEventListener('click', () => {
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
-gmInitiativeBtn.onclick = () => {
-  if (gameState.phase === "idle")
-    sendMessage({ type: "startInitiative" });
-  else if (gameState.phase === "initiative")
-    sendMessage({ type: "startPlacement" });
-};
 
-gmStartCombatBtn.onclick = () =>
-  sendMessage({ type: "startCombat" });
-
-initiativeWarning.style.display =
-  state.phase === "initiative" && myRole === "DnD-Player"
-    ? "block"
-    : "none";
-
-gmStartCombatBtn.disabled = state.phase !== "placement";
-
-// цвет кнопки инициативы
-if (myRole === "GM") {
-  if (state.phase === "initiative") {
-    const allRolled = state.players.every(p => p.initiative > 0);
-    gmInitiativeBtn.style.background =
-      allRolled ? "green" : "darkred";
-  }
-}
-
-if (state.phase === "combat" && myRole !== "GM") {
-  // можно двигать ТОЛЬКО если ход твоего игрока
-}
 
