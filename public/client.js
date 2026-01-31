@@ -145,7 +145,7 @@ joinBtn.addEventListener('click', () => {
       gmStartCombatBtn.disabled = state.phase !== "placement";
     }
   }
-};
+});
 
 // ================== USERS ==================
 function updateUserList(users) {
@@ -420,6 +420,7 @@ if (gmStartCombatBtn) {
     sendMessage({ type: "startCombat" });
   };
 }
+
 
 
 
