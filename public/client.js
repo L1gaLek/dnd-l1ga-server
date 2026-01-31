@@ -48,6 +48,8 @@ let editEnvironment = false;
 let wallMode = null;
 let mouseDown = false;
 
+let connectedUsers = [];
+
 const playerElements = new Map();
 
 // ================== JOIN GAME ==================
@@ -86,9 +88,34 @@ if (msg.type === "registered") {
 if (msg.type === "init" || msg.type === "state") {
   boardWidth = msg.state.boardWidth;
   boardHeight = msg.state.boardHeight;
-  players = msg.state.players;
 
-  renderBoard(msg.state);
+const state = msg.state;
+
+// 1. удаляем DOM игроков, которых больше нет
+const existingIds = new Set(state.players.map(p => p.id));
+playerElements.forEach((el, id) => {
+  if (!existingIds.has(id)) {
+    el.remove();
+    playerElements.delete(id);
+  }
+});
+
+// 2. обновляем players, СОХРАНЯЯ DOM
+players = state.players.map(p => {
+  const el = playerElements.get(p.id) || null;
+  return { ...p, element: el };
+});
+
+// 3. рендер
+boardWidth = state.boardWidth;
+boardHeight = state.boardHeight;
+
+renderBoard(state);
+updatePlayerList();
+updateCurrentPlayer(state);
+renderLog(state.log || []);
+
+  
   updatePlayerList();
   updateCurrentPlayer(msg.state);
   renderLog(msg.state.log || []);
@@ -109,6 +136,11 @@ function updateUserList(users) {
     li.textContent = `${u.name} (${u.role})`;
     userList.appendChild(li);
   });
+}
+
+if (msg.type === "users") {
+  connectedUsers = msg.users;
+  updateUserList(connectedUsers);
 }
 
 // ================== ROLE UI ==================
@@ -362,6 +394,7 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
 
 
 
