@@ -20,9 +20,70 @@ let gameState = {
   walls: [],        // {x, y}
   turnOrder: [],    // массив id игроков по инициативе
   currentTurnIndex: 0,
+  phase: "idle",
   log: []
   phase: "idle" | "initiative" | "placement" | "combat"
 };
+
+case "startInitiative":
+  if (!isGM(ws)) return;
+
+  gameState.phase = "initiative";
+  gameState.players.forEach(p => p.initiative = 0);
+  logEvent("Начата фаза инициативы");
+  broadcast();
+  break;
+
+case "rollInitiative":
+  const user = getUserByWS(ws);
+  if (!user) return;
+  if (gameState.phase !== "initiative") return;
+
+  gameState.players
+    .filter(p => p.ownerId === user.id)
+    .forEach(p => {
+      if (!p.initiative)
+        p.initiative = Math.floor(Math.random() * 20) + 1;
+    });
+
+  logEvent(`${user.name} бросил инициативу`);
+
+  // проверка — все ли бросили
+  const allRolled = gameState.players.every(p => p.initiative > 0);
+  if (allRolled) logEvent("Все игроки бросили инициативу");
+
+  broadcast();
+  break;
+
+case "startPlacement":
+  if (!isGM(ws)) return;
+  if (gameState.phase !== "initiative") return;
+
+  gameState.phase = "placement";
+
+  gameState.players.forEach((p, i) => {
+    p.x = i % gameState.boardWidth;
+    p.y = Math.floor(i / gameState.boardWidth);
+  });
+
+  logEvent("Фаза размещения игроков");
+  broadcast();
+  break;
+
+case "startCombat":
+  if (!isGM(ws)) return;
+  if (gameState.phase !== "placement") return;
+
+  gameState.phase = "combat";
+
+  gameState.turnOrder = [...gameState.players]
+    .sort((a, b) => b.initiative - a.initiative)
+    .map(p => p.id);
+
+  gameState.currentTurnIndex = 0;
+  logEvent("Бой начался");
+  broadcast();
+  break;
 
 // ================== USERS ==================
 let users = []; // {id, name, role, ws}
@@ -210,6 +271,7 @@ case "rollInitiative":
 
 case "endTurn":
   if (!isGM(ws)) return;
+  if (gameState.phase !== "combat") return;      
 
   if (gameState.turnOrder.length > 0) {
     gameState.currentTurnIndex =
@@ -282,5 +344,6 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
