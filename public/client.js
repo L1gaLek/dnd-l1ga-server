@@ -67,20 +67,17 @@ joinBtn.addEventListener('click', () => {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
 
-    if (msg.type === "registered") {
-      myId = msg.id;
-      myRole = msg.role;
-      myNameSpan.textContent = msg.name;
-      myRoleSpan.textContent = msg.role;
+if (msg.type === "registered") {
+  myId = msg.id;
+  myRole = msg.role;
+  myNameSpan.textContent = msg.name;
+  myRoleSpan.textContent = msg.role;
 
-      loginDiv.style.display = "none";
-      gameUI.style.display = "block";
+  loginDiv.style.display = "none";
+  gameUI.style.display = "block";
 
-      setupRoleUI(myRole);
-
-      renderBoard({ boardWidth, boardHeight, players });
-      updatePlayerList();
-    }
+  setupRoleUI(myRole);
+}
 
     if (msg.type === "error") loginError.textContent = msg.message;
 
@@ -364,4 +361,5 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
 
