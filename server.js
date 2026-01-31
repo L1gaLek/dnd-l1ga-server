@@ -48,6 +48,20 @@ function logEvent(text) {
   if (gameState.log.length > 100) gameState.log.shift();
 }
 
+function getUserByWS(ws) {
+  return users.find(u => u.ws === ws);
+}
+
+function isGM(ws) {
+  const u = getUserByWS(ws);
+  return u && u.role === "GM";
+}
+
+function ownsPlayer(ws, player) {
+  const u = getUserByWS(ws);
+  return u && player.ownerId === u.id;
+}
+
 // ================== WS HANDLERS ==================
 wss.on("connection", ws => {
   // Инициализация у нового клиента
@@ -90,12 +104,14 @@ break;
       }
 
       // ================= ИГРОВОЙ ЛОГИК =================
-      case "resizeBoard":
-        gameState.boardWidth = data.width;
-        gameState.boardHeight = data.height;
-        logEvent("Поле изменено");
-        broadcast();
-        break;
+case "resizeBoard":
+  if (!isGM(ws)) return;
+
+  gameState.boardWidth = data.width;
+  gameState.boardHeight = data.height;
+  logEvent("Поле изменено");
+  broadcast();
+  break;
 
       case "addPlayer": {
   const user = users.find(u => u.ws === ws);
@@ -120,72 +136,89 @@ break;
   break;
 }
 
-      case "movePlayer": {
-        const p = gameState.players.find(p => p.id === data.id);
-        if (!p) return;
-        p.x = data.x;
-        p.y = data.y;
-        logEvent(`${p.name} перемещен в (${p.x},${p.y})`);
-        broadcast();
-        break;
-      }
+case "movePlayer": {
+  const p = gameState.players.find(p => p.id === data.id);
+  if (!p) return;
 
-      case "removePlayerFromBoard": {
-        const p = gameState.players.find(p => p.id === data.id);
-        if (!p) return;
-        p.x = null;
-        p.y = null;
-        logEvent(`${p.name} удален с поля`);
-        broadcast();
-        break;
-      }
+  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
 
-      case "removePlayerCompletely": {
-        const p = gameState.players.find(p => p.id === data.id);
-        if (!p) return;
-        gameState.players = gameState.players.filter(pl => pl.id !== data.id);
-        gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
-        logEvent(`Игрок ${p.name} полностью удален`);
-        broadcast();
-        break;
-      }
+  p.x = data.x;
+  p.y = data.y;
+  logEvent(`${p.name} перемещен в (${p.x},${p.y})`);
+  broadcast();
+  break;
+}
 
-      case "addWall":
-        if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
-          gameState.walls.push(data.wall);
-          logEvent(`Стена добавлена (${data.wall.x},${data.wall.y})`);
-          broadcast();
-        }
-        break;
+case "removePlayerFromBoard": {
+  const p = gameState.players.find(p => p.id === data.id);
+  if (!p) return;
 
-      case "removeWall":
-        gameState.walls = gameState.walls.filter(
-          w => !(w.x === data.wall.x && w.y === data.wall.y)
-        );
-        logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
-        broadcast();
-        break;
+  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
 
-      case "rollInitiative":
-        gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
-        gameState.turnOrder = [...gameState.players]
-          .sort((a,b)=>b.initiative - a.initiative)
-          .map(p=>p.id);
-        gameState.currentTurnIndex = 0;
-        logEvent("Инициатива брошена");
-        broadcast();
-        break;
+  p.x = null;
+  p.y = null;
+  logEvent(`${p.name} удален с поля`);
+  broadcast();
+  break;
+}
 
-      case "endTurn":
-        if (gameState.turnOrder.length > 0) {
-          gameState.currentTurnIndex =
-            (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-          const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-          const current = gameState.players.find(p => p.id === currentId);
-          logEvent(`Ход игрока ${current?.name || '-'}`);
-          broadcast();
-        }
-        break;
+case "removePlayerCompletely": {
+  const p = gameState.players.find(p => p.id === data.id);
+  if (!p) return;
+
+  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+
+  gameState.players = gameState.players.filter(pl => pl.id !== data.id);
+  gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
+  logEvent(`Игрок ${p.name} полностью удален`);
+  broadcast();
+  break;
+}
+
+case "addWall":
+  if (!isGM(ws)) return;
+
+  if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
+    gameState.walls.push(data.wall);
+    logEvent(`Стена добавлена (${data.wall.x},${data.wall.y})`);
+    broadcast();
+  }
+  break;
+
+case "removeWall":
+  if (!isGM(ws)) return;
+
+  gameState.walls = gameState.walls.filter(
+    w => !(w.x === data.wall.x && w.y === data.wall.y)
+  );
+  logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
+  broadcast();
+  break;
+
+case "rollInitiative":
+  if (!isGM(ws)) return;
+
+  gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
+  gameState.turnOrder = [...gameState.players]
+    .sort((a,b)=>b.initiative - a.initiative)
+    .map(p=>p.id);
+  gameState.currentTurnIndex = 0;
+  logEvent("Инициатива брошена");
+  broadcast();
+  break;
+
+case "endTurn":
+  if (!isGM(ws)) return;
+
+  if (gameState.turnOrder.length > 0) {
+    gameState.currentTurnIndex =
+      (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
+    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+    const current = gameState.players.find(p => p.id === currentId);
+    logEvent(`Ход игрока ${current?.name || '-'}`);
+    broadcast();
+  }
+  break;
 
       case "rollDice": {
         const sides = data.sides || 6;
@@ -198,21 +231,24 @@ break;
         break;
       }
 
-      case "resetGame":
-        gameState.players = [];
-        gameState.walls = [];
-        gameState.turnOrder = [];
-        gameState.currentTurnIndex = 0;
-        gameState.log = ["Игра полностью сброшена"];
-        logEvent("Сброс игры");
-        broadcast();
-        break;
+case "resetGame":
+  if (!isGM(ws)) return;
 
-      case "clearBoard":
-        gameState.walls = [];
-        logEvent("Доска очищена от стен");
-        broadcast();
-        break;
+  gameState.players = [];
+  gameState.walls = [];
+  gameState.turnOrder = [];
+  gameState.currentTurnIndex = 0;
+  gameState.log = ["Игра полностью сброшена"];
+  broadcast();
+  break;
+
+case "clearBoard":
+  if (!isGM(ws)) return;
+
+  gameState.walls = [];
+  logEvent("Доска очищена от стен");
+  broadcast();
+  break;
 
     }
   });
@@ -245,3 +281,4 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
