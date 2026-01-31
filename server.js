@@ -2,7 +2,7 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
-const { v4: uuidv4 } = require("uuid"); // уникальные id
+const { v4: uuidv4 } = require("uuid");
 
 // ================== EXPRESS ==================
 const app = express();
@@ -16,9 +16,9 @@ const wss = new WebSocket.Server({ server });
 let gameState = {
   boardWidth: 10,
   boardHeight: 10,
-  players: [],      // {id, name, color, size, x, y, initiative}
-  walls: [],        // {x, y}
-  turnOrder: [],    // массив id игроков по инициативе
+  players: [],
+  walls: [],
+  turnOrder: [],
   currentTurnIndex: 0,
   log: []
 };
@@ -48,9 +48,8 @@ function logEvent(text) {
   if (gameState.log.length > 100) gameState.log.shift();
 }
 
-// ================== WS HANDLERS ==================
+// ================== WS ==================
 wss.on("connection", ws => {
-  // Инициализация у нового клиента
 
   ws.on("message", msg => {
     let data;
@@ -58,17 +57,11 @@ wss.on("connection", ws => {
 
     switch (data.type) {
 
-      // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
+      // ---------- REGISTER ----------
       case "register": {
-        ws.send(JSON.stringify({ type: "init", state: gameState }));
         const { name, role } = data;
+        if (!name || !role) return;
 
-        if (!name || !role) {
-          ws.send(JSON.stringify({ type: "error", message: "Имя и роль обязательны" }));
-          return;
-        }
-
-        // Только один GM
         if (role === "GM" && users.some(u => u.role === "GM")) {
           ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
           return;
@@ -77,14 +70,17 @@ wss.on("connection", ws => {
         const id = uuidv4();
         users.push({ id, name, role, ws });
 
-ws.send(JSON.stringify({ type: "registered", id, role, name }));
-broadcastUsers();
-logEvent(`${name} присоединился как ${role}`);
-broadcast(); // 🔑 ВАЖНО
-break;
+        ws.send(JSON.stringify({ type: "registered", id, role, name }));
+
+        // 🔑 КЛЮЧЕВОЕ
+        ws.send(JSON.stringify({ type: "init", state: gameState }));
+        broadcastUsers();
+        logEvent(`${name} вошёл как ${role}`);
+        broadcast();
+        break;
       }
 
-      // ================= ИГРОВОЙ ЛОГИК =================
+      // ---------- BOARD ----------
       case "resizeBoard":
         gameState.boardWidth = data.width;
         gameState.boardHeight = data.height;
@@ -92,35 +88,33 @@ break;
         broadcast();
         break;
 
+      // ---------- PLAYERS ----------
       case "addPlayer": {
-  const user = users.find(u => u.ws === ws);
-  if (!user) return;
+        const user = users.find(u => u.ws === ws);
+        if (!user) return;
 
-  gameState.players.push({
-    id: data.player.id || uuidv4(),
-    name: data.player.name,
-    color: data.player.color,
-    size: data.player.size,
-    x: null,
-    y: null,
-    initiative: 0,
+        gameState.players.push({
+          id: uuidv4(),
+          name: data.player.name,
+          color: data.player.color,
+          size: data.player.size,
+          x: null,
+          y: null,
+          initiative: 0,
+          ownerId: user.id,
+          ownerName: user.name
+        });
 
-    // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
-    ownerId: user.id,
-    ownerName: user.name
-  });
-
-  logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
-  broadcast();
-  break;
-}
+        logEvent(`Игрок ${data.player.name} создан (${user.name})`);
+        broadcast();
+        break;
+      }
 
       case "movePlayer": {
         const p = gameState.players.find(p => p.id === data.id);
         if (!p) return;
         p.x = data.x;
         p.y = data.y;
-        logEvent(`${p.name} перемещен в (${p.x},${p.y})`);
         broadcast();
         break;
       }
@@ -130,25 +124,20 @@ break;
         if (!p) return;
         p.x = null;
         p.y = null;
-        logEvent(`${p.name} удален с поля`);
         broadcast();
         break;
       }
 
-      case "removePlayerCompletely": {
-        const p = gameState.players.find(p => p.id === data.id);
-        if (!p) return;
-        gameState.players = gameState.players.filter(pl => pl.id !== data.id);
+      case "removePlayerCompletely":
+        gameState.players = gameState.players.filter(p => p.id !== data.id);
         gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
-        logEvent(`Игрок ${p.name} полностью удален`);
         broadcast();
         break;
-      }
 
+      // ---------- WALLS ----------
       case "addWall":
         if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
           gameState.walls.push(data.wall);
-          logEvent(`Стена добавлена (${data.wall.x},${data.wall.y})`);
           broadcast();
         }
         break;
@@ -157,74 +146,50 @@ break;
         gameState.walls = gameState.walls.filter(
           w => !(w.x === data.wall.x && w.y === data.wall.y)
         );
-        logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
         broadcast();
         break;
 
+      // ---------- INITIATIVE ----------
       case "rollInitiative":
         gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
         gameState.turnOrder = [...gameState.players]
           .sort((a,b)=>b.initiative - a.initiative)
           .map(p=>p.id);
         gameState.currentTurnIndex = 0;
-        logEvent("Инициатива брошена");
         broadcast();
         break;
 
       case "endTurn":
-        if (gameState.turnOrder.length > 0) {
+        if (gameState.turnOrder.length) {
           gameState.currentTurnIndex =
             (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-          const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-          const current = gameState.players.find(p => p.id === currentId);
-          logEvent(`Ход игрока ${current?.name || '-'}`);
           broadcast();
         }
         break;
 
-      case "rollDice": {
-        const sides = data.sides || 6;
-        const roller = gameState.players.find(p => p.id === data.id);
-        if (roller) {
-          const result = Math.floor(Math.random() * sides) + 1;
-          logEvent(`${roller.name} бросил d${sides}: ${result}`);
-          broadcast();
-        }
-        break;
-      }
-
+      // ---------- RESET ----------
       case "resetGame":
-        gameState.players = [];
-        gameState.walls = [];
-        gameState.turnOrder = [];
-        gameState.currentTurnIndex = 0;
-        gameState.log = ["Игра полностью сброшена"];
-        logEvent("Сброс игры");
+        gameState = {
+          boardWidth: 10,
+          boardHeight: 10,
+          players: [],
+          walls: [],
+          turnOrder: [],
+          currentTurnIndex: 0,
+          log: ["Игра сброшена"]
+        };
         broadcast();
         break;
-
-      case "clearBoard":
-        gameState.walls = [];
-        logEvent("Доска очищена от стен");
-        broadcast();
-        break;
-
     }
   });
 
   ws.on("close", () => {
-    // удаляем пользователя при отключении
-users = users.filter(u => u.ws !== ws);
-broadcastUsers();
-broadcast();
+    users = users.filter(u => u.ws !== ws);
+    broadcastUsers();
+    broadcast(); // 🔑 ОБЯЗАТЕЛЬНО
   });
 });
 
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
-
-
-
-
