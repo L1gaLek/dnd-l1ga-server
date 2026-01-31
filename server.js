@@ -77,10 +77,11 @@ wss.on("connection", ws => {
         const id = uuidv4();
         users.push({ id, name, role, ws });
 
-        ws.send(JSON.stringify({ type: "registered", id, role, name }));
-        broadcastUsers();
-        logEvent(`${name} присоединился как ${role}`);
-        break;
+ws.send(JSON.stringify({ type: "registered", id, role, name }));
+broadcastUsers();
+logEvent(`${name} присоединился как ${role}`);
+broadcast(); // 🔑 ВАЖНО
+break;
       }
 
       // ================= ИГРОВОЙ ЛОГИК =================
@@ -213,14 +214,16 @@ wss.on("connection", ws => {
 
   ws.on("close", () => {
     // удаляем пользователя при отключении
-    users = users.filter(u => u.ws !== ws);
-    broadcastUsers();
+users = users.filter(u => u.ws !== ws);
+broadcastUsers();
+broadcast();
   });
 });
 
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
