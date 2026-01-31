@@ -35,6 +35,10 @@ const editEnvBtn = document.getElementById('edit-environment');
 const addWallBtn = document.getElementById('add-wall');
 const removeWallBtn = document.getElementById('remove-wall');
 
+const gmControlsDiv = document.getElementById('gm-controls');
+const initiativePhaseBtn = document.getElementById('initiative-phase');
+const startBattleBtn = document.getElementById('start-battle');
+
 // ================== VARIABLES ==================
 let ws;
 let myId;
@@ -92,6 +96,25 @@ if (msg.type === "init" || msg.type === "state") {
   updatePlayerList();
   updateCurrentPlayer(msg.state);
   renderLog(msg.state.log || []);
+
+if (msg.state.gmPhase === 'initiative') {
+  initiativePhaseBtn.classList.add('active');
+  initiativePhaseBtn.classList.remove('ready');
+} else {
+  initiativePhaseBtn.classList.remove('active');
+  initiativePhaseBtn.classList.add(msg.state.allInitiatives ? 'ready' : '');
+}
+
+if (msg.state.battleStarted) {
+  startBattleBtn.classList.add('ready');
+} else {
+  startBattleBtn.classList.remove('ready');
+}
+
+// Уведомление игроков, что нужно бросить инициативу
+if (msg.state.notifyInitiative && myRole === "DnD-Player") {
+  alert("Бросьте инициативу для своих игроков!");
+}
 }
   };
 
@@ -122,6 +145,8 @@ function setupRoleUI(role) {
     resetGameBtn.style.display = 'none';
     clearBoardBtn.style.display = 'none';
   } else if (role === "DnD-Player") resetGameBtn.style.display = 'none';
+  if (role === "GM") gmControlsDiv.style.display = 'block';
+else gmControlsDiv.style.display = 'none';
 }
 
 // ================== LOG ==================
@@ -363,5 +388,14 @@ resetGameBtn.addEventListener('click', () => {
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
+// ===== ФАЗА ИНИЦИАТИВА =====
+initiativePhaseBtn.addEventListener('click', () => {
+  sendMessage({ type: 'gmPhaseInitiative' });
+});
+
+// ===== НАЧАЛО БОЯ =====
+startBattleBtn.addEventListener('click', () => {
+  sendMessage({ type: 'gmStartBattle' });
+});
 
 
