@@ -16,11 +16,15 @@ const wss = new WebSocket.Server({ server });
 let gameState = {
   boardWidth: 10,
   boardHeight: 10,
-  players: [],      // {id, name, color, size, x, y, initiative}
-  walls: [],        // {x, y}
-  turnOrder: [],    // массив id игроков по инициативе
+  players: [],
+  walls: [],
+  turnOrder: [],
   currentTurnIndex: 0,
-  log: []
+  log: [],
+  gmPhase: null,          // null | 'initiative'
+  allInitiatives: false,  // true если все игроки бросили
+  battleStarted: false,
+  notifyInitiative: false
 };
 
 // ================== USERS ==================
@@ -258,6 +262,65 @@ ws.on("close", () => {
   broadcastUsers();
   broadcast(); // чтобы все пересинхронизировались
 });
+
+case "gmPhaseInitiative":
+  if (!isGM(ws)) return;
+
+  gameState.gmPhase = 'initiative';
+  gameState.allInitiatives = false;
+  gameState.notifyInitiative = true;
+
+  // Сбрасываем инициативу всех игроков
+  gameState.players.forEach(p => p.initiative = 0);
+
+  logEvent("Фаза Инициатива начата GM");
+  broadcast();
+  break;
+
+case "rollInitiative": {
+  const user = getUserByWS(ws);
+  const playerGroup = gameState.players.filter(p => p.ownerId === user.id);
+  playerGroup.forEach(p => p.initiative = Math.floor(Math.random()*20)+1);
+
+  // Проверка, все ли бросили
+  gameState.allInitiatives = gameState.players.every(p => p.initiative > 0);
+
+  if (gameState.allInitiatives) {
+    gameState.gmPhase = 'initiative'; // можно оставлять, пока GM не разместит
+    gameState.notifyInitiative = false;
+    logEvent("Все инициативы брошены");
+  }
+
+  broadcast();
+  break;
+}
+
+case "gmStartBattle":
+  if (!isGM(ws)) return;
+
+  // Размещаем игроков рядом, если кто-то на 0,0
+  let startX = 0, startY = 0;
+  gameState.players.forEach(p => {
+    if (p.x === null && p.y === null) {
+      p.x = startX;
+      p.y = startY;
+      startX += p.size;
+      if (startX >= gameState.boardWidth) { startX = 0; startY += 1; }
+    }
+  });
+
+  // Сортировка по инициативе
+  gameState.turnOrder = [...gameState.players]
+    .sort((a,b)=>b.initiative - a.initiative)
+    .map(p=>p.id);
+  gameState.currentTurnIndex = 0;
+  gameState.gmPhase = null;
+  gameState.battleStarted = true;
+
+  logEvent("Бой начат GM");
+  broadcast();
+  break;
+
 });
 
 function sendFullSync(ws) {
@@ -281,4 +344,5 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
