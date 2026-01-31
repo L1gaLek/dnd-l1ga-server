@@ -51,7 +51,6 @@ function logEvent(text) {
 // ================== WS HANDLERS ==================
 wss.on("connection", ws => {
   // Инициализация у нового клиента
-  ws.send(JSON.stringify({ type: "init", state: gameState }));
 
   ws.on("message", msg => {
     let data;
@@ -61,6 +60,7 @@ wss.on("connection", ws => {
 
       // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
       case "register": {
+        ws.send(JSON.stringify({ type: "init", state: gameState }));
         const { name, role } = data;
 
         if (!name || !role) {
@@ -223,6 +223,7 @@ broadcast();
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
