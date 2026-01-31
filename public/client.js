@@ -40,7 +40,11 @@ const playerElements = new Map();
 joinBtn.addEventListener('click', () => {
   const name = usernameInput.value.trim();
   const role = roleSelect.value;
-  if (!name) return loginError.textContent = "Введите имя";
+
+  if (!name) {
+    loginError.textContent = "Введите имя";
+    return;
+  }
 
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
 
@@ -62,15 +66,20 @@ joinBtn.addEventListener('click', () => {
       syncState(msg.state);
     }
   };
+
+  ws.onerror = () => loginError.textContent = "Ошибка соединения";
 });
 
 // ================== SYNC ==================
 function syncState(state) {
 
-  // удаляем исчезнувших игроков
+  // удаляем лишние DOM-элементы
   const ids = new Set(state.players.map(p => p.id));
-  playerElements.forEach((el,id)=>{
-    if(!ids.has(id)){ el.remove(); playerElements.delete(id); }
+  playerElements.forEach((el, id) => {
+    if (!ids.has(id)) {
+      el.remove();
+      playerElements.delete(id);
+    }
   });
 
   players = state.players.map(p => ({
@@ -87,63 +96,72 @@ function syncState(state) {
   renderLog(state.log || []);
 }
 
-// ================== UI ==================
-function renderLog(logs){
-  logList.innerHTML='';
-  logs.slice(-50).forEach(l=>{
-    const li=document.createElement('li');
-    li.textContent=l;
+// ================== LOG ==================
+function renderLog(logs) {
+  logList.innerHTML = '';
+  logs.slice(-50).forEach(line => {
+    const li = document.createElement('li');
+    li.textContent = line;
     logList.appendChild(li);
   });
 }
 
-function updateCurrentPlayer(state){
-  if(!state.turnOrder.length){ currentPlayerSpan.textContent='-'; return; }
-  const id=state.turnOrder[state.currentTurnIndex];
-  const p=players.find(p=>p.id===id);
-  currentPlayerSpan.textContent=p?p.name:'-';
+// ================== TURN ==================
+function updateCurrentPlayer(state) {
+  if (!state.turnOrder.length) {
+    currentPlayerSpan.textContent = '-';
+    return;
+  }
+  const id = state.turnOrder[state.currentTurnIndex];
+  const p = players.find(pl => pl.id === id);
+  currentPlayerSpan.textContent = p ? p.name : '-';
 }
 
 // ================== PLAYER LIST ==================
-function updatePlayerList(){
-  playerList.innerHTML='';
-  const grouped={};
+function updatePlayerList() {
+  playerList.innerHTML = '';
 
-  players.forEach(p=>{
-    if(!grouped[p.ownerId]) grouped[p.ownerId]={ name:p.ownerName, players:[] };
+  const grouped = {};
+  players.forEach(p => {
+    if (!grouped[p.ownerId]) {
+      grouped[p.ownerId] = { name: p.ownerName, players: [] };
+    }
     grouped[p.ownerId].players.push(p);
   });
 
-  Object.values(grouped).forEach(g=>{
-    const owner=document.createElement('li');
-    owner.textContent=g.name;
-    owner.style.fontWeight='bold';
+  Object.values(grouped).forEach(group => {
+    const ownerLi = document.createElement('li');
+    ownerLi.textContent = group.name;
+    ownerLi.style.fontWeight = 'bold';
 
-    const ul=document.createElement('ul');
-    g.players.forEach(p=>{
-      const li=document.createElement('li');
-      li.textContent=`${p.name} (${p.initiative})`;
-      li.onclick=()=> selectedPlayer=p;
+    const ul = document.createElement('ul');
+    group.players.forEach(p => {
+      const li = document.createElement('li');
+      li.textContent = `${p.name} (${p.initiative})`;
+      li.onclick = () => selectedPlayer = p;
       ul.appendChild(li);
     });
 
-    owner.appendChild(ul);
-    playerList.appendChild(owner);
+    ownerLi.appendChild(ul);
+    playerList.appendChild(ownerLi);
   });
 }
 
 // ================== BOARD ==================
-function renderBoard(state){
-  board.innerHTML='';
-  board.style.gridTemplateColumns=`repeat(${boardWidth},50px)`;
-  board.style.gridTemplateRows=`repeat(${boardHeight},50px)`;
+function renderBoard(state) {
+  board.innerHTML = '';
+  board.style.gridTemplateColumns = `repeat(${boardWidth}, 50px)`;
+  board.style.gridTemplateRows = `repeat(${boardHeight}, 50px)`;
 
-  for(let y=0;y<boardHeight;y++){
-    for(let x=0;x<boardWidth;x++){
-      const cell=document.createElement('div');
-      cell.className='cell';
-      cell.dataset.x=x;
-      cell.dataset.y=y;
+  for (let y = 0; y < boardHeight; y++) {
+    for (let x = 0; x < boardWidth; x++) {
+      const cell = document.createElement('div');
+      cell.classList.add('cell');
+      cell.dataset.x = x;
+      cell.dataset.y = y;
+      if (state.walls?.find(w => w.x === x && w.y === y)) {
+        cell.classList.add('wall');
+      }
       board.appendChild(cell);
     }
   }
@@ -151,52 +169,73 @@ function renderBoard(state){
   players.forEach(setPlayerPosition);
 }
 
-function setPlayerPosition(p){
-  let el=playerElements.get(p.id);
-  if(!el){
-    el=document.createElement('div');
-    el.className='player';
-    el.textContent=p.name[0];
-    el.style.backgroundColor=p.color;
+function setPlayerPosition(p) {
+  let el = playerElements.get(p.id);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'player';
+    el.textContent = p.name[0];
+    el.style.backgroundColor = p.color;
     board.appendChild(el);
-    playerElements.set(p.id,el);
+    playerElements.set(p.id, el);
   }
 
-  if(p.x==null||p.y==null){ el.style.display='none'; return; }
-  el.style.display='flex';
-  el.style.left=`${p.x*50}px`;
-  el.style.top=`${p.y*50}px`;
+  if (p.x == null || p.y == null) {
+    el.style.display = 'none';
+    return;
+  }
+
+  el.style.display = 'flex';
+  el.style.left = `${p.x * 50}px`;
+  el.style.top = `${p.y * 50}px`;
 }
 
 // ================== ACTIONS ==================
-addPlayerBtn.onclick=()=>{
-  const name=playerNameInput.value.trim();
-  if(!name) return;
-  send({ type:'addPlayer', player:{
-    name,
-    color:playerColorInput.value,
-    size:+playerSizeInput.value
-  }});
-  playerNameInput.value='';
+addPlayerBtn.onclick = () => {
+  const name = playerNameInput.value.trim();
+  if (!name) return;
+
+  send({
+    type: 'addPlayer',
+    player: {
+      name,
+      color: playerColorInput.value,
+      size: parseInt(playerSizeInput.value)
+    }
+  });
+
+  playerNameInput.value = '';
 };
 
-board.onclick=e=>{
-  if(!selectedPlayer) return;
-  const cell=e.target.closest('.cell');
-  if(!cell) return;
-  send({ type:'movePlayer', id:selectedPlayer.id, x:+cell.dataset.x, y:+cell.dataset.y });
-  selectedPlayer=null;
+board.onclick = e => {
+  if (!selectedPlayer) return;
+  const cell = e.target.closest('.cell');
+  if (!cell) return;
+
+  send({
+    type: 'movePlayer',
+    id: selectedPlayer.id,
+    x: +cell.dataset.x,
+    y: +cell.dataset.y
+  });
+
+  selectedPlayer = null;
 };
 
-rollInitiativeBtn.onclick=()=>send({ type:'rollInitiative' });
-endTurnBtn.onclick=()=>send({ type:'endTurn' });
-createBoardBtn.onclick=()=>{
-  send({ type:'resizeBoard',
-    width:+boardWidthInput.value,
-    height:+boardHeightInput.value
+rollInitiativeBtn.onclick = () => send({ type: 'rollInitiative' });
+endTurnBtn.onclick = () => send({ type: 'endTurn' });
+
+createBoardBtn.onclick = () => {
+  send({
+    type: 'resizeBoard',
+    width: +boardWidthInput.value,
+    height: +boardHeightInput.value
   });
 };
 
-function send(msg){
-  if(ws?.readyState===1) ws.send(JSON.stringify(msg));
+// ================== SEND ==================
+function send(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(msg));
+  }
 }
