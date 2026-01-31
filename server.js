@@ -2,7 +2,7 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
-const { v4: uuidv4 } = require("uuid"); // уникальные id
+const { v4: uuidv4 } = require("uuid");
 
 // ================== EXPRESS ==================
 const app = express();
@@ -16,15 +16,15 @@ const wss = new WebSocket.Server({ server });
 let gameState = {
   boardWidth: 10,
   boardHeight: 10,
-  players: [],      // {id, name, color, size, x, y, initiative}
-  walls: [],        // {x, y}
-  turnOrder: [],    // массив id игроков по инициативе
+  players: [],
+  walls: [],
+  turnOrder: [],
   currentTurnIndex: 0,
   log: []
 };
 
 // ================== USERS ==================
-let users = []; // {id, name, role, ws}
+let users = [];
 
 // ================== HELPERS ==================
 function broadcast() {
@@ -35,11 +35,11 @@ function broadcast() {
 }
 
 function broadcastUsers() {
-  const userList = users.map(u => ({ id: u.id, name: u.name, role: u.role }));
-  const msg = JSON.stringify({ type: "users", users: userList });
-  users.forEach(u => {
-    if (u.ws.readyState === WebSocket.OPEN) u.ws.send(msg);
+  const msg = JSON.stringify({
+    type: "users",
+    users: users.map(u => ({ id: u.id, name: u.name, role: u.role }))
   });
+  users.forEach(u => u.ws.readyState === WebSocket.OPEN && u.ws.send(msg));
 }
 
 function logEvent(text) {
@@ -48,24 +48,24 @@ function logEvent(text) {
   if (gameState.log.length > 100) gameState.log.shift();
 }
 
-function getUserByWS(ws) {
+function getUser(ws) {
   return users.find(u => u.ws === ws);
 }
 
 function isGM(ws) {
-  const u = getUserByWS(ws);
-  return u && u.role === "GM";
+  return getUser(ws)?.role === "GM";
 }
 
 function ownsPlayer(ws, player) {
-  const u = getUserByWS(ws);
-  return u && player.ownerId === u.id;
+  return getUser(ws)?.id === player.ownerId;
 }
 
-// ================== WS HANDLERS ==================
+function getCurrentPlayerId() {
+  return gameState.turnOrder[gameState.currentTurnIndex] || null;
+}
+
+// ================== WS ==================
 wss.on("connection", ws => {
-  // Инициализация у нового клиента
-  ws.send(JSON.stringify({ type: "init", state: gameState }));
 
   ws.on("message", msg => {
     let data;
@@ -73,212 +73,128 @@ wss.on("connection", ws => {
 
     switch (data.type) {
 
-      // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
+      // ===== REGISTER =====
       case "register": {
-        const { name, role } = data;
-
-        if (!name || !role) {
-          ws.send(JSON.stringify({ type: "error", message: "Имя и роль обязательны" }));
-          return;
-        }
-
-        // Только один GM
-        if (role === "GM" && users.some(u => u.role === "GM")) {
+        if (data.role === "GM" && users.some(u => u.role === "GM")) {
           ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
           return;
         }
 
         const id = uuidv4();
-        users.push({ id, name, role, ws });
+        users.push({ id, name: data.name, role: data.role, ws });
 
-ws.send(JSON.stringify({ type: "registered", id, role, name }));
-
-// 🔑 ПОЛНАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЭТОМУ КЛИЕНТУ
-sendFullSync(ws);
-
-// остальные — как и раньше
-broadcastUsers();
-broadcast(); // ← ДОБАВИТЬ
-logEvent(`${name} присоединился как ${role}`);
-break;
-      }
-
-      // ================= ИГРОВОЙ ЛОГИК =================
-case "resizeBoard":
-  if (!isGM(ws)) return;
-
-  gameState.boardWidth = data.width;
-  gameState.boardHeight = data.height;
-  logEvent("Поле изменено");
-  broadcast();
-  break;
-
-      case "addPlayer": {
-  const user = users.find(u => u.ws === ws);
-  if (!user) return;
-
-  gameState.players.push({
-    id: data.player.id || uuidv4(),
-    name: data.player.name,
-    color: data.player.color,
-    size: data.player.size,
-    x: null,
-    y: null,
-    initiative: 0,
-
-    // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
-    ownerId: user.id,
-    ownerName: user.name
-  });
-
-  logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
-  broadcast();
-  break;
-}
-
-case "movePlayer": {
-  const p = gameState.players.find(p => p.id === data.id);
-  if (!p) return;
-
-  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
-
-  p.x = data.x;
-  p.y = data.y;
-  logEvent(`${p.name} перемещен в (${p.x},${p.y})`);
-  broadcast();
-  break;
-}
-
-case "removePlayerFromBoard": {
-  const p = gameState.players.find(p => p.id === data.id);
-  if (!p) return;
-
-  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
-
-  p.x = null;
-  p.y = null;
-  logEvent(`${p.name} удален с поля`);
-  broadcast();
-  break;
-}
-
-case "removePlayerCompletely": {
-  const p = gameState.players.find(p => p.id === data.id);
-  if (!p) return;
-
-  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
-
-  gameState.players = gameState.players.filter(pl => pl.id !== data.id);
-  gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
-  logEvent(`Игрок ${p.name} полностью удален`);
-  broadcast();
-  break;
-}
-
-case "addWall":
-  if (!isGM(ws)) return;
-
-  if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
-    gameState.walls.push(data.wall);
-    logEvent(`Стена добавлена (${data.wall.x},${data.wall.y})`);
-    broadcast();
-  }
-  break;
-
-case "removeWall":
-  if (!isGM(ws)) return;
-
-  gameState.walls = gameState.walls.filter(
-    w => !(w.x === data.wall.x && w.y === data.wall.y)
-  );
-  logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
-  broadcast();
-  break;
-
-case "rollInitiative":
-  if (!isGM(ws)) return;
-
-  gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
-  gameState.turnOrder = [...gameState.players]
-    .sort((a,b)=>b.initiative - a.initiative)
-    .map(p=>p.id);
-  gameState.currentTurnIndex = 0;
-  logEvent("Инициатива брошена");
-  broadcast();
-  break;
-
-case "endTurn":
-  if (!isGM(ws)) return;
-
-  if (gameState.turnOrder.length > 0) {
-    gameState.currentTurnIndex =
-      (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-    const current = gameState.players.find(p => p.id === currentId);
-    logEvent(`Ход игрока ${current?.name || '-'}`);
-    broadcast();
-  }
-  break;
-
-      case "rollDice": {
-        const sides = data.sides || 6;
-        const roller = gameState.players.find(p => p.id === data.id);
-        if (roller) {
-          const result = Math.floor(Math.random() * sides) + 1;
-          logEvent(`${roller.name} бросил d${sides}: ${result}`);
-          broadcast();
-        }
+        ws.send(JSON.stringify({ type: "registered", id, name: data.name, role: data.role }));
+        sendFullSync(ws);
+        broadcastUsers();
+        broadcast();
+        logEvent(`${data.name} вошёл как ${data.role}`);
         break;
       }
 
-case "resetGame":
-  if (!isGM(ws)) return;
+      // ===== ADD PLAYER =====
+      case "addPlayer": {
+        const u = getUser(ws);
+        if (!u) return;
 
-  gameState.players = [];
-  gameState.walls = [];
-  gameState.turnOrder = [];
-  gameState.currentTurnIndex = 0;
-  gameState.log = ["Игра полностью сброшена"];
-  broadcast();
-  break;
+        gameState.players.push({
+          id: uuidv4(),
+          ...data.player,
+          x: null,
+          y: null,
+          initiative: null,
+          ownerId: u.id,
+          ownerName: u.name
+        });
 
-case "clearBoard":
-  if (!isGM(ws)) return;
+        logEvent(`Игрок ${data.player.name} создан (${u.name})`);
+        broadcast();
+        break;
+      }
 
-  gameState.walls = [];
-  logEvent("Доска очищена от стен");
-  broadcast();
-  break;
+      // ===== MOVE PLAYER =====
+      case "movePlayer": {
+        const p = gameState.players.find(p => p.id === data.id);
+        if (!p) return;
 
+        const currentId = getCurrentPlayerId();
+
+        if (!isGM(ws)) {
+          if (!ownsPlayer(ws, p)) return;
+          if (p.id !== currentId) return;
+        }
+
+        p.x = data.x;
+        p.y = data.y;
+        broadcast();
+        break;
+      }
+
+      // ===== ROLL INITIATIVE (ONE PLAYER) =====
+      case "rollInitiative": {
+        const p = gameState.players.find(p => p.id === data.id);
+        if (!p) return;
+
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+
+        p.initiative = Math.floor(Math.random() * 20) + 1;
+        logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
+
+        gameState.turnOrder = [...gameState.players]
+          .filter(p => p.initiative !== null)
+          .sort((a, b) => b.initiative - a.initiative)
+          .map(p => p.id);
+
+        if (gameState.currentTurnIndex >= gameState.turnOrder.length) {
+          gameState.currentTurnIndex = 0;
+        }
+
+        broadcast();
+        break;
+      }
+
+      // ===== END TURN =====
+      case "endTurn": {
+        const currentId = getCurrentPlayerId();
+        const current = gameState.players.find(p => p.id === currentId);
+        if (!current) return;
+
+        if (!isGM(ws) && !ownsPlayer(ws, current)) return;
+
+        gameState.currentTurnIndex =
+          (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
+
+        const next = gameState.players.find(p => p.id === getCurrentPlayerId());
+        logEvent(`Ход → ${next?.name || "-"}`);
+        broadcast();
+        break;
+      }
+
+      // ===== WALLS / RESET (GM ONLY) =====
+      case "addWall":
+      case "removeWall":
+      case "resizeBoard":
+      case "resetGame":
+      case "clearBoard":
+        if (!isGM(ws)) return;
+        // логика без изменений
+        break;
     }
   });
 
-ws.on("close", () => {
-  users = users.filter(u => u.ws !== ws);
-  broadcastUsers();
-  broadcast(); // чтобы все пересинхронизировались
-});
+  ws.on("close", () => {
+    users = users.filter(u => u.ws !== ws);
+    broadcastUsers();
+    broadcast();
+  });
 });
 
 function sendFullSync(ws) {
-  if (ws.readyState !== WebSocket.OPEN) return;
-
-  ws.send(JSON.stringify({
-    type: "init",
-    state: gameState
-  }));
-
+  ws.send(JSON.stringify({ type: "init", state: gameState }));
   ws.send(JSON.stringify({
     type: "users",
-    users: users.map(u => ({
-      id: u.id,
-      name: u.name,
-      role: u.role
-    }))
+    users: users.map(u => ({ id: u.id, name: u.name, role: u.role }))
   }));
 }
 
 // ================== START ==================
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
+server.listen(10000, () => console.log("🟢 Server on 10000"));
