@@ -82,6 +82,14 @@ joinBtn.addEventListener('click', () => {
     gameUI.style.display = "block";
 
     setupRoleUI(myRole);
+  } else if (msg.type === "error") {
+    loginError.textContent = msg.message;
+  } else if (msg.type === "users") {
+    updateUserList(msg.users);
+  } else if (msg.type === "init" || msg.type === "state") {
+    boardWidth = msg.state.boardWidth;
+    boardHeight = msg.state.boardHeight;
+    players = msg.state.players;
 
     // 🔹 ИНИЦИАЛИЗАЦИЯ UI ФАЗ БОЯ (ТОЛЬКО ЗДЕСЬ!)
     const gmInitiativeBtn = document.getElementById("gm-initiative");
@@ -117,6 +125,8 @@ joinBtn.addEventListener('click', () => {
     updatePlayerList();
     updateCurrentPlayer(state);
     renderLog(state.log || []);
+     }
+};
 
     // 🔔 ПРЕДУПРЕЖДЕНИЕ ИГРОКАМ
     const initiativeWarning = document.getElementById("initiative-warning");
@@ -145,7 +155,7 @@ joinBtn.addEventListener('click', () => {
       gmStartCombatBtn.disabled = state.phase !== "placement";
     }
   }
-});
+};
 
 // ================== USERS ==================
 function updateUserList(users) {
@@ -420,6 +430,7 @@ if (gmStartCombatBtn) {
     sendMessage({ type: "startCombat" });
   };
 }
+
 
 
 
