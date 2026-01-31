@@ -20,6 +20,7 @@ let gameState = {
   walls: [],        // {x, y}
   turnOrder: [],    // массив id игроков по инициативе
   currentTurnIndex: 0,
+  phase: "idle",
   log: []
 };
 
@@ -72,6 +73,18 @@ wss.on("connection", ws => {
     try { data = JSON.parse(msg); } catch { return; }
 
     switch (data.type) {
+
+        case "startInitiative":
+  if (!isGM(ws)) return;
+
+  gameState.phase = "initiative";
+
+  // сбрасываем инициативу
+  gameState.players.forEach(p => p.initiative = 0);
+
+  logEvent("GM начал фазу инициативы");
+  broadcast();
+  break;
 
       // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
       case "register": {
@@ -195,19 +208,60 @@ case "removeWall":
   broadcast();
   break;
 
-case "rollInitiative":
-  if (!isGM(ws)) return;
+case "rollInitiative": {
+  if (gameState.phase !== "initiative") return;
 
-  gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
+  const user = getUserByWS(ws);
+  if (!user) return;
+
+  gameState.players
+    .filter(p => p.ownerId === user.id)
+    .forEach(p => {
+      if (!p.initiative) {
+        p.initiative = Math.floor(Math.random() * 20) + 1;
+      }
+    });
+
+  logEvent(`${user.name} бросил инициативу`);
+
+  broadcast();
+  break;
+}
+
+        case "startPlacement":
+  if (!isGM(ws)) return;
+  if (gameState.phase !== "initiative") return;
+
+  gameState.phase = "placement";
+
+  // размещаем игроков рядом, а не в (0,0)
+  gameState.players.forEach((p, i) => {
+    p.x = i % gameState.boardWidth;
+    p.y = Math.floor(i / gameState.boardWidth);
+  });
+
+  logEvent("Фаза размещения игроков");
+  broadcast();
+  break;
+
+        case "startCombat":
+  if (!isGM(ws)) return;
+  if (gameState.phase !== "placement") return;
+
+  gameState.phase = "combat";
+
   gameState.turnOrder = [...gameState.players]
-    .sort((a,b)=>b.initiative - a.initiative)
-    .map(p=>p.id);
+    .sort((a, b) => b.initiative - a.initiative)
+    .map(p => p.id);
+
   gameState.currentTurnIndex = 0;
-  logEvent("Инициатива брошена");
+
+  logEvent("Бой начался");
   broadcast();
   break;
 
 case "endTurn":
+  if (gameState.phase !== "combat") return;
   if (!isGM(ws)) return;
 
   if (gameState.turnOrder.length > 0) {
@@ -281,4 +335,5 @@ function sendFullSync(ws) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
