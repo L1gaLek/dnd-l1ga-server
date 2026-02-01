@@ -223,7 +223,7 @@ function updatePlayerList() {
   players.forEach(p => {
     if (!grouped[p.ownerId]) {
       grouped[p.ownerId] = {
-        ownerName: p.ownerName,
+        ownerName: p.ownerName || 'Unknown',
         players: []
       };
     }
@@ -240,67 +240,41 @@ function updatePlayerList() {
     const ul = document.createElement('ul');
     ul.style.paddingLeft = '15px';
 
- group.players.forEach(p => {
-  const li = document.createElement('li');
-  li.className = 'player-list-item';
-  li.style.fontWeight = 'normal';
+    group.players.forEach(p => {
+      const li = document.createElement('li');
+      li.className = 'player-list-item';
+      li.style.fontWeight = 'normal';
 
-  // ✅ КРУЖОК слева: размещён/не размещён
-  const indicator = document.createElement('span');
-  indicator.classList.add('placement-indicator');
-  const placed = (p.x !== null && p.y !== null);
-  indicator.classList.add(placed ? 'placed' : 'not-placed');
+      // ✅ кружок размещения
+      const indicator = document.createElement('span');
+      indicator.classList.add('placement-indicator');
+      const placed = (p.x !== null && p.y !== null);
+      indicator.classList.add(placed ? 'placed' : 'not-placed');
 
-  // ✅ ТЕКСТ справа
-  const text = document.createElement('span');
-  const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
-  text.textContent = `${p.name} (${initVal})`;
+      // ✅ текст
+      const text = document.createElement('span');
+      const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
+      text.textContent = `${p.name} (${initVal})`;
 
-  li.appendChild(indicator);
-  li.appendChild(text);
+      li.appendChild(indicator);
+      li.appendChild(text);
 
-  // Клик по игроку (как было)
-  li.addEventListener('click', () => {
-    selectedPlayer = p;
-    if (p.x === null || p.y === null) {
-      sendMessage({ type: 'movePlayer', id: p.id, x: 0, y: 0 });
-    }
-  });
+      // Клик по игроку — выбираем (и если не размещён, ставим в 0,0 как раньше)
+      li.addEventListener('click', () => {
+        selectedPlayer = p;
+        if (p.x === null || p.y === null) {
+          sendMessage({ type: 'movePlayer', id: p.id, x: 0, y: 0 });
+        }
+      });
 
-  // 🔒 КНОПКИ — только владельцу или GM
-  if (myRole === "GM" || p.ownerId === myId) {
-    const removeFromBoardBtn = document.createElement('button');
-    removeFromBoardBtn.textContent = 'С поля';
-    removeFromBoardBtn.style.marginLeft = '5px';
-    removeFromBoardBtn.onclick = (e) => {
-      e.stopPropagation();
-      sendMessage({ type: 'removePlayerFromBoard', id: p.id });
-    };
-
-    const removeCompletelyBtn = document.createElement('button');
-    removeCompletelyBtn.textContent = 'Удалить';
-    removeCompletelyBtn.style.marginLeft = '5px';
-    removeCompletelyBtn.onclick = (e) => {
-      e.stopPropagation();
-      sendMessage({ type: 'removePlayerCompletely', id: p.id });
-    };
-
-    li.appendChild(removeFromBoardBtn);
-    li.appendChild(removeCompletelyBtn);
-  }
-
-  ul.appendChild(li);
-});
-
-      // 🔒 КНОПКИ — только владельцу или GM
+      // 🔒 Кнопки — только владельцу или GM
       if (myRole === "GM" || p.ownerId === myId) {
-
         const removeFromBoardBtn = document.createElement('button');
         removeFromBoardBtn.textContent = 'С поля';
         removeFromBoardBtn.style.marginLeft = '5px';
         removeFromBoardBtn.onclick = (e) => {
           e.stopPropagation();
-          sendMessage({ type:'removePlayerFromBoard', id:p.id });
+          sendMessage({ type: 'removePlayerFromBoard', id: p.id });
         };
 
         const removeCompletelyBtn = document.createElement('button');
@@ -308,7 +282,7 @@ function updatePlayerList() {
         removeCompletelyBtn.style.marginLeft = '5px';
         removeCompletelyBtn.onclick = (e) => {
           e.stopPropagation();
-          sendMessage({ type:'removePlayerCompletely', id:p.id });
+          sendMessage({ type: 'removePlayerCompletely', id: p.id });
         };
 
         li.appendChild(removeFromBoardBtn);
@@ -320,7 +294,8 @@ function updatePlayerList() {
 
     ownerLi.appendChild(ul);
     playerList.appendChild(ownerLi);
-  };
+  });
+}
 
 // ================== BOARD ==================
 function renderBoard(state) {
@@ -535,6 +510,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
