@@ -150,6 +150,17 @@ function renderLog(logs) {
 function updateCurrentPlayer(state) {
   if (!state || !state.turnOrder || state.turnOrder.length === 0) {
     currentPlayerSpan.textContent = '-';
+
+playerElements.forEach((el, id) => {
+  el.classList.remove("active-turn");
+});
+
+if (state.phase === "combat") {
+  const id = state.turnOrder[state.currentTurnIndex];
+  const el = playerElements.get(id);
+  if (el) el.classList.add("active-turn");
+}
+    
     return;
   }
   const id = state.turnOrder[state.currentTurnIndex];
@@ -376,17 +387,39 @@ resetGameBtn.addEventListener('click', () => {
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
 function updatePhaseUI(state) {
-  // Фаза инициативы
+
+  // ================= ИНИЦИАТИВА =================
   if (state.phase === "initiative") {
     rollInitiativeBtn.style.display = "inline-block";
 
-    const allRolled = state.players.every(p => p.hasRolledInitiative);
+    const allRolled = state.players.length > 0 &&
+      state.players.every(p => p.hasRolledInitiative);
+
+    // 🔴 / 🟢 кнопка инициативы
     startInitiativeBtn.style.backgroundColor = allRolled ? "green" : "red";
-  } else {
+
+    // 🟡 кнопка начала боя
+    startCombatBtn.disabled = !allRolled;
+    startCombatBtn.style.backgroundColor = allRolled ? "gold" : "";
+  } 
+  else {
     rollInitiativeBtn.style.display = "none";
     startInitiativeBtn.style.backgroundColor = "";
   }
 
+  // ================= БОЙ =================
+  if (state.phase === "combat") {
+    startCombatBtn.disabled = true;
+    startCombatBtn.style.backgroundColor = "green";
+  }
+
+  // ================= ДРУГОЕ =================
+  if (state.phase !== "initiative" && state.phase !== "combat") {
+    startCombatBtn.style.backgroundColor = "";
+  }
+}
+
   // Фаза размещения
   startCombatBtn.disabled = state.phase !== "placement";
 }
+
