@@ -252,12 +252,13 @@ function updatePlayerList() {
       indicator.classList.add(placed ? 'placed' : 'not-placed');
 
       // ✅ текст
-      const text = document.createElement('span');
-      const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
-      text.textContent = `${p.name} (${initVal})`;
+const text = document.createElement('span');
+text.classList.add('player-name-text');   // 👈 добавили класс
+const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
+text.textContent = `${p.name} (${initVal})`;
 
-      li.appendChild(indicator);
-      li.appendChild(text);
+li.appendChild(indicator);
+li.appendChild(text);
 
       // Клик по игроку — выбираем (и если не размещён, ставим в 0,0 как раньше)
       li.addEventListener('click', () => {
@@ -510,6 +511,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
