@@ -256,8 +256,15 @@ case "finishInitiative": {
 } 
 
 case "startCombat": {
-  if (!isGM(ws)) return;
-  if (gameState.phase !== "placement") return;
+  if (!isGM(ws)) {
+    console.log("DENY startCombat: not GM");
+    return;
+  }
+
+  if (gameState.phase !== "placement") {
+    console.log("DENY startCombat: wrong phase", gameState.phase);
+    return;
+  }
 
   gameState.turnOrder = [...gameState.players]
     .filter(p => p.x !== null && p.y !== null)
@@ -267,9 +274,11 @@ case "startCombat": {
   gameState.currentTurnIndex = 0;
   gameState.phase = "combat";
 
-  const first = gameState.players.find(p => p.id === gameState.turnOrder[0]);
-  logEvent(`Бой начался. Первый ход: ${first?.name}`);
+  const first = gameState.players.find(
+    p => p.id === gameState.turnOrder[0]
+  );
 
+  logEvent(`Бой начался. Первый ход: ${first?.name}`);
   broadcast();
   break;
 }
@@ -365,6 +374,7 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
