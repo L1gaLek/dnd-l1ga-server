@@ -383,14 +383,6 @@ resetGameBtn.addEventListener('click', () => {
   sendMessage({ type:'resetGame' });
 });
 
-// ================== HELPER ==================
-function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
-
-  // Фаза размещения
-  startCombatBtn.disabled = state.phase !== "placement";
-}
-}
-
 function updatePhaseUI(state) {
 
   // ================= ИНИЦИАТИВА =================
@@ -423,6 +415,14 @@ function updatePhaseUI(state) {
     startCombatBtn.style.backgroundColor = "";
   }
 }
+
+// ================== HELPER ==================
+function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
+  // Фаза размещения
+  startCombatBtn.disabled = state.phase !== "placement";
+}
+
 
 
 
