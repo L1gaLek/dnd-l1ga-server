@@ -2,7 +2,7 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
-const { v4: uuidv4 } = require("uuid"); // уникальные id
+const { v4: uuidv4 } = require("uuid");
 
 // ================== EXPRESS ==================
 const app = express();
@@ -17,9 +17,9 @@ let gameState = {
   boardWidth: 10,
   boardHeight: 10,
   phase: "lobby",
-  players: [],      // {id, name, color, size, x, y, initiative, ownerId, ownerName, isBase}
-  walls: [],        // {x, y}
-  turnOrder: [],    // массив id игроков по инициативе
+  players: [],      // {id, name, color, size, x, y, initiative, ownerId, ownerName, isBase, isSummon, sheet?}
+  walls: [],
+  turnOrder: [],
   currentTurnIndex: 0,
   log: []
 };
@@ -65,7 +65,6 @@ function ownsPlayer(ws, player) {
 
 // ================== WS HANDLERS ==================
 wss.on("connection", ws => {
-  // Инициализация у нового клиента
   ws.send(JSON.stringify({ type: "init", state: gameState }));
 
   ws.on("message", msg => {
@@ -74,7 +73,7 @@ wss.on("connection", ws => {
 
     switch (data.type) {
 
-      // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
+      // ================= РЕГИСТРАЦИЯ =================
       case "register": {
         const { name, role } = data;
 
@@ -94,10 +93,7 @@ wss.on("connection", ws => {
 
         ws.send(JSON.stringify({ type: "registered", id, role, name }));
 
-        // 🔑 ПОЛНАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЭТОМУ КЛИЕНТУ
         sendFullSync(ws);
-
-        // остальные — как и раньше
         broadcastUsers();
         broadcast();
         logEvent(`${name} присоединился как ${role}`);
@@ -118,7 +114,6 @@ wss.on("connection", ws => {
         if (!isGM(ws)) return;
 
         gameState.phase = "initiative";
-
         gameState.players.forEach(p => {
           p.initiative = null;
           p.hasRolledInitiative = false;
@@ -134,20 +129,21 @@ wss.on("connection", ws => {
         if (!user) return;
 
         const isBase = !!data.player?.isBase;
+        const isSummon = !!data.player?.isSummon;
 
-// ✅ Основа может быть только одна НА ПОЛЬЗОВАТЕЛЯ
-if (isBase) {
-  const baseAlreadyExistsForOwner = gameState.players.some(
-    p => p.isBase && p.ownerId === user.id
-  );
-  if (baseAlreadyExistsForOwner) {
-    ws.send(JSON.stringify({
-      type: "error",
-      message: "У вас уже есть Основа. Можно иметь только одну основу на пользователя."
-    }));
-    return;
-  }
-}
+        if (isBase && isSummon) {
+          ws.send(JSON.stringify({ type: "error", message: "Нельзя выбрать одновременно 'Основа' и 'Призвать'" }));
+          return;
+        }
+
+        // ✅ ВАЖНО: теперь это реально работает, потому что мы сохраняем isBase в объект игрока
+        if (isBase) {
+          const alreadyHasBase = gameState.players.some(p => p.ownerId === user.id && p.isBase);
+          if (alreadyHasBase) {
+            ws.send(JSON.stringify({ type: "error", message: "У вас уже есть основной персонаж (Основа)" }));
+            return;
+          }
+        }
 
         gameState.players.push({
           id: data.player.id || uuidv4(),
@@ -158,14 +154,45 @@ if (isBase) {
           y: null,
           initiative: 0,
 
+          // тип
           isBase,
+          isSummon,
 
-          // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
+          // связь с пользователем
           ownerId: user.id,
-          ownerName: user.name
+          ownerName: user.name,
+
+          // лист персонажа
+          sheet: null
         });
 
-        logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}${isBase ? " (Основа)" : ""}`);
+        logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
+        broadcast();
+        break;
+      }
+
+      case "setPlayerSheet": {
+        const p = gameState.players.find(pl => pl.id === data.id);
+        if (!p) return;
+
+        // права: GM или владелец
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+
+        // На всякий: только для основы (по твоей логике)
+        if (!p.isBase) {
+          ws.send(JSON.stringify({ type: "error", message: "Информация загружается только для 'Основа'" }));
+          return;
+        }
+
+        // минимальная валидация
+        const sheet = data.sheet;
+        if (!sheet || typeof sheet !== "object") {
+          ws.send(JSON.stringify({ type: "error", message: "Некорректный файл персонажа" }));
+          return;
+        }
+
+        p.sheet = sheet;
+        logEvent(`${(isGM(ws) ? "GM" : p.ownerName)} обновил лист персонажа: ${p.name}`);
         broadcast();
         break;
       }
@@ -177,12 +204,8 @@ if (isBase) {
         const gm = isGM(ws);
         const owner = ownsPlayer(ws, p);
 
-        // права: GM всегда может, владелец — только своих
         if (!gm && !owner) return;
 
-        // В бою НЕ-GM может двигать:
-        // 1) своего персонажа, если сейчас его ход
-        // 2) или своего персонажа, если он ещё не выставлен на поле (x/y null)
         if (gameState.phase === "combat" && !gm) {
           const currentId = gameState.turnOrder[gameState.currentTurnIndex];
           const notPlacedYet = (p.x === null || p.y === null);
@@ -196,33 +219,6 @@ if (isBase) {
         break;
       }
 
-case "updatePlayerSize": {
-  const p = gameState.players.find(pl => pl.id === data.id);
-  if (!p) return;
-
-  const newSize = parseInt(data.size, 10);
-  if (!Number.isFinite(newSize) || newSize < 1 || newSize > 5) return;
-
-  const gm = isGM(ws);
-  const owner = ownsPlayer(ws, p);
-  if (!gm && !owner) return;
-
-  p.size = newSize;
-
-  // если стоит на поле — поджимаем координаты, чтобы не вылезал за границы
-  if (p.x !== null && p.y !== null) {
-    const maxX = gameState.boardWidth - p.size;
-    const maxY = gameState.boardHeight - p.size;
-    p.x = Math.max(0, Math.min(p.x, maxX));
-    p.y = Math.max(0, Math.min(p.y, maxY));
-  }
-
-  logEvent(`${p.name} изменил размер на ${p.size}x${p.size}`);
-  broadcast();
-  break;
-}
-
-        
       case "removePlayerFromBoard": {
         const p = gameState.players.find(p => p.id === data.id);
         if (!p) return;
@@ -302,7 +298,7 @@ case "updatePlayerSize": {
         if (!allRolled) return;
 
         gameState.turnOrder = [...gameState.players]
-          .sort((a, b) => b.initiative - a.initiative)
+          .sort((a, b) => (b.initiative || 0) - (a.initiative || 0))
           .map(p => p.id);
 
         gameState.phase = "placement";
@@ -316,14 +312,10 @@ case "updatePlayerSize": {
         if (gameState.phase !== "placement") return;
 
         autoPlacePlayers();
-
         gameState.phase = "combat";
         gameState.currentTurnIndex = 0;
 
-        const first = gameState.players.find(
-          p => p.id === gameState.turnOrder[0]
-        );
-
+        const first = gameState.players.find(p => p.id === gameState.turnOrder[0]);
         logEvent(`Бой начался. Первый ход: ${first?.name}`);
         broadcast();
         break;
@@ -361,7 +353,6 @@ case "updatePlayerSize": {
           p.x = null;
           p.y = null;
         });
-
         logEvent("Поле очищено: стены удалены, все персонажи убраны с поля");
         broadcast();
         break;
@@ -399,10 +390,8 @@ function autoPlacePlayers() {
 
   gameState.players.forEach(p => {
     if (p.x !== null && p.y !== null) return;
-
     p.x = x;
     p.y = y;
-
     x++;
     if (x >= gameState.boardWidth) {
       x = 0;
@@ -414,5 +403,3 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
-
