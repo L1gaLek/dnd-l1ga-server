@@ -535,3 +535,178 @@ button:hover {
   color: #aaa;
   font-size: 13px;
 }
+
+/* ===== MODAL (LSS-like: left tabs) ===== */
+.modal {
+  width: min(980px, 96vw);
+  max-height: min(86vh, 900px);
+}
+
+.modal-body {
+  padding: 0;              /* чтобы sidebar был встык */
+  overflow: hidden;        /* скролл будет внутри контента */
+}
+
+.sheet-layout {
+  display: flex;
+  height: min(76vh, 720px);
+}
+
+/* левое меню */
+.sheet-sidebar {
+  width: 210px;
+  background: #161616;
+  border-right: 1px solid #2a2a2a;
+  padding: 10px;
+  overflow: auto;
+}
+
+.sheet-tab {
+  width: 100%;
+  text-align: left;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #ddd;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sheet-tab:hover {
+  background: #1f1f1f;
+  border-color: #333;
+}
+
+.sheet-tab.active {
+  background: #222;
+  border-color: #555;
+  color: #fff;
+}
+
+/* правая часть */
+.sheet-main {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+/* "шапка" как у LSS: имя + краткие значения */
+.sheet-hero {
+  padding: 12px 14px;
+  border-bottom: 1px solid #2a2a2a;
+  background: #141414;
+}
+
+.sheet-hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-hero-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.sheet-hero-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.sheet-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sheet-chip {
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  min-width: 86px;
+}
+
+.sheet-chip .k {
+  font-size: 11px;
+  color: #aaa;
+}
+.sheet-chip .v {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* секции внутри вкладок */
+.sheet-section {
+  margin-bottom: 12px;
+}
+
+.sheet-section h3 {
+  margin: 10px 0 8px 0;
+  font-size: 14px;
+  color: #fff;
+}
+
+.sheet-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.sheet-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.sheet-card {
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.sheet-card h4 {
+  margin: 0 0 6px 0;
+  color: #fff;
+  font-size: 13px;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  padding: 2px 0;
+  border-bottom: 1px dashed rgba(255,255,255,0.08);
+}
+.kv:last-child { border-bottom: none; }
+
+.k { color: #bbb; }
+.v { color: #fff; text-align: right; }
+
+.sheet-list {
+  margin: 0;
+  padding-left: 16px;
+  color: #ddd;
+  font-size: 13px;
+}
+
+.sheet-pill {
+  display: inline-block;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
+  margin: 3px 6px 0 0;
+  color: #fff;
+}
+
