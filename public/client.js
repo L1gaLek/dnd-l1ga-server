@@ -8,7 +8,6 @@ const loginError = document.getElementById('loginError');
 const gameUI = document.getElementById('main-container');
 const myNameSpan = document.getElementById('myName');
 const myRoleSpan = document.getElementById('myRole');
-const userList = document.getElementById('player-list');
 
 const board = document.getElementById('game-board');
 const playerList = document.getElementById('player-list');
@@ -89,8 +88,6 @@ if (msg.type === "registered") {
 
     if (msg.type === "error") loginError.textContent = msg.message;
 
-    if (msg.type === "users") updateUserList(msg.users);
-
 if (msg.type === "init" || msg.type === "state") {
   boardWidth = msg.state.boardWidth;
   boardHeight = msg.state.boardHeight;
@@ -140,16 +137,6 @@ startInitiativeBtn?.addEventListener("click", () => {
 startCombatBtn?.addEventListener("click", () => {
   sendMessage({ type: "startCombat" });
 });
-
-// ================== USERS ==================
-function updateUserList(users) {
-  userList.innerHTML = '';
-  users.forEach(u => {
-    const li = document.createElement('li');
-    li.textContent = `${u.name} (${u.role})`;
-    userList.appendChild(li);
-  });
-}
 
 // ================== ROLE UI ==================
 function setupRoleUI(role) {
@@ -216,52 +203,56 @@ function updatePlayerList() {
   // 🔹 Группируем игроков по владельцу
   const grouped = {};
   players.forEach(p => {
-    if (!grouped[p.ownerId]) {
-     grouped[p.ownerId] = {
-  ownerName: p.ownerName || 'Unknown',
-  ownerRole: p.ownerRole || 'Spectator',
-  players: []
-};
+    const ownerId = p.ownerId || 'unknown';
+    if (!grouped[ownerId]) {
+      grouped[ownerId] = {
+        ownerName: p.ownerName || 'Unknown',
+        ownerRole: p.ownerRole || 'Spectator',
+        players: []
+      };
     }
-    grouped[p.ownerId].players.push(p);
+    grouped[ownerId].players.push(p);
   });
 
   // 🔹 Рисуем
   Object.values(grouped).forEach(group => {
-const ownerLi = document.createElement('li');
-ownerLi.style.marginTop = '8px';
-ownerLi.style.fontWeight = 'bold';
-ownerLi.classList.add('owner-header');
+    const ownerLi = document.createElement('li');
+    ownerLi.classList.add('owner-header');
+    ownerLi.style.marginTop = '8px';
+    ownerLi.style.fontWeight = 'bold';
 
-const nameSpan = document.createElement('span');
-nameSpan.textContent = group.ownerName;
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = group.ownerName;
 
-const roleSpan = document.createElement('span');
-roleSpan.classList.add('owner-role');
+    const roleSpan = document.createElement('span');
+    roleSpan.classList.add('owner-role');
 
-const role = group.ownerRole || 'Spectator'; // сервер теперь отдаёт ownerRole
-if (role === 'GM') {
-  roleSpan.textContent = ' (GM)';
-  roleSpan.classList.add('role-gm');
-} else if (role === 'DnD-Player') {
-  roleSpan.textContent = ' (DND-P)';
-  roleSpan.classList.add('role-player');
-} else {
-  roleSpan.textContent = ' (Spectr)';
-  roleSpan.classList.add('role-spect');
-}
+    if (group.ownerRole === 'GM') {
+      roleSpan.textContent = ' (GM)';
+      roleSpan.classList.add('role-gm');
+    } else if (group.ownerRole === 'DnD-Player') {
+      roleSpan.textContent = ' (DND-P)';
+      roleSpan.classList.add('role-player');
+    } else {
+      roleSpan.textContent = ' (Spectr)';
+      roleSpan.classList.add('role-spect');
+    }
 
-ownerLi.appendChild(nameSpan);
-ownerLi.appendChild(roleSpan);
+    ownerLi.appendChild(nameSpan);
+    ownerLi.appendChild(roleSpan);
 
     const ul = document.createElement('ul');
-    ul.style.paddingLeft = '0px';     // 🔑 убираем расширяющий padding
-ul.style.marginLeft = '12px';     // 🔑 отступ делаем margin'ом (не увеличивает ширину)
+    // 🔑 отступ делаем margin'ом (не распирает ширину, нет горизонтального скролла)
+    ul.style.paddingLeft = '0px';
+    ul.style.marginLeft = '12px';
 
     group.players.forEach(p => {
       const li = document.createElement('li');
-      li.className = 'player-list-item';
-      li.style.fontWeight = 'normal';
+      li.className = 'player-list-item' + (p.isBase ? ' base-player' : '');
+
+      // 🧩 Контейнер: кружок + имя (всегда рядом)
+      const nameWrap = document.createElement('div');
+      nameWrap.classList.add('player-name-wrap');
 
       // ✅ кружок размещения
       const indicator = document.createElement('span');
@@ -269,29 +260,24 @@ ul.style.marginLeft = '12px';     // 🔑 отступ делаем margin'ом 
       const placed = (p.x !== null && p.y !== null);
       indicator.classList.add(placed ? 'placed' : 'not-placed');
 
-      // ✅ текст
-const text = document.createElement('span');
-text.classList.add('player-name-text');   // 👈 добавили класс
-const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
-text.textContent = `${p.name} (${initVal})`;
+      // ✅ текст: имя + инициатива
+      const text = document.createElement('span');
+      text.classList.add('player-name-text');
+      const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
+      text.textContent = `${p.name} (${initVal})`;
 
+      nameWrap.appendChild(indicator);
+      nameWrap.appendChild(text);
+
+      // ✅ бейдж "Основа"
       if (p.isBase) {
-  const baseBadge = document.createElement('span');
-  baseBadge.classList.add('base-badge');
-  baseBadge.textContent = 'Основа';
-  // вставим бейдж рядом с именем
-  text.appendChild(document.createTextNode(' '));
-  text.appendChild(baseBadge);
-}
+        const baseBadge = document.createElement('span');
+        baseBadge.classList.add('base-badge');
+        baseBadge.textContent = 'Основа';
+        nameWrap.appendChild(baseBadge);
+      }
 
-// 🧩 Контейнер: кружок + имя
-const nameWrap = document.createElement('div');
-nameWrap.classList.add('player-name-wrap');
-
-nameWrap.appendChild(indicator);
-nameWrap.appendChild(text);
-
-li.appendChild(nameWrap);
+      li.appendChild(nameWrap);
 
       // Клик по игроку — выбираем (и если не размещён, ставим в 0,0 как раньше)
       li.addEventListener('click', () => {
@@ -302,10 +288,9 @@ li.appendChild(nameWrap);
       });
 
       // 🔒 Кнопки — только владельцу или GM
-      if (myRole === "GM" || p.ownerId === myId) {
+      if (myRole === 'GM' || p.ownerId === myId) {
         const removeFromBoardBtn = document.createElement('button');
         removeFromBoardBtn.textContent = 'С поля';
-        removeFromBoardBtn.style.marginLeft = '5px';
         removeFromBoardBtn.onclick = (e) => {
           e.stopPropagation();
           sendMessage({ type: 'removePlayerFromBoard', id: p.id });
@@ -313,7 +298,6 @@ li.appendChild(nameWrap);
 
         const removeCompletelyBtn = document.createElement('button');
         removeCompletelyBtn.textContent = 'Удалить';
-        removeCompletelyBtn.style.marginLeft = '5px';
         removeCompletelyBtn.onclick = (e) => {
           e.stopPropagation();
           sendMessage({ type: 'removePlayerCompletely', id: p.id });
@@ -330,6 +314,7 @@ li.appendChild(nameWrap);
     playerList.appendChild(ownerLi);
   });
 }
+
 
 // ================== BOARD ==================
 function renderBoard(state) {
@@ -400,18 +385,20 @@ addPlayerBtn.addEventListener('click', () => {
   const name = playerNameInput.value.trim();
   if (!name) return alert("Введите имя");
 
-const player = {
-  name,
-  color: playerColorInput.value,
-  size: parseInt(playerSizeInput.value),
-  isBase: !!isBaseCheckbox?.checked
-};
+  const player = {
+    name,
+    color: playerColorInput.value,
+    size: parseInt(playerSizeInput.value),
+    isBase: !!isBaseCheckbox?.checked
+  };
 
-sendMessage({ type: 'addPlayer', player });
+  sendMessage({ type: 'addPlayer', player });
 
-playerNameInput.value = '';
-if (isBaseCheckbox && !isBaseCheckbox.disabled) isBaseCheckbox.checked = false;
+  playerNameInput.value = '';
+  // чекбокс "Основа" после создания сбрасываем (если не заблокирован)
+  if (isBaseCheckbox && !isBaseCheckbox.disabled) isBaseCheckbox.checked = false;
 });
+
 
 // ================== MOVE PLAYER ==================
 board.addEventListener('click', e => {
@@ -537,19 +524,3 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
