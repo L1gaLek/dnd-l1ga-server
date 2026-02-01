@@ -130,106 +130,39 @@ case "startInitiative": {
 }        
 
       case "addPlayer": {
-  const user = getUserByWS(ws);
+  const user = users.find(u => u.ws === ws);
+        const isBase = !!data.player?.isBase;
+const isSummon = !!data.player?.isSummon;
+
+if (isBase && isSummon) {
+  ws.send(JSON.stringify({ type: "error", message: "Нельзя выбрать одновременно 'Основа' и 'Призвать'" }));
+  return;
+}
+
+if (isBase) {
+  const alreadyHasBase = gameState.players.some(p => p.ownerId === user.id && p.isBase);
+  if (alreadyHasBase) {
+    ws.send(JSON.stringify({ type: "error", message: "У вас уже есть основной персонаж (Основа)" }));
+    return;
+  }
+}
   if (!user) return;
 
-  const rawName = (data.player?.name || "").trim();
-  if (!rawName) {
-    ws.send(JSON.stringify({ type: "error", message: "Имя игрока обязательно" }));
-    return;
-  }
-
-  const isBase = !!data.player?.isBase;
-  const isSummon = !!data.player?.isSummon;
-
-  // нельзя быть одновременно "Основа" и "Призвать"
-  if (isBase && isSummon) {
-    ws.send(JSON.stringify({ type: "error", message: "Нельзя выбрать одновременно 'Основа' и 'Призвать'" }));
-    return;
-  }
-
-  // "Основа" может быть только одна на пользователя
-  if (isBase) {
-    const alreadyHasBase = gameState.players.some(p => p.ownerId === user.id && p.isBase);
-    if (alreadyHasBase) {
-      ws.send(JSON.stringify({ type: "error", message: "У вас уже есть основной персонаж (Основа)" }));
-      return;
-    }
-  }
-
-  const inCombat = (gameState.phase === "combat");
-
-  // Эти поля тебе пригодятся для призыва в бою (твоя прошлая логика)
-  const inherit = !!data.inheritInitiative;
-  const sourceId = data.sourceId || null; // текущий ходящий (если клиент будет передавать)
-  const source = sourceId ? gameState.players.find(pp => pp.id === sourceId) : null;
-
-  // создаём игрока как объект
-  const p = {
-    id: data.player?.id || uuidv4(),
-    name: rawName,
-    color: data.player?.color || "#ff0000",
-    size: Number(data.player?.size) || 1,
-
+  gameState.players.push({
+    id: data.player.id || uuidv4(),
+    name: data.player.name,
+    color: data.player.color,
+    size: data.player.size,
     x: null,
     y: null,
+    initiative: 0,
 
-    initiative: null,
-    hasRolledInitiative: false,
-
-    pendingJoinCombat: false,
-
+    // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
     ownerId: user.id,
-    ownerName: user.name,
+    ownerName: user.name
+  });
 
-    // НОВОЕ
-    isBase,
-    isSummon
-  };
-
-  // Если создают призыв в бою — применяем твою логику “ввод в бой”
-  if (inCombat && isSummon) {
-    // стараемся поставить рядом/в ту же клетку что source (если он есть)
-    if (source && source.x !== null && source.y !== null) {
-      p.x = source.x;
-      p.y = source.y;
-    }
-
-    if (inherit && source && source.initiative !== null) {
-      p.initiative = source.initiative;
-      p.hasRolledInitiative = true;
-      p.pendingJoinCombat = false;
-
-      logEvent(`${p.name} призван с инициативой ${p.initiative}`);
-    } else {
-      // нужно бросить инициативу и нажать “К бою” (у тебя это pendingJoinCombat)
-      p.initiative = null;
-      p.hasRolledInitiative = false;
-      p.pendingJoinCombat = true;
-
-      logEvent(`${p.name} призван: требуется инициатива и "К бою"`);
-    }
-  }
-
-  // добавляем в состояние
-  gameState.players.push(p);
-
-  // Если мы в бою — пересобираем порядок, но сохраняем текущего
-  if (inCombat) {
-    const currentId = gameState.turnOrder?.[gameState.currentTurnIndex] ?? null;
-
-    gameState.turnOrder = [...gameState.players]
-      .filter(pl => pl.hasRolledInitiative && !pl.pendingJoinCombat)
-      .sort((a, b) => (b.initiative ?? -1) - (a.initiative ?? -1))
-      .map(pl => pl.id);
-
-    if (currentId) {
-      const idx = gameState.turnOrder.indexOf(currentId);
-      if (idx >= 0) gameState.currentTurnIndex = idx;
-    }
-  }
-
-  logEvent(`Игрок ${p.name} создан пользователем ${user.name}${isBase ? " (Основа)" : ""}${isSummon ? " (Призыв)" : ""}`);
+  logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
   broadcast();
   break;
 }
@@ -460,7 +393,6 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
 
 
 
