@@ -219,6 +219,11 @@ case "removeWall":
 case "rollInitiative": {
   if (gameState.phase !== "initiative") return;
 
+if (gameState.players.every(p => p.hasRolledInitiative)) {
+  gameState.phase = "placement";
+  logEvent("Все бросили инициативу. Фаза размещения.");
+}
+  
   const user = getUserByWS(ws);
   if (!user) return;
 
@@ -254,22 +259,21 @@ case "startCombat": {
   if (!isGM(ws)) return;
   if (gameState.phase !== "placement") return;
 
-  autoPlacePlayers();
+  gameState.turnOrder = [...gameState.players]
+    .filter(p => p.x !== null && p.y !== null)
+    .sort((a, b) => b.initiative - a.initiative)
+    .map(p => p.id);
 
-  gameState.phase = "combat";
   gameState.currentTurnIndex = 0;
+  gameState.phase = "combat";
 
-  const firstId = gameState.turnOrder[0];
-  const first = gameState.players.find(p => p.id === firstId);
-
+  const first = gameState.players.find(p => p.id === gameState.turnOrder[0]);
   logEvent(`Бой начался. Первый ход: ${first?.name}`);
+
   broadcast();
   break;
-}  
-
-case "startCombat": {
-  console.log("startCombat received from", ws.user?.name, ws.user?.role);        
-
+}
+     
 case "endTurn":
   if (gameState.phase !== "combat") return;      
   if (!isGM(ws)) return;
@@ -361,6 +365,7 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
