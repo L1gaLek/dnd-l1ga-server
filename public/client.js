@@ -148,24 +148,6 @@ function renderLog(logs) {
 
 // ================== CURRENT PLAYER ==================
 function updateCurrentPlayer(state) {
-
-let currentPlayerId = null;
-
-function updateCurrentPlayer(state) {
-  if (!state || !state.turnOrder || state.turnOrder.length === 0) {
-    currentPlayerSpan.textContent = '-';
-    currentPlayerId = null;
-    return;
-  }
-  const id = state.turnOrder[state.currentTurnIndex];
-  const p = players.find(pl => pl.id === id);
-  currentPlayerSpan.textContent = p ? p.name : '-';
-  currentPlayerId = id;
-
-  // обновляем подсветку всех игроков
-  players.forEach(pl => setPlayerPosition(pl));
-}
-  
   if (!state || !state.turnOrder || state.turnOrder.length === 0) {
     currentPlayerSpan.textContent = '-';
     return;
@@ -299,13 +281,6 @@ function setPlayerPosition(player) {
   if (player.x === null || player.y === null) { el.style.display='none'; return; }
   el.style.display='flex';
 
-  // Подсветка текущего игрока в бою
-if (player.id === currentPlayerId) {
-  el.style.outline = "3px solid yellow";
-} else {
-  el.style.outline = "2px solid #888";
-}
-
   let maxX = boardWidth - player.size;
   let maxY = boardHeight - player.size;
   let x = Math.min(Math.max(player.x, 0), maxX);
@@ -406,19 +381,12 @@ function updatePhaseUI(state) {
     rollInitiativeBtn.style.display = "inline-block";
 
     const allRolled = state.players.every(p => p.hasRolledInitiative);
-    startInitiativeBtn.classList.toggle("ready", allRolled);
-    startInitiativeBtn.classList.toggle("active", !allRolled);
+    startInitiativeBtn.style.backgroundColor = allRolled ? "green" : "red";
   } else {
     rollInitiativeBtn.style.display = "none";
-    startInitiativeBtn.classList.remove("ready", "active");
+    startInitiativeBtn.style.backgroundColor = "";
   }
 
-  // Фаза размещения (кнопка начало боя)
-  if (state.phase === "placement") {
-    startCombatBtn.disabled = false;
-    startCombatBtn.style.backgroundColor = "orange"; // 🔹 оранжевая
-  } else {
-    startCombatBtn.disabled = true;
-    startCombatBtn.style.backgroundColor = "";
-  }
+  // Фаза размещения
+  startCombatBtn.disabled = state.phase !== "placement";
 }
