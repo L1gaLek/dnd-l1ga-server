@@ -320,7 +320,7 @@ function updatePlayerList() {
 
     ownerLi.appendChild(ul);
     playerList.appendChild(ownerLi);
-  });
+  };
 }
 
 // ================== BOARD ==================
@@ -536,6 +536,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
