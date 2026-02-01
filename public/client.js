@@ -321,7 +321,6 @@ function updatePlayerList() {
     ownerLi.appendChild(ul);
     playerList.appendChild(ownerLi);
   };
-}
 
 // ================== BOARD ==================
 function renderBoard(state) {
@@ -536,6 +535,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
