@@ -295,5 +295,19 @@ button:hover {
   margin-top: 4px;
 }
 
+/* Обёртка: кружок + имя в одну строку */
+.player-name-wrap {
+  display: flex;
+  align-items: center;   /* 🔑 кружок по центру имени */
+  gap: 6px;
+  width: 100%;
+}
+
+/* Имя игрока — переносится, но всегда справа от кружка */
+.player-name-text {
+  white-space: normal;
+  word-break: break-word;
+  flex: 1 1 auto;
+}
 
 
