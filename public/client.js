@@ -266,8 +266,14 @@ text.classList.add('player-name-text');   // 👈 добавили класс
 const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
 text.textContent = `${p.name} (${initVal})`;
 
-li.appendChild(indicator);
-li.appendChild(text);
+// 🧩 Контейнер: кружок + имя
+const nameWrap = document.createElement('div');
+nameWrap.classList.add('player-name-wrap');
+
+nameWrap.appendChild(indicator);
+nameWrap.appendChild(text);
+
+li.appendChild(nameWrap);
 
       // Клик по игроку — выбираем (и если не размещён, ставим в 0,0 как раньше)
       li.addEventListener('click', () => {
@@ -520,6 +526,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
