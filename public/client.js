@@ -88,6 +88,20 @@ if (msg.type === "init" || msg.type === "state") {
   boardHeight = msg.state.boardHeight;
   players = msg.state.players;
 
+  const phase = msg.state.phase;
+updatePhaseUI(phase, msg.state);
+
+  const startInitiativeBtn = document.getElementById("start-initiative");
+const startCombatBtn = document.getElementById("start-combat");
+
+startInitiativeBtn.onclick = () => {
+  sendMessage({ type: "startInitiative" });
+};
+
+startCombatBtn.onclick = () => {
+  sendMessage({ type: "startCombat" });
+};
+  
   renderBoard(msg.state);
   updatePlayerList();
   updateCurrentPlayer(msg.state);
@@ -100,6 +114,34 @@ if (msg.type === "init" || msg.type === "state") {
     console.error(e);
   };
 });
+
+function updatePhaseUI(phase, state) {
+  // Инициатива
+  if (phase === "initiative") {
+    rollInitiativeBtn.style.display = "inline-block";
+    startInitiativeBtn.style.background = "red";
+
+    const allRolled = state.players.every(p => p.hasRolledInitiative);
+    if (allRolled) {
+      startInitiativeBtn.style.background = "green";
+    }
+  } else {
+    rollInitiativeBtn.style.display = "none";
+    startInitiativeBtn.style.background = "";
+  }
+
+  // Размещение
+  if (phase === "placement") {
+    startCombatBtn.disabled = false;
+  } else {
+    startCombatBtn.disabled = true;
+  }
+
+  // Бой
+  if (phase === "combat") {
+    rollInitiativeBtn.style.display = "none";
+  }
+}
 
 // ================== USERS ==================
 function updateUserList(users) {
@@ -362,6 +404,7 @@ resetGameBtn.addEventListener('click', () => {
 
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
 
 
 
