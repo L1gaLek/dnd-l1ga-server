@@ -598,7 +598,7 @@ const weaponsText = weapons.length
 
 const coins = sheet.coins || {};
 const coinsText = `CP: ${v(coins.cp, 0)} • SP: ${v(coins.sp, 0)} • EP: ${v(coins.ep, 0)} • GP: ${v(coins.gp, 0)} • PP: ${v(coins.pp, 0)}`;
-    ? ["cp","sp","ep","gp","pp"].filter(k => typeof coins[k] !== "undefined")
+     ["cp","sp","ep","gp","pp"].filter(k => typeof coins[k] !== "undefined")
         .map(k => `${k.toUpperCase()}: ${coins[k]}`).join(" • ")
     : "Нет данных";
 
@@ -1178,5 +1178,6 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
 
