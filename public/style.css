@@ -11,33 +11,14 @@ body {
   color: #ddd;
 }
 
-/* MAIN LAYOUT */
+/* Основной контейнер */
 #main-container {
   display: flex;
-  flex-direction: column;
-  align-items: center;          /* 🔑 центрируем весь интерфейс по горизонтали */
-  gap: 10px;
-}
-
-#status-bar {
-  font-weight: bold;
-  color: #fff;
-  width: 100%;
-  max-width: 1100px;
-}
-
-/* Контент: левая панель + игровая колонка */
-#content-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;      /* 🔑 центрируем связку (левая панель + поле) */
+  align-items: flex-start; /* выравнивание по верху */
   gap: 20px;
-  width: 100%;
 }
 
-/* ---------------- LEFT PANEL ---------------- */
-
-/* Левая панель: журнал сверху, ниже 2 блока в ряд */
+/* Левая панель: журнал + управление + инициатива (в одну строку) */
 #action-log-container {
   display: flex;
   flex-direction: column;
@@ -45,10 +26,21 @@ body {
   width: 540px; /* ширина под 2 карточки */
 }
 
+#content-row {
+  display: flex;
+  align-items: flex-start; /* 🔑 теперь ВЕРХ СОВПАДАЕТ */
+  gap: 20px;
+}
+
+/* Статус (Вы | Роль) */
+#status-bar {
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 10px;
+}
+
 /* Журнал, управление, список инициативы */
-#action-log,
-#player-management,
-#player-list-container {
+#action-log, #player-management, #player-list-container {
   background-color: #1e1e1e;
   border: 1px solid #555;
   padding: 10px;
@@ -58,165 +50,46 @@ body {
 }
 
 #action-log {
-  max-height: 200px; /* журнал в 2 раза ниже */
+  max-height: 200px;
 }
 
-#action-bottom-row {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
+#player-management {
+  width: 260px;
+  max-height: 260px;
 }
 
-#player-management,
 #player-list-container {
   width: 260px;
-  max-height: 300px;
-}
-
-/* В списке инициативы запрещаем горизонтальный скролл */
-#player-list-container {
+  max-height: 360px;
   overflow-x: hidden;
 }
 
-#action-log h3,
-#player-management h3,
-#player-list-container h3 {
+#action-log h3, #player-list-container h3 {
   margin-top: 0;
   color: #fff;
 }
 
-#log-list,
-#player-list {
+#action-log ul, #player-list {
   list-style: none;
-  padding-left: 0;
+  padding-left: 10px;
   margin: 0;
 }
 
-#log-list li,
-#player-list li {
+#action-log li, #player-list li {
   margin-bottom: 4px;
-}
-
-/* Управление игроками */
-#player-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.player-type {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.type-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* ---------------- PLAYER LIST UI ---------------- */
-
-/* Заголовок владельца (имя + роль) */
-.owner-header {
-  margin-top: 8px;
   font-weight: bold;
 }
 
-.owner-role.role-gm { color: #3cb371; }      /* зелёный */
-.owner-role.role-player { color: #4aa3ff; }  /* голубой */
-.owner-role.role-spect { color: inherit; }   /* без цвета */
-
-/* Карточка игрока */
-.player-list-item {
-  width: 100%;
-  max-width: 100%;
-
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 6px 8px;
-  margin-bottom: 6px;
-
-  display: flex;
-  flex-wrap: wrap;             /* имя и кнопки могут переноситься */
-  align-items: flex-start;
-  gap: 6px;
-
-  background-color: #1a1a1a;
-}
-
-.player-list-item:hover {
-  border-color: #777;
-  background-color: #222;
-}
-
-/* Обёртка: кружок + имя + бейдж */
-.player-name-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  max-width: 100%;
-}
-
-.player-name-text {
-  font-weight: bold;
-  color: #fff;
-  white-space: normal;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
-/* Индикатор размещения */
-.placement-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-  flex: 0 0 auto;
-}
-
-.placement-indicator.not-placed { background-color: orange; }
-.placement-indicator.placed { background-color: #3cb371; }
-
-/* Бейдж "Основа" */
-.base-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border: 1px solid #c9a227;
-  border-radius: 10px;
-  font-size: 11px;
-  color: #f0d36b;
-  background: rgba(201, 162, 39, 0.12);
-}
-
-/* Чуть выделим карточку основы */
-.base-player {
-  border-color: rgba(201, 162, 39, 0.6);
-}
-
-/* Кнопки в карточке */
-.player-list-item button {
-  padding: 3px 8px;
-  font-size: 12px;
-  border-radius: 3px;
-  white-space: nowrap;
-  flex: 0 0 auto;
-  margin-top: 4px;
-}
-
-/* ---------------- GAME AREA ---------------- */
-
+/* Игровая область */
 #game-container {
   display: flex;
   flex-direction: column;
-  align-items: center;      /* центрируем содержимое */
+  align-items: center;      /* ⬅ центрируем СОДЕРЖИМОЕ */
   gap: 10px;
 
-  margin: 0;
-  max-width: fit-content;   /* ширина = контент (поле) */
+  /* КЛЮЧЕВОЕ */
+  margin: 0 auto;           /* ⬅ центрируем колонку */
+  max-width: fit-content;   /* ⬅ ширина = контент (поле) */
 }
 
 /* Текущий игрок */
@@ -226,13 +99,12 @@ body {
   color: #fff;
 }
 
-/* Настройки поля и кнопки */
-#board-settings, #controls, #environment-controls {
+/* Настройки поля и игрока */
+#board-settings, #controls, #player-controls, #environment-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 10px;
-  justify-content: center;
 }
 
 button, input, select {
@@ -253,6 +125,8 @@ button:hover {
   border: 2px solid #555;
   background-color: #111;
   padding: 2px;
+
+  /* КЛЮЧЕВОЕ */
   overflow: hidden;
   width: fit-content;
   height: fit-content;
@@ -262,7 +136,10 @@ button:hover {
 #game-board {
   position: relative;
   display: grid;
+
+  /* УБИРАЕМ gap — он ломает расчёты */
   gap: 0;
+
   background-color: #111;
 }
 
@@ -272,10 +149,12 @@ button:hover {
   height: 50px;
   background-color: #2a2a2a;
   box-sizing: border-box;
+
+  /* вместо border */
   outline: 1px solid #444;
 }
 
-/* Игроки на поле */
+/* Игроки */
 .player {
   position: absolute;
   border-radius: 50%;
@@ -294,9 +173,46 @@ button:hover {
   cursor: grabbing;
 }
 
-/* Стены */
+/* Стены и подсветка */
 .cell.wall {
   background-color: #555 !important;
+}
+
+.wall.dragging {
+  opacity: 0.6;
+  outline: 2px dashed yellow;
+}
+
+.cell.hovering {
+  outline: 2px dashed #f0f;
+}
+
+
+#gm-controls button {
+  margin-right: 5px;
+  padding: 5px 10px;
+}
+
+/* Подсветки фаз (используем классы на конкретных кнопках) */
+#start-initiative.active {
+  background-color: red;
+  color: white;
+}
+
+#start-initiative.ready {
+  background-color: green;
+  color: white;
+}
+
+/* Оранжевая подсветка: можно начинать бой */
+#start-combat.pending {
+  background-color: orange;
+  color: black;
+}
+
+#start-combat.ready {
+  background-color: green;
+  color: white;
 }
 
 /* Подсветка игрока, который сейчас ходит */
@@ -311,23 +227,125 @@ button:hover {
   box-shadow: 0 0 12px rgba(255, 255, 0, 0.75);
 }
 
-/* Подсветки фаз */
-#start-initiative.active {
-  background-color: red;
-  color: white;
+/* Призванные/временные до "К бою" — лёгкая пунктирная рамка */
+.player.pending-combat {
+  outline: 2px dashed rgba(255,255,255,0.7);
+  outline-offset: 2px;
 }
 
-#start-initiative.ready {
-  background-color: green;
-  color: white;
+
+#player-management h3 {
+  margin-top: 0;
+  color: #fff;
 }
 
-#start-combat.pending {
+.player-type {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.type-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Строка под журналом: управление + инициатива */
+#action-bottom-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+/* Индикатор размещения игрока */
+.placement-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* Не размещён */
+.placement-indicator.not-placed {
   background-color: orange;
-  color: black;
 }
 
-#start-combat.ready {
-  background-color: green;
-  color: white;
+/* Размещён */
+.placement-indicator.placed {
+  background-color: #3cb371; /* зелёный */
 }
+
+/* Строка игрока в списке */
+.player-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  flex-wrap: wrap;           /* 🔑 разрешаем перенос */
+}
+
+/* Имя занимает всё свободное место и НЕ сжимается до нуля */
+.player-name-text {
+  flex: 1 1 100%;        /* занимает всю строку */
+  white-space: normal;   /* 🔑 разрешаем перенос */
+  word-break: break-word;
+}
+
+/* Кнопки не должны сжиматься */
+.player-list-item button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 3px 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+/* Обёртка: кружок + имя в одну строку */
+.player-name-wrap {
+  display: flex;
+  align-items: center;   /* 🔑 кружок по центру имени */
+  gap: 6px;
+  width: 100%;
+}
+
+/* Имя игрока — переносится, но всегда справа от кружка */
+.player-name-text {
+  white-space: normal;
+  word-break: break-word;
+  flex: 1 1 auto;
+  font-weight: bold;
+  color: #fff;
+}
+
+
+/* Рамка одного игрока в списке инициативы */
+.player-list-item {
+  width: 100%;                 /* ⬅️ строго внутри контейнера */
+  max-width: 100%;
+  
+  border: 1px solid #444;      /* тонкая рамка */
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+
+  display: flex;
+  flex-wrap: wrap;             /* имя и кнопки могут переноситься */
+  align-items: flex-start;
+  gap: 6px;
+
+  background-color: #1a1a1a;   /* чуть отличается от фона */
+}
+
+.player-list-item:hover {
+  border-color: #777;
+  background-color: #222;
+}
+
+
+
+
+
