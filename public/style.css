@@ -345,6 +345,22 @@ button:hover {
   background-color: #222;
 }
 
+/* Роль владельца в заголовке группы */
+.owner-role.role-gm { color: #3cb371; }      /* зелёный */
+.owner-role.role-player { color: #4aa3ff; }  /* голубой */
+.owner-role.role-spect { color: inherit; }   /* без цвета */
+
+/* Бейдж "Основа" */
+.base-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid #c9a227;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #f0d36b;
+  background: rgba(201, 162, 39, 0.12);
+}
 
 
 
