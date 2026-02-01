@@ -281,10 +281,10 @@ button:hover {
 /* Строка игрока в списке */
 .player-list-item {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
-  flex-wrap: wrap;           /* 🔑 разрешаем перенос */
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 6px;
 }
 
 /* Имя занимает всё свободное место и НЕ сжимается до нуля */
@@ -304,21 +304,21 @@ button:hover {
   border-radius: 3px;
 }
 
-/* Обёртка: кружок + имя в одну строку */
+/* левая часть: индикатор + имя + бейдж "основа" */
 .player-name-wrap {
   display: flex;
-  align-items: center;   /* 🔑 кружок по центру имени */
+  align-items: center;
   gap: 6px;
-  width: 100%;
+  min-width: 0;
 }
 
-/* Имя игрока — переносится, но всегда справа от кружка */
+/* уменьшаем текст и "высоту" строки */
 .player-name-text {
-  white-space: normal;
-  word-break: break-word;
-  flex: 1 1 auto;
-  font-weight: bold;
-  color: #fff;
+  font-size: 12px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 
@@ -404,12 +404,28 @@ button:hover {
   text-transform: lowercase;
 }
 
+/* справа: селект + кнопки */
+.player-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 
 .size-select {
-  margin-left: 8px;
   padding: 2px 6px;
   border-radius: 6px;
   border: 1px solid #555;
   background: #111;
   color: #eee;
+  font-size: 12px;
+  line-height: 14px;
 }
+
+/* кнопки в списке игроков компактнее */
+.player-actions button {
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 14px;
+}
+
