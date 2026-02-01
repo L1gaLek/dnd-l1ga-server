@@ -388,6 +388,8 @@ function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON
 
   // Фаза размещения
   startCombatBtn.disabled = state.phase !== "placement";
+}
+}
 
 function updatePhaseUI(state) {
 
@@ -421,5 +423,6 @@ function updatePhaseUI(state) {
     startCombatBtn.style.backgroundColor = "";
   }
 }
+
 
 
