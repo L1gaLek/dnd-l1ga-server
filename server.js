@@ -135,14 +135,19 @@ wss.on("connection", ws => {
 
         const isBase = !!data.player?.isBase;
 
-        // ✅ Основа может быть только одна на всю игру
-        if (isBase) {
-          const baseAlreadyExists = gameState.players.some(p => p.isBase);
-          if (baseAlreadyExists) {
-            ws.send(JSON.stringify({ type: "error", message: "Основа уже существует. Можно иметь только одну основу на всю игру." }));
-            return;
-          }
-        }
+// ✅ Основа может быть только одна НА ПОЛЬЗОВАТЕЛЯ
+if (isBase) {
+  const baseAlreadyExistsForOwner = gameState.players.some(
+    p => p.isBase && p.ownerId === user.id
+  );
+  if (baseAlreadyExistsForOwner) {
+    ws.send(JSON.stringify({
+      type: "error",
+      message: "У вас уже есть Основа. Можно иметь только одну основу на пользователя."
+    }));
+    return;
+  }
+}
 
         gameState.players.push({
           id: data.player.id || uuidv4(),
@@ -382,3 +387,4 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
