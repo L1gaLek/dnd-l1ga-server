@@ -240,14 +240,14 @@ function updatePlayerList() {
     const ul = document.createElement('ul');
     ul.style.paddingLeft = '15px';
 
-   group.players.forEach(p => {
+ group.players.forEach(p => {
   const li = document.createElement('li');
-  li.className = 'player-list-item'; // чтобы работали стили flex
+  li.className = 'player-list-item';
+  li.style.fontWeight = 'normal';
 
-  // ✅ КРУЖОК слева
+  // ✅ КРУЖОК слева: размещён/не размещён
   const indicator = document.createElement('span');
   indicator.classList.add('placement-indicator');
-
   const placed = (p.x !== null && p.y !== null);
   indicator.classList.add(placed ? 'placed' : 'not-placed');
 
@@ -259,14 +259,35 @@ function updatePlayerList() {
   li.appendChild(indicator);
   li.appendChild(text);
 
-  li.style.fontWeight = 'normal';
-
+  // Клик по игроку (как было)
   li.addEventListener('click', () => {
     selectedPlayer = p;
     if (p.x === null || p.y === null) {
       sendMessage({ type: 'movePlayer', id: p.id, x: 0, y: 0 });
     }
   });
+
+  // 🔒 КНОПКИ — только владельцу или GM
+  if (myRole === "GM" || p.ownerId === myId) {
+    const removeFromBoardBtn = document.createElement('button');
+    removeFromBoardBtn.textContent = 'С поля';
+    removeFromBoardBtn.style.marginLeft = '5px';
+    removeFromBoardBtn.onclick = (e) => {
+      e.stopPropagation();
+      sendMessage({ type: 'removePlayerFromBoard', id: p.id });
+    };
+
+    const removeCompletelyBtn = document.createElement('button');
+    removeCompletelyBtn.textContent = 'Удалить';
+    removeCompletelyBtn.style.marginLeft = '5px';
+    removeCompletelyBtn.onclick = (e) => {
+      e.stopPropagation();
+      sendMessage({ type: 'removePlayerCompletely', id: p.id });
+    };
+
+    li.appendChild(removeFromBoardBtn);
+    li.appendChild(removeCompletelyBtn);
+  }
 
   ul.appendChild(li);
 });
@@ -515,6 +536,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
