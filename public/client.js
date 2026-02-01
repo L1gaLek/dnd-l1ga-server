@@ -110,6 +110,7 @@ startInitiativeBtn?.addEventListener("click", () => {
 });
 
 startCombatBtn?.addEventListener("click", () => {
+  console.log("CLIENT: startCombat click");
   sendMessage({ type: "startCombat" });
 });
 
@@ -422,6 +423,7 @@ function sendMessage(msg){
     ws.send(JSON.stringify(msg));
   }
 }
+
 
 
 
