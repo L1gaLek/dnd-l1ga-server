@@ -591,12 +591,13 @@ function renderSheetModal(player) {
   const WIS = statLine('wis');
   const CHA = statLine('cha');
 
-  const weapons = Array.isArray(sheet.weaponsList)
-    ? sheet.weaponsList.map(w => w?.name).filter(Boolean)
-    : [];
+const weapons = Array.isArray(sheet.weaponsList) ? sheet.weaponsList : [];
+const weaponsText = weapons.length
+  ? weapons.map(w => `${v(w.name)} (АТК +${v(w.mod, 0)}), урон: ${v(w.dmg)}`).join(", ")
+  : "Нет данных";
 
-  const coins = sheet.coins ? sheet.coins : null;
-  const coinsText = coins
+const coins = sheet.coins || {};
+const coinsText = `CP: ${v(coins.cp, 0)} • SP: ${v(coins.sp, 0)} • EP: ${v(coins.ep, 0)} • GP: ${v(coins.gp, 0)} • PP: ${v(coins.pp, 0)}`;
     ? ["cp","sp","ep","gp","pp"].filter(k => typeof coins[k] !== "undefined")
         .map(k => `${k.toUpperCase()}: ${coins[k]}`).join(" • ")
     : "Нет данных";
@@ -748,6 +749,11 @@ function setupRoleUI(role) {
   } else if (role === "DnD-Player") {
     resetGameBtn.style.display = 'none';
   }
+}
+
+function v(x, fallback = "-") {
+  if (x && typeof x === "object" && "value" in x) return x.value ?? fallback;
+  return (x ?? fallback);
 }
 
 // ================== LOG ==================
@@ -1172,4 +1178,5 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
