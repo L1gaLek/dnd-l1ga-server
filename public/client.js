@@ -52,6 +52,7 @@ let wallMode = null;
 let mouseDown = false;
 
 const playerElements = new Map();
+let finishInitiativeSent = false;
 
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
@@ -150,11 +151,26 @@ function renderLog(logs) {
 function updateCurrentPlayer(state) {
   if (!state || !state.turnOrder || state.turnOrder.length === 0) {
     currentPlayerSpan.textContent = '-';
+    highlightCurrentTurn(null);
     return;
   }
+
   const id = state.turnOrder[state.currentTurnIndex];
   const p = players.find(pl => pl.id === id);
   currentPlayerSpan.textContent = p ? p.name : '-';
+
+  // Подсветка фигуры на поле, когда идёт бой
+  if (state.phase === 'combat') highlightCurrentTurn(id);
+  else highlightCurrentTurn(null);
+}
+
+function highlightCurrentTurn(playerId) {
+  // снимаем подсветку со всех
+  playerElements.forEach((el) => el.classList.remove('current-turn'));
+
+  if (!playerId) return;
+  const el = playerElements.get(playerId);
+  if (el) el.classList.add('current-turn');
 }
 
 // ================== PLAYER LIST ==================
@@ -376,17 +392,48 @@ resetGameBtn.addEventListener('click', () => {
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
 function updatePhaseUI(state) {
-  // Фаза инициативы
+  const allRolled = state.players?.length
+    ? state.players.every(p => p.hasRolledInitiative)
+    : false;
+
+  // ---------- КНОПКА "Фаза инициативы" ----------
+  // (красная = активная фаза; зелёная = все бросили)
   if (state.phase === "initiative") {
     rollInitiativeBtn.style.display = "inline-block";
 
-    const allRolled = state.players.every(p => p.hasRolledInitiative);
-    startInitiativeBtn.style.backgroundColor = allRolled ? "green" : "red";
+    startInitiativeBtn.classList.remove('active', 'ready', 'pending');
+    startInitiativeBtn.classList.add(allRolled ? 'ready' : 'active');
+
+    // 🔑 Как только все бросили — автоматически завершаем инициативу
+    // чтобы сервер перевёл фазу в placement и можно было начинать бой.
+    if (myRole === 'GM' && allRolled && !finishInitiativeSent) {
+      finishInitiativeSent = true;
+      sendMessage({ type: 'finishInitiative' });
+    }
   } else {
     rollInitiativeBtn.style.display = "none";
-    startInitiativeBtn.style.backgroundColor = "";
+    startInitiativeBtn.classList.remove('active', 'ready', 'pending');
+
+    // если мы вышли из инициативы — подготовим флаг к следующему разу
+    finishInitiativeSent = false;
   }
 
-  // Фаза размещения
-  startCombatBtn.disabled = state.phase !== "placement";
+  // ---------- КНОПКА "Начало боя" ----------
+  // оранжевая = можно начинать бой (placement)
+  // зелёная   = бой идёт (combat)
+  startCombatBtn.classList.remove('active', 'ready', 'pending');
+
+  if (state.phase === 'placement') {
+    startCombatBtn.disabled = false;
+    startCombatBtn.classList.add('pending'); // оранжевая
+  } else if (state.phase === 'combat') {
+    startCombatBtn.disabled = false;
+    startCombatBtn.classList.add('ready'); // зелёная
+  } else {
+    startCombatBtn.disabled = true;
+  }
+
+  // Обновляем подпись "Текущий игрок" и подсветку
+  updateCurrentPlayer(state);
 }
+
