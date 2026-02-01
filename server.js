@@ -140,7 +140,8 @@ case "startInitiative": {
     size: data.player.size,
     x: null,
     y: null,
-    initiative: 0,
+    initiative: null,
+hasRolledInitiative: false,
 
     // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
     ownerId: user.id,
@@ -156,12 +157,20 @@ case "movePlayer": {
   const p = gameState.players.find(p => p.id === data.id);
   if (!p) return;
 
-if (gameState.phase === "combat") {
-  const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-  if (p.id !== currentId) return;
-}
-  
-  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+  const gm = isGM(ws);
+  const owner = ownsPlayer(ws, p);
+
+  // права: GM всегда может, владелец — только своих
+  if (!gm && !owner) return;
+
+  // В бою НЕ-GM может двигать:
+  // 1) своего персонажа, если сейчас его ход
+  // 2) или своего персонажа, если он ещё не выставлен на поле (x/y null) — чтобы можно было "ввести" нового бойца
+  if (gameState.phase === "combat" && !gm) {
+    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+    const notPlacedYet = (p.x === null || p.y === null);
+    if (p.id !== currentId && !notPlacedYet) return;
+  }
 
   p.x = data.x;
   p.y = data.y;
@@ -217,18 +226,48 @@ case "removeWall":
   break;
 
 case "rollInitiative": {
-  if (gameState.phase !== "initiative") return;
+  // Разрешаем бросок инициативы:
+  // - в фазе initiative (как раньше)
+  // - и в combat, но только для новых/неброшенных персонажей
+  if (gameState.phase !== "initiative" && gameState.phase !== "combat") return;
 
   const user = getUserByWS(ws);
   if (!user) return;
+
+  const beforeCurrentId =
+    gameState.turnOrder && gameState.turnOrder.length
+      ? gameState.turnOrder[gameState.currentTurnIndex]
+      : null;
+
+  let rolledAny = false;
 
   gameState.players
     .filter(p => p.ownerId === user.id && !p.hasRolledInitiative)
     .forEach(p => {
       p.initiative = Math.floor(Math.random() * 20) + 1;
       p.hasRolledInitiative = true;
+      rolledAny = true;
       logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
     });
+
+  if (!rolledAny) {
+    broadcast();
+    return;
+  }
+
+  // Если мы в бою — пересобираем turnOrder с учётом новых инициатив,
+  // но сохраняем текущего ходящего (не "прыгаем" на другого)
+  if (gameState.phase === "combat") {
+    gameState.turnOrder = [...gameState.players]
+      .filter(p => p.hasRolledInitiative) // в бою учитываем только тех, у кого уже есть инициатива
+      .sort((a, b) => b.initiative - a.initiative)
+      .map(p => p.id);
+
+    if (beforeCurrentId) {
+      const newIndex = gameState.turnOrder.indexOf(beforeCurrentId);
+      if (newIndex >= 0) gameState.currentTurnIndex = newIndex;
+    }
+  }
 
   broadcast();
   break;
@@ -344,6 +383,9 @@ function autoPlacePlayers() {
   let y = 0;
 
   gameState.players.forEach(p => {
+    // 🔑 НЕ трогаем тех, кто уже выставлен вручную
+    if (p.x !== null && p.y !== null) return;
+
     p.x = x;
     p.y = y;
 
@@ -358,4 +400,5 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
