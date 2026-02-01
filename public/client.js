@@ -287,6 +287,9 @@ function updatePlayerList() {
 
       li.appendChild(nameWrap);
 
+      const actions = document.createElement('div');
+actions.className = 'player-actions';
+
       // ✅ изменение размера игрока (только владелец или GM)
 if (myRole === "GM" || p.ownerId === myId) {
   const sizeSelect = document.createElement('select');
@@ -305,7 +308,7 @@ if (myRole === "GM" || p.ownerId === myId) {
     sendMessage({ type: 'updatePlayerSize', id: p.id, size: parseInt(sizeSelect.value, 10) });
   });
 
-  li.appendChild(sizeSelect);
+  actions.appendChild(sizeSelect);
 }
 
       li.addEventListener('click', () => {
@@ -332,8 +335,10 @@ if (myRole === "GM" || p.ownerId === myId) {
           sendMessage({ type: 'removePlayerCompletely', id: p.id });
         };
 
-        li.appendChild(removeFromBoardBtn);
-        li.appendChild(removeCompletelyBtn);
+actions.appendChild(removeFromBoardBtn);
+actions.appendChild(removeCompletelyBtn);
+
+        li.appendChild(actions);
       }
 
       ul.appendChild(li);
@@ -372,14 +377,13 @@ function renderBoard(state) {
 // ================== PLAYER POSITION ==================
 function setPlayerPosition(player) {
   let el = playerElements.get(player.id);
+
   if (!el) {
     el = document.createElement('div');
     el.classList.add('player');
     el.textContent = player.name[0];
     el.style.backgroundColor = player.color;
     el.style.position = 'absolute';
-    el.style.width = `${player.size * 50}px`;
-    el.style.height = `${player.size * 50}px`;
 
     el.addEventListener('mousedown', () => {
       if (!editEnvironment) {
@@ -397,7 +401,16 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  if (player.x === null || player.y === null) { el.style.display = 'none'; return; }
+  // ✅ ВАЖНО: обновляем внешний вид КАЖДЫЙ РАЗ (для realtime изменения размера/цвета)
+  el.textContent = player.name ? player.name[0] : '?';
+  el.style.backgroundColor = player.color;
+  el.style.width = `${player.size * 50}px`;
+  el.style.height = `${player.size * 50}px`;
+
+  if (player.x === null || player.y === null) {
+    el.style.display = 'none';
+    return;
+  }
   el.style.display = 'flex';
 
   let maxX = boardWidth - player.size;
@@ -406,7 +419,10 @@ function setPlayerPosition(player) {
   let y = Math.min(Math.max(player.y, 0), maxY);
 
   const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-  if (cell) { el.style.left = `${cell.offsetLeft}px`; el.style.top = `${cell.offsetTop}px`; }
+  if (cell) {
+    el.style.left = `${cell.offsetLeft}px`;
+    el.style.top = `${cell.offsetTop}px`;
+  }
 }
 
 // ================== ADD PLAYER ==================
@@ -555,6 +571,7 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
 
 
