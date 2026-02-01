@@ -23,7 +23,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  width: 560px; /* ширина под 2 карточки */
+  width: 540px; /* ширина под 2 карточки */
 }
 
 #content-row {
@@ -344,6 +344,7 @@ button:hover {
   border-color: #777;
   background-color: #222;
 }
+
 
 
 
