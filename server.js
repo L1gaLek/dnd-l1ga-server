@@ -219,11 +219,6 @@ case "removeWall":
 case "rollInitiative": {
   if (gameState.phase !== "initiative") return;
 
-if (gameState.players.every(p => p.hasRolledInitiative)) {
-  gameState.phase = "placement";
-  logEvent("Все бросили инициативу. Фаза размещения.");
-}
-  
   const user = getUserByWS(ws);
   if (!user) return;
 
@@ -234,6 +229,12 @@ if (gameState.players.every(p => p.hasRolledInitiative)) {
       p.hasRolledInitiative = true;
       logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
     });
+
+  // ✅ ПРОВЕРЯЕМ ПОСЛЕ БРОСКОВ
+  if (gameState.players.every(p => p.hasRolledInitiative)) {
+    gameState.phase = "placement";
+    logEvent("Все бросили инициативу. Фаза размещения.");
+  }
 
   broadcast();
   break;
@@ -374,6 +375,7 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
