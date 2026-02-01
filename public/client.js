@@ -121,11 +121,11 @@ if (msg.type === "init" || msg.type === "state") {
   // ✅ 2) Обновляем список игроков из state
   players = msg.state.players || [];
 
-  // Если у пользователя уже есть "Основа" — запрещаем создавать вторую
-if (isBaseCheckbox) {
+// Если у пользователя уже есть "Основа" — запрещаем создавать вторую
+if (isBaseCheckbox && myId) {
   const hasBase = players.some(p => p.ownerId === myId && p.isBase);
   isBaseCheckbox.disabled = hasBase;
-  if (hasBase) isBaseCheckbox.checked = false; // чтобы не оставалась включенной
+  if (hasBase) isBaseCheckbox.checked = false;
 }
 
   // Если выбранный игрок был удалён — сбрасываем выбор
@@ -352,19 +352,18 @@ addPlayerBtn.addEventListener('click', () => {
   const name = playerNameInput.value.trim();
   if (!name) return alert("Введите имя");
 
-  const isBase = !!isBaseCheckbox?.checked;
-  const isSummon = !!isSummonCheckbox?.checked;
-
-  // защита от двойного выбора
-  if (isBase && isSummon) return alert("Выберите только один тип: Основа или Призвать");
-
   const player = {
     name,
     color: playerColorInput.value,
     size: parseInt(playerSizeInput.value),
-    isBase,
-    isSummon
+    isBase: !!isBaseCheckbox?.checked,
+    isSummon: !!isSummonCheckbox?.checked
   };
+
+  // защита от двух галочек
+  if (player.isBase && player.isSummon) {
+    return alert("Выберите только один тип: Основа или Призвать");
+  }
 
   sendMessage({ type: 'addPlayer', player });
 
@@ -497,6 +496,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
