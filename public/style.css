@@ -190,23 +190,4 @@ button:hover {
   color: white;
 }
 
-#gm-controls button.combat-ready {
-  background-color: orange;
-  color: white;
-}
-
-.player.active-turn {
-  outline: 4px solid gold;
-  box-shadow: 0 0 10px gold;
-}
-
-#start-combat.ready { 
-  background-color: orange; 
-  color: white; 
-}
-
-#start-combat.active { 
-  background-color: green; 
-  color: white; 
-}
 
