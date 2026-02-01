@@ -156,12 +156,20 @@ case "movePlayer": {
   const p = gameState.players.find(p => p.id === data.id);
   if (!p) return;
 
-if (gameState.phase === "combat") {
-  const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-  if (p.id !== currentId) return;
-}
-  
-  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+  const gm = isGM(ws);
+  const owner = ownsPlayer(ws, p);
+
+  // права: GM всегда может, владелец — только своих
+  if (!gm && !owner) return;
+
+  // В бою НЕ-GM может двигать:
+  // 1) своего персонажа, если сейчас его ход
+  // 2) или своего персонажа, если он ещё не выставлен на поле (x/y null) — чтобы можно было "ввести" нового бойца
+  if (gameState.phase === "combat" && !gm) {
+    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+    const notPlacedYet = (p.x === null || p.y === null);
+    if (p.id !== currentId && !notPlacedYet) return;
+  }
 
   p.x = data.x;
   p.y = data.y;
@@ -344,6 +352,9 @@ function autoPlacePlayers() {
   let y = 0;
 
   gameState.players.forEach(p => {
+    // 🔑 НЕ трогаем тех, кто уже выставлен вручную
+    if (p.x !== null && p.y !== null) return;
+
     p.x = x;
     p.y = y;
 
@@ -358,4 +369,5 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
