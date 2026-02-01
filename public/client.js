@@ -53,8 +53,8 @@ let ws;
 let myId;
 let myRole;
 let players = [];
-let boardWidth = parseInt(boardWidthInput.value) || 10;
-let boardHeight = parseInt(boardHeightInput.value) || 10;
+let boardWidth = parseInt(boardWidthInput.value, 10) || 10;
+let boardHeight = parseInt(boardHeightInput.value, 10) || 10;
 
 let selectedPlayer = null;
 let editEnvironment = false;
@@ -69,6 +69,40 @@ const usersById = new Map();
 
 // состояние модалки
 let openedSheetPlayerId = null;
+
+// ================== UTILS ==================
+// достаёт value из {value: ...} или возвращает само значение
+function v(x, fallback = "-") {
+  if (x && typeof x === "object") {
+    if ("value" in x) return (x.value ?? fallback);
+  }
+  return (x ?? fallback);
+}
+
+// безопасный доступ по пути + авто unwrap {value}
+function get(obj, path, fallback = "-") {
+  try {
+    const raw = path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj);
+    return v(raw, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function formatMod(mod) {
+  const n = Number(mod);
+  if (Number.isNaN(n)) return String(mod);
+  return n >= 0 ? `+${n}` : `${n}`;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 // ================== MODAL HELPERS ==================
 function openModal() {
@@ -121,97 +155,94 @@ function parseCharboxFileText(fileText) {
   };
 }
 
-function safeGet(obj, path, fallback = '-') {
-  try {
-    return path.split('.').reduce((acc, k) => acc && acc[k], obj) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function formatMod(mod) {
-  const n = Number(mod);
-  if (Number.isNaN(n)) return String(mod);
-  return n >= 0 ? `+${n}` : `${n}`;
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
+// ================== VIEW MODEL ==================
 function toViewModel(sheet, fallbackName = "-") {
-  // Под Charbox/LSS структура (как в твоих json):
-  const name = safeGet(sheet, 'name.value', fallbackName);
-  const cls = safeGet(sheet, 'info.charClass.value', '-');
-  const lvl = safeGet(sheet, 'info.level.value', '-');
-  const race = safeGet(sheet, 'info.race.value', '-');
-  const bg = safeGet(sheet, 'info.background.value', '-');
-  const align = safeGet(sheet, 'info.alignment.value', '-');
+  const name = get(sheet, 'name.value', fallbackName);
+  const cls = get(sheet, 'info.charClass.value', '-');
+  const lvl = get(sheet, 'info.level.value', '-');
+  const race = get(sheet, 'info.race.value', '-');
+  const bg = get(sheet, 'info.background.value', '-');
+  const align = get(sheet, 'info.alignment.value', '-');
 
-  const hp = safeGet(sheet, 'vitality.hp-max.value', '-');
-  const ac = safeGet(sheet, 'vitality.ac.value', '-');
-  const spd = safeGet(sheet, 'vitality.speed.value', '-');
+  const hp = get(sheet, 'vitality.hp-max.value', '-');
+  const ac = get(sheet, 'vitality.ac.value', '-');
+  const spd = get(sheet, 'vitality.speed.value', '-');
 
   const stats = ["str","dex","con","int","wis","cha"].map(k => ({
     key: k.toUpperCase(),
-    score: safeGet(sheet, `stats.${k}.score`, '-'),
-    mod: safeGet(sheet, `stats.${k}.modifier`, '-')
+    score: v(sheet?.stats?.[k]?.score, '-'),
+    mod: v(sheet?.stats?.[k]?.modifier, '-')
   }));
 
-  // skills: берём все ключи, у кого есть score/modifier/proficiency
-  const skillsRaw = sheet?.skills && typeof sheet.skills === "object" ? sheet.skills : {};
+  // skills
+  const skillsRaw = (sheet?.skills && typeof sheet.skills === "object") ? sheet.skills : {};
   const skills = Object.keys(skillsRaw).map(key => {
     const obj = skillsRaw[key] || {};
-    const val = obj.score ?? obj.modifier ?? "-";
-    const prof = obj.proficiency ?? false;
+    const val = v(obj.score ?? obj.modifier, "-");
+    const prof = !!v(obj.proficiency, false);
     return { key, val, prof };
   }).sort((a,b) => a.key.localeCompare(b.key));
 
   // saves
-  const savesRaw = sheet?.saves && typeof sheet.saves === "object" ? sheet.saves : {};
+  const savesRaw = (sheet?.saves && typeof sheet.saves === "object") ? sheet.saves : {};
   const saves = Object.keys(savesRaw).map(key => {
     const obj = savesRaw[key] || {};
-    const val = obj.score ?? obj.modifier ?? "-";
-    const prof = obj.proficiency ?? false;
+    const val = v(obj.score ?? obj.modifier, "-");
+    const prof = !!v(obj.proficiency, false);
     return { key: key.toUpperCase(), val, prof };
   }).sort((a,b) => a.key.localeCompare(b.key));
 
-  // weapons / combat
+  // weapons
   const weapons = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
-  const weaponsVm = weapons.map(w => ({
-    name: w?.name ?? "-",
-    atk: w?.attackBonus ?? w?.atkBonus ?? w?.toHit ?? "-",
-    dmg: w?.damage ?? w?.dmg ?? "-",
-    type: w?.type ?? w?.damageType ?? ""
-  })).filter(w => w.name && w.name !== "-");
+  const weaponsVm = weapons
+    .map(w => ({
+      name: v(w?.name, "-"),
+      atk: v(w?.attackBonus ?? w?.atkBonus ?? w?.toHit ?? w?.mod, "-"),
+      dmg: v(w?.damage ?? w?.dmg, "-"),
+      type: v(w?.type ?? w?.damageType, "")
+    }))
+    .filter(w => w.name && w.name !== "-");
 
-  // coins/inventory
-  const coins = sheet?.coins || null;
-  const inventory = Array.isArray(sheet?.inventory) ? sheet.inventory : [];
-  const inventoryVm = inventory.map(i => i?.name || i?.itemName || i).filter(Boolean);
+  // coins
+  const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
+  const coins = coinsRaw ? {
+    cp: v(coinsRaw.cp, 0),
+    sp: v(coinsRaw.sp, 0),
+    ep: v(coinsRaw.ep, 0),
+    gp: v(coinsRaw.gp, 0),
+    pp: v(coinsRaw.pp, 0)
+  } : null;
 
-  // spells: у Charbox часто лежат в sheet.text["spells-level-0"] и т.п.
-  const text = sheet?.text && typeof sheet.text === "object" ? sheet.text : {};
+  // inventory
+  const invRaw = Array.isArray(sheet?.inventory) ? sheet.inventory : [];
+  const inventory = invRaw.map(i => {
+    if (typeof i === "string") return i;
+    if (i && typeof i === "object") return v(i.name ?? i.itemName, "[item]");
+    return String(i);
+  }).filter(Boolean);
+
+  // spells (Charbox часто хранит в sheet.text["spells-level-x"])
+  const text = (sheet?.text && typeof sheet.text === "object") ? sheet.text : {};
   const spellKeys = Object.keys(text).filter(k => k.startsWith("spells-level-"));
+
   const spellsByLevel = spellKeys
     .sort((a,b) => {
-      const la = parseInt(a.split("-").pop(),10);
-      const lb = parseInt(b.split("-").pop(),10);
+      const la = parseInt(a.split("-").pop(), 10);
+      const lb = parseInt(b.split("-").pop(), 10);
       return la - lb;
     })
     .map(k => {
       const level = k.split("-").pop();
       const raw = text[k];
-      // может быть строка с переносами или массив — приводим к массиву строк
+
       let items = [];
-      if (Array.isArray(raw)) items = raw.map(String);
+      if (Array.isArray(raw)) items = raw.map(x => v(x, "")).map(String);
       else if (typeof raw === "string") items = raw.split("\n").map(s => s.trim()).filter(Boolean);
-      else if (raw != null) items = [String(raw)];
+      else if (raw != null) items = [String(v(raw, ""))];
+
+      // чистим пустые
+      items = items.map(s => s.trim()).filter(Boolean);
+
       return { level, items };
     })
     .filter(x => x.items.length);
@@ -222,13 +253,13 @@ function toViewModel(sheet, fallbackName = "-") {
     stats, skills, saves,
     weapons: weaponsVm,
     coins,
-    inventory: inventoryVm,
+    inventory,
     spellsByLevel
   };
 }
 
+// ================== MODAL UI (LEFT TABS) ==================
 function renderSheetTabContent(tabId, vm) {
-  // tabId: basic | stats | skills | combat | spells | inventory
   if (tabId === "basic") {
     return `
       <div class="sheet-section">
@@ -254,7 +285,7 @@ function renderSheetTabContent(tabId, vm) {
   if (tabId === "stats") {
     const cards = vm.stats.map(s => `
       <div class="sheet-card">
-        <h4>${s.key}</h4>
+        <h4>${escapeHtml(s.key)}</h4>
         <div class="kv"><div class="k">Score</div><div class="v">${escapeHtml(s.score)}</div></div>
         <div class="kv"><div class="k">Mod</div><div class="v">${escapeHtml(formatMod(s.mod))}</div></div>
       </div>
@@ -302,7 +333,7 @@ function renderSheetTabContent(tabId, vm) {
             ${saves}
           </div>
         </div>
-        <div class="sheet-note" style="margin-top:8px;">★ — отмечены как proficiency (если есть в файле)</div>
+        <div class="sheet-note" style="margin-top:8px;">★ — proficiency (если есть в файле)</div>
       </div>
     `;
   }
@@ -354,10 +385,7 @@ function renderSheetTabContent(tabId, vm) {
 
   if (tabId === "inventory") {
     const coins = vm.coins
-      ? ["cp","sp","ep","gp","pp"]
-          .filter(k => typeof vm.coins[k] !== "undefined")
-          .map(k => `<span class="sheet-pill">${k.toUpperCase()}: ${escapeHtml(vm.coins[k])}</span>`)
-          .join("")
+      ? ["cp","sp","ep","gp","pp"].map(k => `<span class="sheet-pill">${k.toUpperCase()}: ${escapeHtml(vm.coins[k])}</span>`).join("")
       : `<div class="sheet-note">Нет данных</div>`;
 
     const inv = vm.inventory.length
@@ -439,7 +467,6 @@ function renderSheetModal(player) {
 
   const vm = toViewModel(sheet, player.name);
 
-  // левое меню вкладок
   const tabs = [
     { id: "basic", label: "Основное" },
     { id: "stats", label: "Характеристики" },
@@ -449,7 +476,7 @@ function renderSheetModal(player) {
     { id: "inventory", label: "Инвентарь" }
   ];
 
-  // запоминаем активную вкладку (на игрока)
+  // активный таб сохраняем на player (в рантайме)
   if (!player._activeSheetTab) player._activeSheetTab = "basic";
   let activeTab = player._activeSheetTab;
 
@@ -495,7 +522,6 @@ function renderSheetModal(player) {
     </div>
   `;
 
-  // навешиваем обработчики на табы
   const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
   const main = sheetContent.querySelector("#sheet-main");
 
@@ -513,135 +539,6 @@ function renderSheetModal(player) {
       if (main) main.innerHTML = renderSheetTabContent(activeTab, vm);
     });
   });
-}
-
-function renderSheetModal(player) {
-  if (!sheetTitle || !sheetSubtitle || !sheetActions || !sheetContent) return;
-
-  sheetTitle.textContent = `Инфа: ${player.name}`;
-  sheetSubtitle.textContent = `Владелец: ${player.ownerName || 'Unknown'} • Тип: ${player.isBase ? 'Основа' : '-'}`;
-
-  const canEdit = (myRole === "GM" || player.ownerId === myId);
-
-  sheetActions.innerHTML = '';
-  const note = document.createElement('div');
-  note.className = 'sheet-note';
-  note.textContent = canEdit
-    ? "Можно загрузить .json (Charbox/LSS). После загрузки лист сохраняется на сервере."
-    : "Просмотр. Загружать лист может только владелец или GM.";
-  sheetActions.appendChild(note);
-
-  if (canEdit) {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.json,application/json';
-
-    fileInput.addEventListener('change', async () => {
-      const file = fileInput.files?.[0];
-      if (!file) return;
-
-      try {
-        const text = await file.text();
-        const sheet = parseCharboxFileText(text);
-
-        sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
-
-        const tmp = document.createElement('div');
-        tmp.className = 'sheet-note';
-        tmp.textContent = "Файл отправлен на сервер. Сейчас обновится состояние…";
-        sheetActions.appendChild(tmp);
-      } catch (err) {
-        alert("Не удалось прочитать/распарсить файл .json");
-        console.error(err);
-      } finally {
-        fileInput.value = '';
-      }
-    });
-
-    sheetActions.appendChild(fileInput);
-  }
-
-  const sheet = player.sheet?.parsed || null;
-  if (!sheet) {
-    sheetContent.innerHTML = `<div class="sheet-note">Лист не загружен.${canEdit ? " Загрузите .json через кнопку выше." : ""}</div>`;
-    return;
-  }
-
-  const name = safeGet(sheet, 'name.value', player.name);
-  const cls = safeGet(sheet, 'info.charClass.value', '-');
-  const lvl = safeGet(sheet, 'info.level.value', '-');
-  const race = safeGet(sheet, 'info.race.value', '-');
-  const bg = safeGet(sheet, 'info.background.value', '-');
-  const align = safeGet(sheet, 'info.alignment.value', '-');
-
-  const hp = safeGet(sheet, 'vitality.hp-max.value', '-');
-  const ac = safeGet(sheet, 'vitality.ac.value', '-');
-  const spd = safeGet(sheet, 'vitality.speed.value', '-');
-
-  function statLine(key) {
-    const score = safeGet(sheet, `stats.${key}.score`, '-');
-    const mod = safeGet(sheet, `stats.${key}.modifier`, '-');
-    return { score, mod };
-  }
-
-  const STR = statLine('str');
-  const DEX = statLine('dex');
-  const CON = statLine('con');
-  const INT = statLine('int');
-  const WIS = statLine('wis');
-  const CHA = statLine('cha');
-
-const weapons = Array.isArray(sheet.weaponsList) ? sheet.weaponsList : [];
-const weaponsText = weapons.length
-  ? weapons.map(w => `${v(w.name)} (АТК +${v(w.mod, 0)}), урон: ${v(w.dmg)}`).join(", ")
-  : "Нет данных";
-
-const coins = sheet.coins || {};
-const coinsText = `CP: ${v(coins.cp, 0)} • SP: ${v(coins.sp, 0)} • EP: ${v(coins.ep, 0)} • GP: ${v(coins.gp, 0)} • PP: ${v(coins.pp, 0)}`;
-     ["cp","sp","ep","gp","pp"].filter(k => typeof coins[k] !== "undefined")
-        .map(k => `${k.toUpperCase()}: ${coins[k]}`).join(" • ")
-    : "Нет данных";
-
-  sheetContent.innerHTML = `
-    <div class="sheet-grid">
-      <div class="sheet-card">
-        <h4>Основное</h4>
-        <div class="kv"><div class="k">Имя</div><div class="v">${escapeHtml(name)}</div></div>
-        <div class="kv"><div class="k">Класс</div><div class="v">${escapeHtml(cls)}</div></div>
-        <div class="kv"><div class="k">Уровень</div><div class="v">${escapeHtml(lvl)}</div></div>
-        <div class="kv"><div class="k">Раса</div><div class="v">${escapeHtml(race)}</div></div>
-        <div class="kv"><div class="k">Предыстория</div><div class="v">${escapeHtml(bg)}</div></div>
-        <div class="kv"><div class="k">Мировоззрение</div><div class="v">${escapeHtml(align)}</div></div>
-      </div>
-
-      <div class="sheet-card">
-        <h4>Характеристики</h4>
-        <div class="kv"><div class="k">STR</div><div class="v">${STR.score} (${formatMod(STR.mod)})</div></div>
-        <div class="kv"><div class="k">DEX</div><div class="v">${DEX.score} (${formatMod(DEX.mod)})</div></div>
-        <div class="kv"><div class="k">CON</div><div class="v">${CON.score} (${formatMod(CON.mod)})</div></div>
-        <div class="kv"><div class="k">INT</div><div class="v">${INT.score} (${formatMod(INT.mod)})</div></div>
-        <div class="kv"><div class="k">WIS</div><div class="v">${WIS.score} (${formatMod(WIS.mod)})</div></div>
-        <div class="kv"><div class="k">CHA</div><div class="v">${CHA.score} (${formatMod(CHA.mod)})</div></div>
-      </div>
-
-      <div class="sheet-card">
-        <h4>Защита и движение</h4>
-        <div class="kv"><div class="k">HP (max)</div><div class="v">${escapeHtml(hp)}</div></div>
-        <div class="kv"><div class="k">AC</div><div class="v">${escapeHtml(ac)}</div></div>
-        <div class="kv"><div class="k">Speed</div><div class="v">${escapeHtml(spd)}</div></div>
-      </div>
-
-      <div class="sheet-card" style="grid-column: 1 / -1;">
-        <h4>Оружие (кратко)</h4>
-        <div class="sheet-note">${weapons.length ? weapons.map(escapeHtml).join(", ") : "Нет данных"}</div>
-      </div>
-
-      <div class="sheet-card" style="grid-column: 1 / -1;">
-        <h4>Монеты</h4>
-        <div class="sheet-note">${escapeHtml(coinsText)}</div>
-      </div>
-    </div>
-  `;
 }
 
 // ================== JOIN GAME ==================
@@ -675,7 +572,6 @@ joinBtn.addEventListener('click', () => {
 
     if (msg.type === "error") loginError.textContent = msg.message;
 
-    // ✅ сохраняем пользователей (нужно для вывода ролей в списке инициативы)
     if (msg.type === "users" && Array.isArray(msg.users)) {
       usersById.clear();
       msg.users.forEach(u => usersById.set(u.id, { name: u.name, role: u.role }));
@@ -686,7 +582,7 @@ joinBtn.addEventListener('click', () => {
       boardWidth = msg.state.boardWidth;
       boardHeight = msg.state.boardHeight;
 
-      // ✅ Удаляем DOM-элементы игроков, которых больше нет в состоянии
+      // Удаляем DOM-элементы игроков, которых больше нет в состоянии
       const existingIds = new Set((msg.state.players || []).map(p => p.id));
       playerElements.forEach((el, id) => {
         if (!existingIds.has(id)) {
@@ -697,7 +593,7 @@ joinBtn.addEventListener('click', () => {
 
       players = msg.state.players || [];
 
-      // ✅ Основа одна на пользователя — блокируем чекбокс
+      // Основа одна на пользователя — блокируем чекбокс
       if (isBaseCheckbox) {
         const baseExistsForMe = players.some(p => p.isBase && p.ownerId === myId);
         isBaseCheckbox.disabled = baseExistsForMe;
@@ -714,7 +610,7 @@ joinBtn.addEventListener('click', () => {
       updateCurrentPlayer(msg.state);
       renderLog(msg.state.log || []);
 
-      // ✅ если модалка открыта — обновим контент по свежему state
+      // если модалка открыта — обновим контент по свежему state
       if (openedSheetPlayerId) {
         const pl = players.find(x => x.id === openedSheetPlayerId);
         if (pl) renderSheetModal(pl);
@@ -749,11 +645,6 @@ function setupRoleUI(role) {
   } else if (role === "DnD-Player") {
     resetGameBtn.style.display = 'none';
   }
-}
-
-function v(x, fallback = "-") {
-  if (x && typeof x === "object" && "value" in x) return x.value ?? fallback;
-  return (x ?? fallback);
 }
 
 // ================== LOG ==================
@@ -829,11 +720,9 @@ function updatePlayerList() {
   Object.entries(grouped).forEach(([ownerId, group]) => {
     const userInfo = ownerId ? usersById.get(ownerId) : null;
 
-    // ===== контейнер группы владельца =====
     const ownerLi = document.createElement('li');
     ownerLi.className = 'owner-group';
 
-    // ===== заголовок владельца (имя + роль) =====
     const ownerHeader = document.createElement('div');
     ownerHeader.className = 'owner-header';
 
@@ -849,7 +738,6 @@ function updatePlayerList() {
     ownerHeader.appendChild(ownerNameSpan);
     ownerHeader.appendChild(badge);
 
-    // ===== список персонажей владельца (ниже заголовка) =====
     const ul = document.createElement('ul');
     ul.className = 'owner-players';
 
@@ -872,7 +760,6 @@ function updatePlayerList() {
       nameWrap.appendChild(indicator);
       nameWrap.appendChild(text);
 
-      // ✅ маленький бейдж "основа"
       if (p.isBase) {
         const baseBadge = document.createElement('span');
         baseBadge.className = 'base-badge';
@@ -885,7 +772,7 @@ function updatePlayerList() {
       const actions = document.createElement('div');
       actions.className = 'player-actions';
 
-      // ✅ КНОПКА "ИНФА" — показываем всем, но загрузка доступна владельцу/GM
+      // КНОПКА "ИНФА"
       if (p.isBase) {
         const infoBtn = document.createElement('button');
         infoBtn.textContent = 'Инфа';
@@ -898,7 +785,7 @@ function updatePlayerList() {
         actions.appendChild(infoBtn);
       }
 
-      // ✅ изменение размера игрока (только владелец или GM)
+      // изменение размера
       if (myRole === "GM" || p.ownerId === myId) {
         const sizeSelect = document.createElement('select');
         sizeSelect.className = 'size-select';
@@ -945,9 +832,7 @@ function updatePlayerList() {
         actions.appendChild(removeCompletelyBtn);
       }
 
-      // ✅ чтобы “Инфа” работала даже если игрок не владелец — добавляем actions всегда
       li.appendChild(actions);
-
       ul.appendChild(li);
     });
 
@@ -988,7 +873,7 @@ function setPlayerPosition(player) {
   if (!el) {
     el = document.createElement('div');
     el.classList.add('player');
-    el.textContent = player.name[0];
+    el.textContent = player.name?.[0] || '?';
     el.style.backgroundColor = player.color;
     el.style.position = 'absolute';
 
@@ -1008,7 +893,6 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  // ✅ ВАЖНО: обновляем внешний вид КАЖДЫЙ РАЗ (для realtime изменения размера/цвета)
   el.textContent = player.name ? player.name[0] : '?';
   el.style.backgroundColor = player.color;
   el.style.width = `${player.size * 50}px`;
@@ -1020,10 +904,10 @@ function setPlayerPosition(player) {
   }
   el.style.display = 'flex';
 
-  let maxX = boardWidth - player.size;
-  let maxY = boardHeight - player.size;
-  let x = Math.min(Math.max(player.x, 0), maxX);
-  let y = Math.min(Math.max(player.y, 0), maxY);
+  const maxX = boardWidth - player.size;
+  const maxY = boardHeight - player.size;
+  const x = Math.min(Math.max(player.x, 0), maxX);
+  const y = Math.min(Math.max(player.y, 0), maxY);
 
   const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
   if (cell) {
@@ -1056,8 +940,8 @@ board.addEventListener('click', e => {
   const cell = e.target.closest('.cell');
   if (!cell) return;
 
-  let x = parseInt(cell.dataset.x);
-  let y = parseInt(cell.dataset.y);
+  let x = parseInt(cell.dataset.x, 10);
+  let y = parseInt(cell.dataset.y, 10);
   if (x + selectedPlayer.size > boardWidth) x = boardWidth - selectedPlayer.size;
   if (y + selectedPlayer.size > boardHeight) y = boardHeight - selectedPlayer.size;
 
@@ -1069,7 +953,7 @@ board.addEventListener('click', e => {
 
 // ================== DICE ==================
 rollBtn.addEventListener('click', () => {
-  const sides = parseInt(dice.value);
+  const sides = parseInt(dice.value, 10);
   const result = Math.floor(Math.random() * sides) + 1;
   rollResult.textContent = `Результат: ${result}`;
   sendMessage({ type: 'log', text: `Бросок d${sides}: ${result}` });
@@ -1108,19 +992,24 @@ board.addEventListener('mouseover', e => {
   toggleWall(cell);
 });
 
-board.addEventListener('mouseup', () => mouseDown = false);
+board.addEventListener('mouseup', () => { mouseDown = false; });
 
 function toggleWall(cell) {
   if (!cell) return;
   const x = +cell.dataset.x, y = +cell.dataset.y;
-  if (wallMode === 'add') { sendMessage({ type: 'addWall', wall: { x, y } }); cell.classList.add('wall'); }
-  else if (wallMode === 'remove') { sendMessage({ type: 'removeWall', wall: { x, y } }); cell.classList.remove('wall'); }
+  if (wallMode === 'add') {
+    sendMessage({ type: 'addWall', wall: { x, y } });
+    cell.classList.add('wall');
+  } else if (wallMode === 'remove') {
+    sendMessage({ type: 'removeWall', wall: { x, y } });
+    cell.classList.remove('wall');
+  }
 }
 
 // ================== CREATE BOARD ==================
 createBoardBtn.addEventListener('click', () => {
-  const width = parseInt(boardWidthInput.value);
-  const height = parseInt(boardHeightInput.value);
+  const width = parseInt(boardWidthInput.value, 10);
+  const height = parseInt(boardHeightInput.value, 10);
   if (isNaN(width) || isNaN(height) || width < 1 || height < 1 || width > 20 || height > 20)
     return alert("Введите корректные размеры поля (1–20)");
   sendMessage({ type: 'resizeBoard', width, height });
@@ -1178,6 +1067,3 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
-
-
-
