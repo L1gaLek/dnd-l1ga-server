@@ -148,6 +148,24 @@ function renderLog(logs) {
 
 // ================== CURRENT PLAYER ==================
 function updateCurrentPlayer(state) {
+
+let currentPlayerId = null;
+
+function updateCurrentPlayer(state) {
+  if (!state || !state.turnOrder || state.turnOrder.length === 0) {
+    currentPlayerSpan.textContent = '-';
+    currentPlayerId = null;
+    return;
+  }
+  const id = state.turnOrder[state.currentTurnIndex];
+  const p = players.find(pl => pl.id === id);
+  currentPlayerSpan.textContent = p ? p.name : '-';
+  currentPlayerId = id;
+
+  // обновляем подсветку всех игроков
+  players.forEach(pl => setPlayerPosition(pl));
+}
+  
   if (!state || !state.turnOrder || state.turnOrder.length === 0) {
     currentPlayerSpan.textContent = '-';
     return;
@@ -281,6 +299,13 @@ function setPlayerPosition(player) {
   if (player.x === null || player.y === null) { el.style.display='none'; return; }
   el.style.display='flex';
 
+  // Подсветка текущего игрока в бою
+if (player.id === currentPlayerId) {
+  el.style.outline = "3px solid yellow";
+} else {
+  el.style.outline = "2px solid #888";
+}
+
   let maxX = boardWidth - player.size;
   let maxY = boardHeight - player.size;
   let x = Math.min(Math.max(player.x, 0), maxX);
@@ -306,10 +331,6 @@ addPlayerBtn.addEventListener('click', () => {
 // ================== MOVE PLAYER ==================
 board.addEventListener('click', e => {
   if (!selectedPlayer) return;
-  if (gameState.phase === "combat") {
-    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-    if (selectedPlayer.id !== currentId && myRole !== "GM") return;
-  }
   const cell = e.target.closest('.cell');
   if (!cell) return;
 
@@ -386,50 +407,18 @@ function updatePhaseUI(state) {
 
     const allRolled = state.players.every(p => p.hasRolledInitiative);
     startInitiativeBtn.classList.toggle("ready", allRolled);
-    startInitiativeBtn.classList.toggle("active", false);
-    startInitiativeBtn.classList.toggle("active", false); 
-    startInitiativeBtn.style.backgroundColor = allRolled ? "green" : "red";
-
-    // Если все бросили инициативу — кнопка «Начало боя» готова
-    startCombatBtn.disabled = !allRolled;
-    startCombatBtn.classList.toggle("ready", allRolled);
-    startCombatBtn.classList.toggle("active", false);
-
-  } else if (state.phase === "placement") {
-    rollInitiativeBtn.style.display = "none";
-    startInitiativeBtn.style.backgroundColor = "";
-    startInitiativeBtn.classList.remove("ready","active");
-
-    startCombatBtn.disabled = false;
-    startCombatBtn.classList.add("ready");
-    startCombatBtn.classList.remove("active");
-
-  } else if (state.phase === "combat") {
-    rollInitiativeBtn.style.display = "none";
-    startInitiativeBtn.style.backgroundColor = "";
-    startInitiativeBtn.classList.remove("ready","active");
-
-    startCombatBtn.disabled = false;
-    startCombatBtn.classList.add("active");
-    startCombatBtn.classList.remove("ready");
+    startInitiativeBtn.classList.toggle("active", !allRolled);
   } else {
-    // Лобби и другие фазы
     rollInitiativeBtn.style.display = "none";
-    startInitiativeBtn.style.backgroundColor = "";
-    startInitiativeBtn.classList.remove("ready","active");
+    startInitiativeBtn.classList.remove("ready", "active");
+  }
 
+  // Фаза размещения (кнопка начало боя)
+  if (state.phase === "placement") {
+    startCombatBtn.disabled = false;
+    startCombatBtn.style.backgroundColor = "orange"; // 🔹 оранжевая
+  } else {
     startCombatBtn.disabled = true;
-    startCombatBtn.classList.remove("ready","active");
-
-    startInitiativeBtn?.addEventListener("click", () => {
-  if (myRole !== "GM") return;
-  sendMessage({ type: "startInitiative" });
-});
-
-startCombatBtn?.addEventListener("click", () => {
-  if (myRole !== "GM") return;
-  sendMessage({ type: "startCombat" });
-});
+    startCombatBtn.style.backgroundColor = "";
   }
 }
-
