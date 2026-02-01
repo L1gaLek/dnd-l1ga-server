@@ -311,3 +311,17 @@ button:hover {
 }
 
 
+/* Рамка одного игрока в списке инициативы */
+.player-list-item {
+  border: 1px solid #444;      /* тонкая рамка */
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+
+  display: flex;
+  flex-wrap: wrap;             /* имя и кнопки могут переноситься */
+  align-items: flex-start;
+  gap: 6px;
+
+  background-color: #1a1a1a;   /* чуть отличается от фона */
+}
