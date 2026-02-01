@@ -1,3 +1,9 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
 body {
   font-family: sans-serif;
   margin: 20px;
@@ -55,6 +61,7 @@ body {
 #player-list-container {
   width: 260px;
   max-height: 360px;
+  overflow-x: hidden;
 }
 
 #action-log h3, #player-list-container h3 {
@@ -337,6 +344,7 @@ button:hover {
   border-color: #777;
   background-color: #222;
 }
+
 
 
 
