@@ -74,48 +74,6 @@ wss.on("connection", ws => {
 
     switch (data.type) {
 
-        case "readyForCombat": {
-  if (gameState.phase !== "combat") return;
-
-  const user = getUserByWS(ws);
-  if (!user) return;
-
-  const gm = isGM(ws);
-  const currentId = gameState.turnOrder?.[gameState.currentTurnIndex] ?? null;
-
-  // Берём всех pending этого пользователя (или всех, если GM)
-  const toReady = gameState.players.filter(p => {
-    if (!p.pendingJoinCombat) return false;
-    if (!gm && p.ownerId !== user.id) return false;
-    // надо чтобы была инициатива и размещение
-    if (!p.hasRolledInitiative || p.initiative === null) return false;
-    if (p.x === null || p.y === null) return false;
-    return true;
-  });
-
-  if (toReady.length === 0) {
-    broadcast();
-    return;
-  }
-
-  toReady.forEach(p => (p.pendingJoinCombat = false));
-  logEvent(`В бой введены: ${toReady.map(p => p.name).join(", ")}`);
-
-  // Пересобираем порядок, не сбивая текущий ход
-  gameState.turnOrder = [...gameState.players]
-    .filter(pl => pl.hasRolledInitiative && !pl.pendingJoinCombat)
-    .sort((a,b) => (b.initiative ?? -1) - (a.initiative ?? -1))
-    .map(pl => pl.id);
-
-  if (currentId) {
-    const idx = gameState.turnOrder.indexOf(currentId);
-    if (idx >= 0) gameState.currentTurnIndex = idx;
-  }
-
-  broadcast();
-  break;
-}
-
       // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
       case "register": {
         const { name, role } = data;
@@ -170,71 +128,26 @@ case "startInitiative": {
   broadcast();
   break;
 }        
-       
- case "addPlayer": {
-  const user = getUserByWS(ws);
+
+      case "addPlayer": {
+  const user = users.find(u => u.ws === ws);
   if (!user) return;
 
-  // создаём игрока (пока без боевой логики)
-  const inCombat = (gameState.phase === "combat");
-  const inherit = !!data.inheritInitiative;
-  const sourceId = data.sourceId; // текущий ходящий (передаст клиент)
-  const source = sourceId ? gameState.players.find(pp => pp.id === sourceId) : null;
+  gameState.players.push({
+    id: data.player.id || uuidv4(),
+    name: data.player.name,
+    color: data.player.color,
+    size: data.player.size,
+    x: null,
+    y: null,
+    initiative: 0,
 
-  const p = {
-    id: (data.player && data.player.id) ? data.player.id : uuidv4(),
-    name: data.player?.name || "Unknown",
-    color: data.player?.color || "#ffffff",
-    size: data.player?.size || 1,
-
-    // если призыв в бою — по умолчанию ставим в клетку призывателя (если она известна)
-    x: (inCombat && source && source.x !== null) ? source.x : null,
-    y: (inCombat && source && source.y !== null) ? source.y : null,
-
-    initiative: null,
-    hasRolledInitiative: false,
-    pendingJoinCombat: false,
-
+    // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
     ownerId: user.id,
     ownerName: user.name
-  };
+  });
 
-  // Добавляем в список
-  gameState.players.push(p);
-
-  // Если добавили в бою как "призыв"
-  if (inCombat) {
-    if (inherit && source && source.initiative !== null) {
-      // наследуем инициативу призывателя
-      p.initiative = source.initiative;
-      p.hasRolledInitiative = true;
-      p.pendingJoinCombat = false;
-
-      // пересобираем turnOrder, не сбивая текущий ход
-      const currentId = gameState.turnOrder?.[gameState.currentTurnIndex] ?? null;
-
-      gameState.turnOrder = [...gameState.players]
-        .filter(pl => pl.hasRolledInitiative && !pl.pendingJoinCombat)
-        .sort((a, b) => (b.initiative ?? -1) - (a.initiative ?? -1))
-        .map(pl => pl.id);
-
-      if (currentId) {
-        const idx = gameState.turnOrder.indexOf(currentId);
-        if (idx >= 0) gameState.currentTurnIndex = idx;
-      }
-
-      logEvent(`${p.name} призван с инициативой ${p.initiative}`);
-    } else {
-      // требуется бросить инициативу и подтвердить "К бою"
-      p.initiative = null;
-      p.hasRolledInitiative = false;
-      p.pendingJoinCombat = true;
-
-      logEvent(`${p.name} призван: требуется инициатива и "К бою"`);
-    }
-  }
-
-  logEvent(`Игрок ${p.name} создан пользователем ${user.name}`);
+  logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
   broadcast();
   break;
 }
@@ -243,25 +156,12 @@ case "movePlayer": {
   const p = gameState.players.find(p => p.id === data.id);
   if (!p) return;
 
-  const gm = isGM(ws);
-  const owner = ownsPlayer(ws, p);
-
-  // права: GM всегда может, владелец — только своих
-  if (!gm && !owner) return;
-
-  // В бою НЕ-GM может двигать:
-  // 1) своего персонажа, если сейчас его ход
-  // 2) или своего персонажа, если он ещё не выставлен на поле (x/y null) — чтобы можно было "ввести" нового бойца
-  if (gameState.phase === "combat" && !gm) {
-  // Если существо ещё не введено в бой ("pending") — можно двигать всегда (для размещения)
-  if (p.pendingJoinCombat) {
-    // ok
-  } else {
-    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-    const notPlacedYet = (p.x === null || p.y === null);
-    if (p.id !== currentId && !notPlacedYet) return;
-  }
+if (gameState.phase === "combat") {
+  const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+  if (p.id !== currentId) return;
 }
+  
+  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
 
   p.x = data.x;
   p.y = data.y;
@@ -317,48 +217,18 @@ case "removeWall":
   break;
 
 case "rollInitiative": {
-  // Разрешаем бросок инициативы:
-  // - в фазе initiative (как раньше)
-  // - и в combat, но только для новых/неброшенных персонажей
-  if (gameState.phase !== "initiative" && gameState.phase !== "combat") return;
+  if (gameState.phase !== "initiative") return;
 
   const user = getUserByWS(ws);
   if (!user) return;
 
-  const beforeCurrentId =
-    gameState.turnOrder && gameState.turnOrder.length
-      ? gameState.turnOrder[gameState.currentTurnIndex]
-      : null;
-
-  let rolledAny = false;
-
   gameState.players
-    .filter(p => p.ownerId === user.id && p.pendingJoinCombat && !p.hasRolledInitiative)
+    .filter(p => p.ownerId === user.id && !p.hasRolledInitiative)
     .forEach(p => {
       p.initiative = Math.floor(Math.random() * 20) + 1;
       p.hasRolledInitiative = true;
-      rolledAny = true;
       logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
     });
-
-  if (!rolledAny) {
-    broadcast();
-    return;
-  }
-
-  // Если мы в бою — пересобираем turnOrder с учётом новых инициатив,
-  // но сохраняем текущего ходящего (не "прыгаем" на другого)
-  if (gameState.phase === "combat") {
-    gameState.turnOrder = [...gameState.players]
-      .filter(p => p.hasRolledInitiative && !p.pendingJoinCombat)
-      .sort((a, b) => b.initiative - a.initiative)
-      .map(p => p.id);
-
-    if (beforeCurrentId) {
-      const newIndex = gameState.turnOrder.indexOf(beforeCurrentId);
-      if (newIndex >= 0) gameState.currentTurnIndex = newIndex;
-    }
-  }
 
   broadcast();
   break;
@@ -436,17 +306,8 @@ case "resetGame":
 case "clearBoard":
   if (!isGM(ws)) return;
 
-  // ✅ убираем стены
   gameState.walls = [];
-
-  // ✅ убираем ВСЕХ игроков с поля (но не удаляем их полностью)
-  gameState.players.forEach(p => {
-    p.x = null;
-    p.y = null;
-  });
-
-  // также безопасно сбрасываем выделение/ход не трогаем — бой может продолжаться
-  logEvent("Поле очищено: стены удалены, все персонажи убраны с поля");
+  logEvent("Доска очищена от стен");
   broadcast();
   break;
 
@@ -483,9 +344,6 @@ function autoPlacePlayers() {
   let y = 0;
 
   gameState.players.forEach(p => {
-    // 🔑 НЕ трогаем тех, кто уже выставлен вручную
-    if (p.x !== null && p.y !== null) return;
-
     p.x = x;
     p.y = y;
 
@@ -500,8 +358,4 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
-
-
-
 
