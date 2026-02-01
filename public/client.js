@@ -375,48 +375,18 @@ resetGameBtn.addEventListener('click', () => {
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
-function highlightCurrentPlayer(state) {
-  const currentId = state.turnOrder[state.currentTurnIndex];
-  playerElements.forEach((el, id) => {
-    if (id === currentId) {
-      el.style.outline = "3px solid orange";
-    } else {
-      el.style.outline = "2px solid #888";
-    }
-  });
-
-  const currentPlayer = state.players.find(p => p.id === currentId);
-  currentPlayerSpan.textContent = currentPlayer ? currentPlayer.name : '-';
-}
-
 function updatePhaseUI(state) {
   // Фаза инициативы
   if (state.phase === "initiative") {
     rollInitiativeBtn.style.display = "inline-block";
 
     const allRolled = state.players.every(p => p.hasRolledInitiative);
-    startInitiativeBtn.classList.toggle("ready", allRolled);
-    startInitiativeBtn.classList.toggle("active", !allRolled);
+    startInitiativeBtn.style.backgroundColor = allRolled ? "green" : "red";
   } else {
     rollInitiativeBtn.style.display = "none";
-    startInitiativeBtn.classList.remove("active","ready");
+    startInitiativeBtn.style.backgroundColor = "";
   }
 
-  // Фаза размещения → кнопка "Начало боя" оранжевая
-  if (state.phase === "placement") {
-    startCombatBtn.disabled = false;
-    startCombatBtn.style.backgroundColor = "orange";
-  } else {
-    startCombatBtn.disabled = true;
-    startCombatBtn.style.backgroundColor = "";
-  }
-
-  // Фаза боя → текущий игрок подсвечен
-  if (state.phase === "combat") {
-    highlightCurrentPlayer(state);
-  } else {
-    // снимаем подсветку
-    playerElements.forEach(el => el.style.outline = "2px solid #888");
-  }
+  // Фаза размещения
+  startCombatBtn.disabled = state.phase !== "placement";
 }
-
