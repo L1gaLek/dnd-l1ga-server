@@ -274,18 +274,17 @@ button:hover {
 /* Строка игрока в списке */
 .player-list-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   width: 100%;
+  flex-wrap: wrap;           /* 🔑 разрешаем перенос */
 }
 
 /* Имя занимает всё свободное место и НЕ сжимается до нуля */
 .player-name-text {
-  flex: 1 1 auto;
-  min-width: 0;                 /* важно для корректного ellipsis */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 1 1 100%;        /* занимает всю строку */
+  white-space: normal;   /* 🔑 разрешаем перенос */
+  word-break: break-word;
 }
 
 /* Кнопки не должны сжиматься */
@@ -293,6 +292,8 @@ button:hover {
   flex: 0 0 auto;
   white-space: nowrap;
   padding: 3px 8px;
+  margin-top: 4px;
 }
+
 
 
