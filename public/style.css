@@ -190,6 +190,11 @@ button:hover {
   color: white;
 }
 
+#gm-controls button.combat-ready {
+  background-color: orange;
+  color: white;
+}
+
 .player.active-turn {
   outline: 4px solid gold;
   box-shadow: 0 0 10px gold;
@@ -204,3 +209,4 @@ button:hover {
   background-color: green; 
   color: white; 
 }
+
