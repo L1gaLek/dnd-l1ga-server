@@ -265,7 +265,10 @@ case "startCombat": {
   logEvent(`Бой начался. Первый ход: ${first?.name}`);
   broadcast();
   break;
-}       
+}  
+
+case "startCombat": {
+  console.log("startCombat received from", ws.user?.name, ws.user?.role);        
 
 case "endTurn":
   if (gameState.phase !== "combat") return;      
@@ -358,5 +361,6 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
