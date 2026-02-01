@@ -15,10 +15,9 @@ body {
 /* Левая панель: журнал + управление + инициатива (в одну строку) */
 #action-log-container {
   display: flex;
-  flex-direction: row;     /* 🔑 было column */
+  flex-direction: column;
   gap: 16px;
-  align-items: flex-start;
-  width: 780px;            /* можно подогнать */
+  width: 560px; /* ширина под 2 карточки */
 }
 
 #content-row {
@@ -45,18 +44,17 @@ body {
 }
 
 #action-log {
-  width: 240px;
   max-height: 400px;
 }
 
 #player-management {
-  width: 240px;
-  max-height: 400px;
+  width: 260px;
+  max-height: 260px;
 }
 
 #player-list-container {
-  width: 240px;
-  max-height: 400px;
+  width: 260px;
+  max-height: 260px;
 }
 
 #action-log h3, #player-list-container h3 {
@@ -246,4 +244,10 @@ button:hover {
   gap: 6px;
 }
 
+/* Строка под журналом: управление + инициатива */
+#action-bottom-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
 
