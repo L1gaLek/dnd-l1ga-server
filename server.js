@@ -170,66 +170,71 @@ case "startInitiative": {
   broadcast();
   break;
 }        
-
- const inCombat = (gameState.phase === "combat");
-const inherit = !!data.inheritInitiative;
-const sourceId = data.sourceId; // текущий ходящий (передаст клиент)
-const source = sourceId ? gameState.players.find(pp => pp.id === sourceId) : null;
-        
-      case "addPlayer": {
-  const user = users.find(u => u.ws === ws);
+       
+ case "addPlayer": {
+  const user = getUserByWS(ws);
   if (!user) return;
 
-  gameState.players.push({
+  // создаём игрока (пока без боевой логики)
+  const inCombat = (gameState.phase === "combat");
+  const inherit = !!data.inheritInitiative;
+  const sourceId = data.sourceId; // текущий ходящий (передаст клиент)
+  const source = sourceId ? gameState.players.find(pp => pp.id === sourceId) : null;
 
-// Если игрок добавлен в бою как призыв
-if (inCombat) {
-  if (inherit && source && source.initiative !== null) {
-    // наследуем инициативу текущего ходящего
-    p.initiative = source.initiative;
-    p.hasRolledInitiative = true;
-    p.pendingJoinCombat = false;
+  const p = {
+    id: (data.player && data.player.id) ? data.player.id : uuidv4(),
+    name: data.player?.name || "Unknown",
+    color: data.player?.color || "#ffffff",
+    size: data.player?.size || 1,
 
-    // Вставляем в turnOrder, не сбивая текущего
-    const currentId = gameState.turnOrder?.[gameState.currentTurnIndex] ?? null;
+    // если призыв в бою — по умолчанию ставим в клетку призывателя (если она известна)
+    x: (inCombat && source && source.x !== null) ? source.x : null,
+    y: (inCombat && source && source.y !== null) ? source.y : null,
 
-    gameState.turnOrder = [...gameState.players]
-      .filter(pl => pl.hasRolledInitiative && !pl.pendingJoinCombat)
-      .sort((a,b) => (b.initiative ?? -1) - (a.initiative ?? -1))
-      .map(pl => pl.id);
-
-    if (currentId) {
-      const idx = gameState.turnOrder.indexOf(currentId);
-      if (idx >= 0) gameState.currentTurnIndex = idx;
-    }
-
-    logEvent(`${p.name} призван с инициативой ${p.initiative}`);
-  } else {
-    // нужно бросить инициативу и нажать "К бою"
-    p.initiative = null;
-    p.hasRolledInitiative = false;
-    p.pendingJoinCombat = true;
-
-    logEvent(`${p.name} призван: требуется инициатива и "К бою"`);
-  }
-}
-    
-    id: data.player.id || uuidv4(),
-    name: data.player.name,
-    color: data.player.color,
-    size: data.player.size,
-x: (inCombat && source && source.x !== null) ? source.x : null,
-y: (inCombat && source && source.y !== null) ? source.y : null,
     initiative: null,
-hasRolledInitiative: false,
+    hasRolledInitiative: false,
     pendingJoinCombat: false,
 
-    // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
     ownerId: user.id,
     ownerName: user.name
-  });
+  };
 
-  logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
+  // Добавляем в список
+  gameState.players.push(p);
+
+  // Если добавили в бою как "призыв"
+  if (inCombat) {
+    if (inherit && source && source.initiative !== null) {
+      // наследуем инициативу призывателя
+      p.initiative = source.initiative;
+      p.hasRolledInitiative = true;
+      p.pendingJoinCombat = false;
+
+      // пересобираем turnOrder, не сбивая текущий ход
+      const currentId = gameState.turnOrder?.[gameState.currentTurnIndex] ?? null;
+
+      gameState.turnOrder = [...gameState.players]
+        .filter(pl => pl.hasRolledInitiative && !pl.pendingJoinCombat)
+        .sort((a, b) => (b.initiative ?? -1) - (a.initiative ?? -1))
+        .map(pl => pl.id);
+
+      if (currentId) {
+        const idx = gameState.turnOrder.indexOf(currentId);
+        if (idx >= 0) gameState.currentTurnIndex = idx;
+      }
+
+      logEvent(`${p.name} призван с инициативой ${p.initiative}`);
+    } else {
+      // требуется бросить инициативу и подтвердить "К бою"
+      p.initiative = null;
+      p.hasRolledInitiative = false;
+      p.pendingJoinCombat = true;
+
+      logEvent(`${p.name} призван: требуется инициатива и "К бою"`);
+    }
+  }
+
+  logEvent(`Игрок ${p.name} создан пользователем ${user.name}`);
   broadcast();
   break;
 }
@@ -345,7 +350,7 @@ case "rollInitiative": {
   // но сохраняем текущего ходящего (не "прыгаем" на другого)
   if (gameState.phase === "combat") {
     gameState.turnOrder = [...gameState.players]
-      .filter(p => p.hasRolledInitiative) // в бою учитываем только тех, у кого уже есть инициатива
+      .filter(p => p.hasRolledInitiative && !p.pendingJoinCombat)
       .sort((a, b) => b.initiative - a.initiative)
       .map(p => p.id);
 
@@ -495,6 +500,7 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
