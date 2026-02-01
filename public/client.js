@@ -29,6 +29,7 @@ const playerColorInput = document.getElementById('player-color');
 const playerSizeInput = document.getElementById('player-size');
 
 const isBaseCheckbox = document.getElementById('is-base');
+const isSummonCheckbox = document.getElementById('is-summon');
 
 const dice = document.getElementById('dice');
 const rollResult = document.getElementById('roll-result');
@@ -39,6 +40,14 @@ const removeWallBtn = document.getElementById('remove-wall');
 
 const startInitiativeBtn = document.getElementById("start-initiative");
 const startCombatBtn = document.getElementById("start-combat");
+
+// MODAL
+const sheetModal = document.getElementById('sheet-modal');
+const sheetClose = document.getElementById('sheet-close');
+const sheetTitle = document.getElementById('sheet-title');
+const sheetSubtitle = document.getElementById('sheet-subtitle');
+const sheetActions = document.getElementById('sheet-actions');
+const sheetContent = document.getElementById('sheet-content');
 
 // ================== VARIABLES ==================
 let ws;
@@ -56,8 +65,53 @@ let mouseDown = false;
 const playerElements = new Map();
 let finishInitiativeSent = false;
 
-// users map (ownerId -> {name, role})
-const usersById = new Map();
+// для модалки
+let openedSheetPlayerId = null;
+
+// ================== TYPE TOGGLES ==================
+function setupPlayerTypeToggles() {
+  if (!isBaseCheckbox || !isSummonCheckbox) return;
+
+  isBaseCheckbox.addEventListener('change', () => {
+    if (isBaseCheckbox.checked) isSummonCheckbox.checked = false;
+  });
+
+  isSummonCheckbox.addEventListener('change', () => {
+    if (isSummonCheckbox.checked) isBaseCheckbox.checked = false;
+  });
+}
+setupPlayerTypeToggles();
+
+// ================== MODAL HELPERS ==================
+function openModal() {
+  sheetModal.classList.remove('hidden');
+  sheetModal.setAttribute('aria-hidden', 'false');
+}
+
+function closeModal() {
+  sheetModal.classList.add('hidden');
+  sheetModal.setAttribute('aria-hidden', 'true');
+  openedSheetPlayerId = null;
+  sheetTitle.textContent = "Информация о персонаже";
+  sheetSubtitle.textContent = "";
+  sheetActions.innerHTML = "";
+  sheetContent.innerHTML = "";
+}
+
+// закрытие по крестику
+sheetClose?.addEventListener('click', closeModal);
+
+// закрытие по клику на фон
+sheetModal?.addEventListener('click', (e) => {
+  if (e.target === sheetModal) closeModal();
+});
+
+// закрытие по ESC
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !sheetModal.classList.contains('hidden')) {
+    closeModal();
+  }
+});
 
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
@@ -90,18 +144,16 @@ joinBtn.addEventListener('click', () => {
 
     if (msg.type === "error") loginError.textContent = msg.message;
 
-    // ✅ сохраняем пользователей (нужно для вывода ролей в списке инициативы)
-    if (msg.type === "users" && Array.isArray(msg.users)) {
-      usersById.clear();
-      msg.users.forEach(u => usersById.set(u.id, { name: u.name, role: u.role }));
-      updatePlayerList(); // чтобы роли обновились сразу
+    if (msg.type === "users") {
+      // сейчас users рисуются в #player-list в твоём коде, но у тебя
+      // #player-list используется под инициативу — оставляем как есть (не мешаем)
+      // если захочешь отдельный список пользователей — сделаем.
     }
 
     if (msg.type === "init" || msg.type === "state") {
       boardWidth = msg.state.boardWidth;
       boardHeight = msg.state.boardHeight;
 
-      // ✅ Удаляем DOM-элементы игроков, которых больше нет в состоянии
       const existingIds = new Set((msg.state.players || []).map(p => p.id));
       playerElements.forEach((el, id) => {
         if (!existingIds.has(id)) {
@@ -112,14 +164,13 @@ joinBtn.addEventListener('click', () => {
 
       players = msg.state.players || [];
 
-      // ✅ Основа одна на всю игру — блокируем чекбокс у всех
-      if (isBaseCheckbox) {
-const baseExistsForMe = players.some(p => p.isBase && p.ownerId === myId);
-isBaseCheckbox.disabled = baseExistsForMe;
-if (baseExistsForMe) isBaseCheckbox.checked = false;
+      // если у пользователя уже есть "Основа" — запрещаем создавать вторую
+      if (isBaseCheckbox && myId) {
+        const hasBase = players.some(p => p.ownerId === myId && p.isBase);
+        isBaseCheckbox.disabled = hasBase;
+        if (hasBase) isBaseCheckbox.checked = false;
       }
 
-      // Если выбранный игрок был удалён — сбрасываем выбор
       if (selectedPlayer && !existingIds.has(selectedPlayer.id)) {
         selectedPlayer = null;
       }
@@ -129,6 +180,12 @@ if (baseExistsForMe) isBaseCheckbox.checked = false;
       updatePlayerList();
       updateCurrentPlayer(msg.state);
       renderLog(msg.state.log || []);
+
+      // если модалка открыта — обновим её данными из свежего state
+      if (openedSheetPlayerId) {
+        const pl = players.find(x => x.id === openedSheetPlayerId);
+        if (pl) renderSheetModal(pl);
+      }
     }
   };
 
@@ -138,13 +195,8 @@ if (baseExistsForMe) isBaseCheckbox.checked = false;
   };
 });
 
-startInitiativeBtn?.addEventListener("click", () => {
-  sendMessage({ type: "startInitiative" });
-});
-
-startCombatBtn?.addEventListener("click", () => {
-  sendMessage({ type: "startCombat" });
-});
+startInitiativeBtn?.addEventListener("click", () => sendMessage({ type: "startInitiative" }));
+startCombatBtn?.addEventListener("click", () => sendMessage({ type: "startCombat" }));
 
 // ================== ROLE UI ==================
 function setupRoleUI(role) {
@@ -173,9 +225,7 @@ function renderLog(logs) {
     logList.appendChild(li);
   });
 
-  if (wasNearBottom) {
-    logList.scrollTop = logList.scrollHeight;
-  }
+  if (wasNearBottom) logList.scrollTop = logList.scrollHeight;
 }
 
 // ================== CURRENT PLAYER ==================
@@ -202,65 +252,31 @@ function highlightCurrentTurn(playerId) {
 }
 
 // ================== PLAYER LIST ==================
-function roleToLabel(role) {
-  if (role === "GM") return "GM";
-  if (role === "DnD-Player") return "DND-P";
-  if (role === "Spectator") return "Spectr";
-  return role || "-";
-}
-
-function roleToClass(role) {
-  if (role === "GM") return "role-gm";
-  if (role === "DnD-Player") return "role-player";
-  return "role-spectr";
-}
-
 function updatePlayerList() {
-  if (!playerList) return;
   playerList.innerHTML = '';
 
-  // Группируем игроков по владельцу
   const grouped = {};
   players.forEach(p => {
     if (!grouped[p.ownerId]) {
-      grouped[p.ownerId] = {
-        ownerName: p.ownerName || 'Unknown',
-        players: []
-      };
+      grouped[p.ownerId] = { ownerName: p.ownerName || 'Unknown', players: [] };
     }
     grouped[p.ownerId].players.push(p);
   });
 
-  Object.entries(grouped).forEach(([ownerId, group]) => {
-    const userInfo = ownerId ? usersById.get(ownerId) : null;
-
-    // ===== контейнер группы владельца =====
+  Object.values(grouped).forEach(group => {
     const ownerLi = document.createElement('li');
-    ownerLi.className = 'owner-group';
+    ownerLi.textContent = group.ownerName;
+    ownerLi.style.marginTop = '8px';
+    ownerLi.style.fontWeight = 'bold';
 
-    // ===== заголовок владельца (имя + роль) =====
-    const ownerHeader = document.createElement('div');
-    ownerHeader.className = 'owner-header';
-
-    const ownerNameSpan = document.createElement('span');
-    ownerNameSpan.className = 'owner-name';
-    ownerNameSpan.textContent = userInfo?.name || group.ownerName;
-
-    const role = userInfo?.role;
-    const badge = document.createElement('span');
-    badge.className = `role-badge ${roleToClass(role)}`;
-    badge.textContent = `(${roleToLabel(role)})`;
-
-    ownerHeader.appendChild(ownerNameSpan);
-    ownerHeader.appendChild(badge);
-
-    // ===== список персонажей владельца (ниже заголовка) =====
     const ul = document.createElement('ul');
-    ul.className = 'owner-players';
+    ul.style.paddingLeft = '0px';
+    ul.style.marginLeft = '12px';
 
     group.players.forEach(p => {
       const li = document.createElement('li');
       li.className = 'player-list-item';
+      li.style.fontWeight = 'normal';
 
       const indicator = document.createElement('span');
       indicator.classList.add('placement-indicator');
@@ -270,47 +286,18 @@ function updatePlayerList() {
       const text = document.createElement('span');
       text.classList.add('player-name-text');
       const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
-      text.textContent = `${p.name} (${initVal})`;
+
+      const roleBadge = p.isBase ? "Основа" : (p.isSummon ? "Призв." : "");
+      text.textContent = `${p.name}${roleBadge ? " [" + roleBadge + "]" : ""} (${initVal})`;
 
       const nameWrap = document.createElement('div');
       nameWrap.classList.add('player-name-wrap');
       nameWrap.appendChild(indicator);
       nameWrap.appendChild(text);
 
-      // ✅ маленький бейдж "основа"
-      if (p.isBase) {
-        const baseBadge = document.createElement('span');
-        baseBadge.className = 'base-badge';
-        baseBadge.textContent = 'основа';
-        nameWrap.appendChild(baseBadge);
-      }
-
       li.appendChild(nameWrap);
 
-      const actions = document.createElement('div');
-actions.className = 'player-actions';
-
-      // ✅ изменение размера игрока (только владелец или GM)
-if (myRole === "GM" || p.ownerId === myId) {
-  const sizeSelect = document.createElement('select');
-  sizeSelect.className = 'size-select';
-  for (let s = 1; s <= 5; s++) {
-    const opt = document.createElement('option');
-    opt.value = String(s);
-    opt.textContent = `${s}x${s}`;
-    if (s === p.size) opt.selected = true;
-    sizeSelect.appendChild(opt);
-  }
-
-  sizeSelect.addEventListener('click', (e) => e.stopPropagation());
-  sizeSelect.addEventListener('change', (e) => {
-    e.stopPropagation();
-    sendMessage({ type: 'updatePlayerSize', id: p.id, size: parseInt(sizeSelect.value, 10) });
-  });
-
-  actions.appendChild(sizeSelect);
-}
-
+      // клик по строке — выбрать и (если не размещён) поставить в 0,0
       li.addEventListener('click', () => {
         selectedPlayer = p;
         if (p.x === null || p.y === null) {
@@ -318,6 +305,21 @@ if (myRole === "GM" || p.ownerId === myId) {
         }
       });
 
+      // ✅ КНОПКА "ИНФА" — только у основы
+      if (p.isBase) {
+        const infoBtn = document.createElement('button');
+        infoBtn.textContent = 'Инфа';
+        infoBtn.style.marginLeft = '5px';
+        infoBtn.onclick = (e) => {
+          e.stopPropagation();
+          openedSheetPlayerId = p.id;
+          renderSheetModal(p);
+          openModal();
+        };
+        li.appendChild(infoBtn);
+      }
+
+      // 🔒 Кнопки — только владельцу или GM
       if (myRole === "GM" || p.ownerId === myId) {
         const removeFromBoardBtn = document.createElement('button');
         removeFromBoardBtn.textContent = 'С поля';
@@ -335,19 +337,205 @@ if (myRole === "GM" || p.ownerId === myId) {
           sendMessage({ type: 'removePlayerCompletely', id: p.id });
         };
 
-actions.appendChild(removeFromBoardBtn);
-actions.appendChild(removeCompletelyBtn);
-
-        li.appendChild(actions);
+        li.appendChild(removeFromBoardBtn);
+        li.appendChild(removeCompletelyBtn);
       }
 
       ul.appendChild(li);
     });
 
-    ownerLi.appendChild(ownerHeader);
     ownerLi.appendChild(ul);
     playerList.appendChild(ownerLi);
   });
+}
+
+// ================== SHEET PARSER (Charbox/LSS) ==================
+function parseCharboxFileText(fileText) {
+  // Вариант 1: обычный JSON
+  const outer = JSON.parse(fileText);
+
+  // Charbox LSS: outer.data — строка JSON
+  let inner = null;
+  if (outer && typeof outer.data === 'string') {
+    try { inner = JSON.parse(outer.data); } catch { inner = null; }
+  }
+
+  // Возвращаем единый объект для хранения
+  return {
+    source: "charbox",
+    importedAt: Date.now(),
+    raw: outer,
+    parsed: inner || outer // если inner нет — считаем outer уже "персонажем"
+  };
+}
+
+// ================== SHEET RENDER ==================
+function safeGet(obj, path, fallback = '-') {
+  try {
+    return path.split('.').reduce((acc, k) => acc && acc[k], obj) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function renderSheetModal(player) {
+  sheetTitle.textContent = `Инфа: ${player.name}`;
+  sheetSubtitle.textContent = `Владелец: ${player.ownerName || 'Unknown'} • Тип: ${player.isBase ? 'Основа' : '—'}`;
+
+  const canEdit = (myRole === "GM" || player.ownerId === myId);
+
+  // actions
+  sheetActions.innerHTML = '';
+  const note = document.createElement('div');
+  note.className = 'sheet-note';
+  note.textContent = canEdit
+    ? "Можно загрузить .json (Charbox/LSS). После загрузки лист сохраняется на сервере."
+    : "Просмотр. Загружать лист может только владелец персонажа или GM.";
+  sheetActions.appendChild(note);
+
+  if (canEdit) {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json,application/json';
+    fileInput.title = 'Загрузить JSON персонажа';
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const sheet = parseCharboxFileText(text);
+
+        sendMessage({
+          type: "setPlayerSheet",
+          id: player.id,
+          sheet
+        });
+
+        // UI: пока ждём state — покажем, что отправили
+        const tmp = document.createElement('div');
+        tmp.className = 'sheet-note';
+        tmp.textContent = "Файл отправлен на сервер. Сейчас обновится состояние…";
+        sheetActions.appendChild(tmp);
+
+      } catch (err) {
+        alert("Не удалось прочитать/распарсить файл .json");
+        console.error(err);
+      } finally {
+        fileInput.value = '';
+      }
+    });
+
+    sheetActions.appendChild(fileInput);
+  }
+
+  // content
+  const sheet = player.sheet?.parsed || null;
+
+  if (!sheet) {
+    sheetContent.innerHTML = `<div class="sheet-note">Лист не загружен. ${canEdit ? "Загрузите .json через кнопку выше." : ""}</div>`;
+    return;
+  }
+
+  // Поддерживаем структуру, похожую на твой пример Charbox:
+  const name = safeGet(sheet, 'name.value', player.name);
+  const cls = safeGet(sheet, 'info.charClass.value', '-');
+  const lvl = safeGet(sheet, 'info.level.value', '-');
+  const race = safeGet(sheet, 'info.race.value', '-');
+  const bg = safeGet(sheet, 'info.background.value', '-');
+  const align = safeGet(sheet, 'info.alignment.value', '-');
+
+  const hp = safeGet(sheet, 'vitality.hp-max.value', '-');
+  const ac = safeGet(sheet, 'vitality.ac.value', '-');
+  const spd = safeGet(sheet, 'vitality.speed.value', '-');
+
+  function statLine(key) {
+    const score = safeGet(sheet, `stats.${key}.score`, '-');
+    const mod = safeGet(sheet, `stats.${key}.modifier`, '-');
+    return { score, mod };
+  }
+
+  const STR = statLine('str');
+  const DEX = statLine('dex');
+  const CON = statLine('con');
+  const INT = statLine('int');
+  const WIS = statLine('wis');
+  const CHA = statLine('cha');
+
+  // оружие: список названий (если есть)
+  const weapons = Array.isArray(sheet.weaponsList)
+    ? sheet.weaponsList.map(w => w?.name).filter(Boolean)
+    : [];
+
+  const coins = sheet.coins ? sheet.coins : null;
+
+  sheetContent.innerHTML = `
+    <div class="sheet-grid">
+      <div class="sheet-card">
+        <h4>Основное</h4>
+        <div class="kv"><div class="k">Имя</div><div class="v">${escapeHtml(String(name))}</div></div>
+        <div class="kv"><div class="k">Класс</div><div class="v">${escapeHtml(String(cls))}</div></div>
+        <div class="kv"><div class="k">Уровень</div><div class="v">${escapeHtml(String(lvl))}</div></div>
+        <div class="kv"><div class="k">Раса</div><div class="v">${escapeHtml(String(race))}</div></div>
+        <div class="kv"><div class="k">Предыстория</div><div class="v">${escapeHtml(String(bg))}</div></div>
+        <div class="kv"><div class="k">Мировоззрение</div><div class="v">${escapeHtml(String(align))}</div></div>
+      </div>
+
+      <div class="sheet-card">
+        <h4>Характеристики</h4>
+        <div class="kv"><div class="k">STR</div><div class="v">${STR.score} (${formatMod(STR.mod)})</div></div>
+        <div class="kv"><div class="k">DEX</div><div class="v">${DEX.score} (${formatMod(DEX.mod)})</div></div>
+        <div class="kv"><div class="k">CON</div><div class="v">${CON.score} (${formatMod(CON.mod)})</div></div>
+        <div class="kv"><div class="k">INT</div><div class="v">${INT.score} (${formatMod(INT.mod)})</div></div>
+        <div class="kv"><div class="k">WIS</div><div class="v">${WIS.score} (${formatMod(WIS.mod)})</div></div>
+        <div class="kv"><div class="k">CHA</div><div class="v">${CHA.score} (${formatMod(CHA.mod)})</div></div>
+      </div>
+
+      <div class="sheet-card">
+        <h4>Защита и движение</h4>
+        <div class="kv"><div class="k">HP (max)</div><div class="v">${escapeHtml(String(hp))}</div></div>
+        <div class="kv"><div class="k">AC</div><div class="v">${escapeHtml(String(ac))}</div></div>
+        <div class="kv"><div class="k">Speed</div><div class="v">${escapeHtml(String(spd))}</div></div>
+      </div>
+
+      <div class="sheet-card" style="grid-column: 1 / -1;">
+        <h4>Оружие / Инвентарь (кратко)</h4>
+        <div class="sheet-note">
+          ${weapons.length ? weapons.map(x => escapeHtml(String(x))).join(", ") : "Нет данных"}
+        </div>
+      </div>
+
+      <div class="sheet-card" style="grid-column: 1 / -1;">
+        <h4>Монеты</h4>
+        <div class="sheet-note">
+          ${coins ? formatCoins(coins) : "Нет данных"}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function formatCoins(coins) {
+  const parts = [];
+  for (const k of ["cp","sp","ep","gp","pp"]) {
+    if (coins && typeof coins[k] !== "undefined") parts.push(`${k.toUpperCase()}: ${coins[k]}`);
+  }
+  return parts.length ? parts.join(" • ") : "Нет данных";
+}
+
+function formatMod(mod) {
+  const n = Number(mod);
+  if (Number.isNaN(n)) return String(mod);
+  return n >= 0 ? `+${n}` : `${n}`;
+}
+
+function escapeHtml(s) {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 // ================== BOARD ==================
@@ -377,13 +565,14 @@ function renderBoard(state) {
 // ================== PLAYER POSITION ==================
 function setPlayerPosition(player) {
   let el = playerElements.get(player.id);
-
   if (!el) {
     el = document.createElement('div');
     el.classList.add('player');
     el.textContent = player.name[0];
     el.style.backgroundColor = player.color;
     el.style.position = 'absolute';
+    el.style.width = `${player.size * 50}px`;
+    el.style.height = `${player.size * 50}px`;
 
     el.addEventListener('mousedown', () => {
       if (!editEnvironment) {
@@ -401,16 +590,7 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  // ✅ ВАЖНО: обновляем внешний вид КАЖДЫЙ РАЗ (для realtime изменения размера/цвета)
-  el.textContent = player.name ? player.name[0] : '?';
-  el.style.backgroundColor = player.color;
-  el.style.width = `${player.size * 50}px`;
-  el.style.height = `${player.size * 50}px`;
-
-  if (player.x === null || player.y === null) {
-    el.style.display = 'none';
-    return;
-  }
+  if (player.x === null || player.y === null) { el.style.display = 'none'; return; }
   el.style.display = 'flex';
 
   let maxX = boardWidth - player.size;
@@ -419,10 +599,7 @@ function setPlayerPosition(player) {
   let y = Math.min(Math.max(player.y, 0), maxY);
 
   const cell = board.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-  if (cell) {
-    el.style.left = `${cell.offsetLeft}px`;
-    el.style.top = `${cell.offsetTop}px`;
-  }
+  if (cell) { el.style.left = `${cell.offsetLeft}px`; el.style.top = `${cell.offsetTop}px`; }
 }
 
 // ================== ADD PLAYER ==================
@@ -434,12 +611,18 @@ addPlayerBtn.addEventListener('click', () => {
     name,
     color: playerColorInput.value,
     size: parseInt(playerSizeInput.value),
-    isBase: !!isBaseCheckbox?.checked
+    isBase: !!isBaseCheckbox?.checked,
+    isSummon: !!isSummonCheckbox?.checked
   };
+
+  if (player.isBase && player.isSummon) {
+    return alert("Выберите только один тип: Основа или Призвать");
+  }
 
   sendMessage({ type: 'addPlayer', player });
 
   playerNameInput.value = '';
+  if (isSummonCheckbox) isSummonCheckbox.checked = false;
   if (isBaseCheckbox && !isBaseCheckbox.disabled) isBaseCheckbox.checked = false;
 });
 
@@ -527,9 +710,7 @@ resetGameBtn.addEventListener('click', () => {
 });
 
 // ================== CLEAR BOARD ==================
-clearBoardBtn.addEventListener('click', () => {
-  sendMessage({ type: 'clearBoard' });
-});
+clearBoardBtn.addEventListener('click', () => sendMessage({ type: 'clearBoard' }));
 
 // ================== HELPER ==================
 function sendMessage(msg) {
@@ -571,7 +752,3 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
-
-
-
-
