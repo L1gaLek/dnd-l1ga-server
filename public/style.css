@@ -180,14 +180,33 @@ button:hover {
   padding: 5px 10px;
 }
 
-#gm-controls button.active {
+/* Подсветки фаз (используем классы на конкретных кнопках) */
+#start-initiative.active {
   background-color: red;
   color: white;
 }
 
-#gm-controls button.ready {
+#start-initiative.ready {
   background-color: green;
   color: white;
 }
+
+/* Оранжевая подсветка: можно начинать бой */
+#start-combat.pending {
+  background-color: orange;
+  color: black;
+}
+
+#start-combat.ready {
+  background-color: green;
+  color: white;
+}
+
+/* Подсветка игрока, который сейчас ходит */
+.player.current-turn {
+  outline: 4px solid orange;
+  box-shadow: 0 0 12px rgba(255, 165, 0, 0.8);
+}
+
 
 
