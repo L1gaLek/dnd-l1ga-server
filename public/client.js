@@ -90,7 +90,23 @@ if (msg.type === "registered") {
 if (msg.type === "init" || msg.type === "state") {
   boardWidth = msg.state.boardWidth;
   boardHeight = msg.state.boardHeight;
-  players = msg.state.players;
+
+  // ✅ 1) Удаляем DOM-элементы игроков, которых больше нет в состоянии
+  const existingIds = new Set((msg.state.players || []).map(p => p.id));
+  playerElements.forEach((el, id) => {
+    if (!existingIds.has(id)) {
+      el.remove();
+      playerElements.delete(id);
+    }
+  });
+
+  // ✅ 2) Обновляем список игроков из state
+  players = msg.state.players || [];
+
+  // Если выбранный игрок был удалён — сбрасываем выбор
+  if (selectedPlayer && !existingIds.has(selectedPlayer.id)) {
+    selectedPlayer = null;
+  }
 
   renderBoard(msg.state);
   updatePhaseUI(msg.state);
@@ -436,4 +452,5 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
