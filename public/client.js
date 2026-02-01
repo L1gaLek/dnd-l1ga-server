@@ -110,7 +110,6 @@ startInitiativeBtn?.addEventListener("click", () => {
 });
 
 startCombatBtn?.addEventListener("click", () => {
-  console.log("CLIENT: startCombat click");
   sendMessage({ type: "startCombat" });
 });
 
@@ -151,17 +150,6 @@ function renderLog(logs) {
 function updateCurrentPlayer(state) {
   if (!state || !state.turnOrder || state.turnOrder.length === 0) {
     currentPlayerSpan.textContent = '-';
-
-playerElements.forEach((el, id) => {
-  el.classList.remove("active-turn");
-});
-
-if (state.phase === "combat") {
-  const id = state.turnOrder[state.currentTurnIndex];
-  const el = playerElements.get(id);
-  if (el) el.classList.add("active-turn");
-}
-    
     return;
   }
   const id = state.turnOrder[state.currentTurnIndex];
@@ -384,49 +372,21 @@ resetGameBtn.addEventListener('click', () => {
   sendMessage({ type:'resetGame' });
 });
 
-function updatePhaseUI(state) {
+// ================== HELPER ==================
+function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
-  // ================= ИНИЦИАТИВА =================
+function updatePhaseUI(state) {
+  // Фаза инициативы
   if (state.phase === "initiative") {
     rollInitiativeBtn.style.display = "inline-block";
 
-    const allRolled = state.players.length > 0 &&
-      state.players.every(p => p.hasRolledInitiative);
-
-    // 🔴 / 🟢 кнопка инициативы
+    const allRolled = state.players.every(p => p.hasRolledInitiative);
     startInitiativeBtn.style.backgroundColor = allRolled ? "green" : "red";
-
-    // 🟡 кнопка начала боя
-    startCombatBtn.disabled = !allRolled;
-    startCombatBtn.style.backgroundColor = allRolled ? "gold" : "";
-  } 
-  else {
+  } else {
     rollInitiativeBtn.style.display = "none";
     startInitiativeBtn.style.backgroundColor = "";
   }
 
-  // ================= БОЙ =================
-  if (state.phase === "combat") {
-    startCombatBtn.disabled = true;
-    startCombatBtn.style.backgroundColor = "green";
-  }
-
-  // ================= ДРУГОЕ =================
-  if (state.phase !== "initiative" && state.phase !== "combat") {
-    startCombatBtn.style.backgroundColor = "";
-  }
+  // Фаза размещения
+  startCombatBtn.disabled = state.phase !== "placement";
 }
-
-// ================== HELPER ==================
-function sendMessage(msg){
-  if(ws && ws.readyState===WebSocket.OPEN){
-    ws.send(JSON.stringify(msg));
-  }
-}
-
-
-
-
-
-
-
