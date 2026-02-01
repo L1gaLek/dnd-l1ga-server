@@ -8,7 +8,6 @@ const loginError = document.getElementById('loginError');
 const gameUI = document.getElementById('main-container');
 const myNameSpan = document.getElementById('myName');
 const myRoleSpan = document.getElementById('myRole');
-const userList = document.getElementById('player-list');
 
 const board = document.getElementById('game-board');
 const playerList = document.getElementById('player-list');
@@ -30,7 +29,6 @@ const playerColorInput = document.getElementById('player-color');
 const playerSizeInput = document.getElementById('player-size');
 
 const isBaseCheckbox = document.getElementById('is-base');
-const isSummonCheckbox = document.getElementById('is-summon');
 
 const dice = document.getElementById('dice');
 const rollResult = document.getElementById('roll-result');
@@ -58,19 +56,8 @@ let mouseDown = false;
 const playerElements = new Map();
 let finishInitiativeSent = false;
 
-function setupPlayerTypeToggles() {
-  if (!isBaseCheckbox || !isSummonCheckbox) return;
-
-  isBaseCheckbox.addEventListener('change', () => {
-    if (isBaseCheckbox.checked) isSummonCheckbox.checked = false;
-  });
-
-  isSummonCheckbox.addEventListener('change', () => {
-    if (isSummonCheckbox.checked) isBaseCheckbox.checked = false;
-  });
-}
-
-setupPlayerTypeToggles();
+// users map (ownerId -> {name, role})
+const usersById = new Map();
 
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
@@ -89,56 +76,60 @@ joinBtn.addEventListener('click', () => {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
 
-if (msg.type === "registered") {
-  myId = msg.id;
-  myRole = msg.role;
-  myNameSpan.textContent = msg.name;
-  myRoleSpan.textContent = msg.role;
+    if (msg.type === "registered") {
+      myId = msg.id;
+      myRole = msg.role;
+      myNameSpan.textContent = msg.name;
+      myRoleSpan.textContent = msg.role;
 
-  loginDiv.style.display = "none";
-  gameUI.style.display = "block";
+      loginDiv.style.display = "none";
+      gameUI.style.display = "block";
 
-  setupRoleUI(myRole);
-}
+      setupRoleUI(myRole);
+    }
 
     if (msg.type === "error") loginError.textContent = msg.message;
 
-    if (msg.type === "users") updateUserList(msg.users);
-
-if (msg.type === "init" || msg.type === "state") {
-  boardWidth = msg.state.boardWidth;
-  boardHeight = msg.state.boardHeight;
-
-  // ✅ 1) Удаляем DOM-элементы игроков, которых больше нет в состоянии
-  const existingIds = new Set((msg.state.players || []).map(p => p.id));
-  playerElements.forEach((el, id) => {
-    if (!existingIds.has(id)) {
-      el.remove();
-      playerElements.delete(id);
+    // ✅ сохраняем пользователей (нужно для вывода ролей в списке инициативы)
+    if (msg.type === "users" && Array.isArray(msg.users)) {
+      usersById.clear();
+      msg.users.forEach(u => usersById.set(u.id, { name: u.name, role: u.role }));
+      updatePlayerList(); // чтобы роли обновились сразу
     }
-  });
 
-  // ✅ 2) Обновляем список игроков из state
-  players = msg.state.players || [];
+    if (msg.type === "init" || msg.type === "state") {
+      boardWidth = msg.state.boardWidth;
+      boardHeight = msg.state.boardHeight;
 
-// Если у пользователя уже есть "Основа" — запрещаем создавать вторую
-if (isBaseCheckbox && myId) {
-  const hasBase = players.some(p => p.ownerId === myId && p.isBase);
-  isBaseCheckbox.disabled = hasBase;
-  if (hasBase) isBaseCheckbox.checked = false;
-}
+      // ✅ Удаляем DOM-элементы игроков, которых больше нет в состоянии
+      const existingIds = new Set((msg.state.players || []).map(p => p.id));
+      playerElements.forEach((el, id) => {
+        if (!existingIds.has(id)) {
+          el.remove();
+          playerElements.delete(id);
+        }
+      });
 
-  // Если выбранный игрок был удалён — сбрасываем выбор
-  if (selectedPlayer && !existingIds.has(selectedPlayer.id)) {
-    selectedPlayer = null;
-  }
+      players = msg.state.players || [];
 
-  renderBoard(msg.state);
-  updatePhaseUI(msg.state);
-  updatePlayerList();
-  updateCurrentPlayer(msg.state);
-  renderLog(msg.state.log || []);
-}
+      // ✅ Основа одна на всю игру — блокируем чекбокс у всех
+      if (isBaseCheckbox) {
+        const baseExists = players.some(p => p.isBase);
+        isBaseCheckbox.disabled = baseExists;
+        if (baseExists) isBaseCheckbox.checked = false;
+      }
+
+      // Если выбранный игрок был удалён — сбрасываем выбор
+      if (selectedPlayer && !existingIds.has(selectedPlayer.id)) {
+        selectedPlayer = null;
+      }
+
+      renderBoard(msg.state);
+      updatePhaseUI(msg.state);
+      updatePlayerList();
+      updateCurrentPlayer(msg.state);
+      renderLog(msg.state.log || []);
+    }
   };
 
   ws.onerror = (e) => {
@@ -155,16 +146,6 @@ startCombatBtn?.addEventListener("click", () => {
   sendMessage({ type: "startCombat" });
 });
 
-// ================== USERS ==================
-function updateUserList(users) {
-  userList.innerHTML = '';
-  users.forEach(u => {
-    const li = document.createElement('li');
-    li.textContent = `${u.name} (${u.role})`;
-    userList.appendChild(li);
-  });
-}
-
 // ================== ROLE UI ==================
 function setupRoleUI(role) {
   if (role === "Spectator") {
@@ -175,12 +156,13 @@ function setupRoleUI(role) {
     createBoardBtn.style.display = 'none';
     resetGameBtn.style.display = 'none';
     clearBoardBtn.style.display = 'none';
-  } else if (role === "DnD-Player") resetGameBtn.style.display = 'none';
+  } else if (role === "DnD-Player") {
+    resetGameBtn.style.display = 'none';
+  }
 }
 
 // ================== LOG ==================
 function renderLog(logs) {
-  // Был ли пользователь внизу (или почти внизу) до обновления?
   const wasNearBottom =
     (logList.scrollTop + logList.clientHeight) >= (logList.scrollHeight - 30);
 
@@ -191,7 +173,6 @@ function renderLog(logs) {
     logList.appendChild(li);
   });
 
-  // Если пользователь был внизу — прокручиваем вниз автоматически
   if (wasNearBottom) {
     logList.scrollTop = logList.scrollHeight;
   }
@@ -209,25 +190,36 @@ function updateCurrentPlayer(state) {
   const p = players.find(pl => pl.id === id);
   currentPlayerSpan.textContent = p ? p.name : '-';
 
-  // Подсветка фигуры на поле, когда идёт бой
   if (state.phase === 'combat') highlightCurrentTurn(id);
   else highlightCurrentTurn(null);
 }
 
 function highlightCurrentTurn(playerId) {
-  // снимаем подсветку со всех
   playerElements.forEach((el) => el.classList.remove('current-turn'));
-
   if (!playerId) return;
   const el = playerElements.get(playerId);
   if (el) el.classList.add('current-turn');
 }
 
 // ================== PLAYER LIST ==================
+function roleToLabel(role) {
+  if (role === "GM") return "GM";
+  if (role === "DnD-Player") return "DND-P";
+  if (role === "Spectator") return "Spectr";
+  return role || "-";
+}
+
+function roleToClass(role) {
+  if (role === "GM") return "role-gm";
+  if (role === "DnD-Player") return "role-player";
+  return "role-spectr";
+}
+
 function updatePlayerList() {
+  if (!playerList) return;
   playerList.innerHTML = '';
 
-  // 🔹 Группируем игроков по владельцу
+  // Группируем игроков по владельцу
   const grouped = {};
   players.forEach(p => {
     if (!grouped[p.ownerId]) {
@@ -239,44 +231,59 @@ function updatePlayerList() {
     grouped[p.ownerId].players.push(p);
   });
 
-  // 🔹 Рисуем
   Object.values(grouped).forEach(group => {
+    const ownerId = Object.keys(grouped).find(k => grouped[k] === group); // не идеально, но работает без доп. структуры
+    const userInfo = ownerId ? usersById.get(ownerId) : null;
+
     const ownerLi = document.createElement('li');
-    ownerLi.textContent = group.ownerName;
     ownerLi.style.marginTop = '8px';
     ownerLi.style.fontWeight = 'bold';
+    ownerLi.style.display = 'flex';
+    ownerLi.style.alignItems = 'center';
+    ownerLi.style.gap = '8px';
+
+    const ownerNameSpan = document.createElement('span');
+    ownerNameSpan.textContent = userInfo?.name || group.ownerName;
+
+    const role = userInfo?.role;
+    const badge = document.createElement('span');
+    badge.className = `role-badge ${roleToClass(role)}`;
+    badge.textContent = `(${roleToLabel(role)})`;
+
+    ownerLi.appendChild(ownerNameSpan);
+    ownerLi.appendChild(badge);
 
     const ul = document.createElement('ul');
-    ul.style.paddingLeft = '0px';     // 🔑 убираем расширяющий padding
-ul.style.marginLeft = '12px';     // 🔑 отступ делаем margin'ом (не увеличивает ширину)
+    ul.style.paddingLeft = '0px';
+    ul.style.marginLeft = '12px';
 
     group.players.forEach(p => {
       const li = document.createElement('li');
       li.className = 'player-list-item';
       li.style.fontWeight = 'normal';
 
-      // ✅ кружок размещения
+      // ✅ выделение основы
+      if (p.isBase) li.classList.add('base-player');
+
       const indicator = document.createElement('span');
       indicator.classList.add('placement-indicator');
       const placed = (p.x !== null && p.y !== null);
       indicator.classList.add(placed ? 'placed' : 'not-placed');
 
-      // ✅ текст
-const text = document.createElement('span');
-text.classList.add('player-name-text');   // 👈 добавили класс
-const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
-text.textContent = `${p.name} (${initVal})`;
+      const text = document.createElement('span');
+      text.classList.add('player-name-text');
+      const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
 
-// 🧩 Контейнер: кружок + имя
-const nameWrap = document.createElement('div');
-nameWrap.classList.add('player-name-wrap');
+      // Добавим пометку "Основа" прямо в строке
+      text.textContent = `${p.name} (${initVal})${p.isBase ? " — Основа" : ""}`;
 
-nameWrap.appendChild(indicator);
-nameWrap.appendChild(text);
+      const nameWrap = document.createElement('div');
+      nameWrap.classList.add('player-name-wrap');
+      nameWrap.appendChild(indicator);
+      nameWrap.appendChild(text);
 
-li.appendChild(nameWrap);
+      li.appendChild(nameWrap);
 
-      // Клик по игроку — выбираем (и если не размещён, ставим в 0,0 как раньше)
       li.addEventListener('click', () => {
         selectedPlayer = p;
         if (p.x === null || p.y === null) {
@@ -284,7 +291,6 @@ li.appendChild(nameWrap);
         }
       });
 
-      // 🔒 Кнопки — только владельцу или GM
       if (myRole === "GM" || p.ownerId === myId) {
         const removeFromBoardBtn = document.createElement('button');
         removeFromBoardBtn.textContent = 'С поля';
@@ -318,14 +324,14 @@ li.appendChild(nameWrap);
 function renderBoard(state) {
   board.querySelectorAll('.cell').forEach(c => c.remove());
   board.style.position = 'relative';
-  board.style.width = `${boardWidth*50}px`;
-  board.style.height = `${boardHeight*50}px`;
+  board.style.width = `${boardWidth * 50}px`;
+  board.style.height = `${boardHeight * 50}px`;
   board.style.display = 'grid';
   board.style.gridTemplateColumns = `repeat(${boardWidth}, 50px)`;
   board.style.gridTemplateRows = `repeat(${boardHeight}, 50px)`;
 
-  for (let y=0; y<boardHeight; y++) {
-    for (let x=0; x<boardWidth; x++) {
+  for (let y = 0; y < boardHeight; y++) {
+    for (let x = 0; x < boardWidth; x++) {
       const cell = document.createElement('div');
       cell.classList.add('cell');
       cell.dataset.x = x;
@@ -347,8 +353,8 @@ function setPlayerPosition(player) {
     el.textContent = player.name[0];
     el.style.backgroundColor = player.color;
     el.style.position = 'absolute';
-    el.style.width = `${player.size*50}px`;
-    el.style.height = `${player.size*50}px`;
+    el.style.width = `${player.size * 50}px`;
+    el.style.height = `${player.size * 50}px`;
 
     el.addEventListener('mousedown', () => {
       if (!editEnvironment) {
@@ -366,8 +372,8 @@ function setPlayerPosition(player) {
     player.element = el;
   }
 
-  if (player.x === null || player.y === null) { el.style.display='none'; return; }
-  el.style.display='flex';
+  if (player.x === null || player.y === null) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
 
   let maxX = boardWidth - player.size;
   let maxY = boardHeight - player.size;
@@ -387,19 +393,12 @@ addPlayerBtn.addEventListener('click', () => {
     name,
     color: playerColorInput.value,
     size: parseInt(playerSizeInput.value),
-    isBase: !!isBaseCheckbox?.checked,
-    isSummon: !!isSummonCheckbox?.checked
+    isBase: !!isBaseCheckbox?.checked
   };
-
-  // защита от двух галочек
-  if (player.isBase && player.isSummon) {
-    return alert("Выберите только один тип: Основа или Призвать");
-  }
 
   sendMessage({ type: 'addPlayer', player });
 
   playerNameInput.value = '';
-  if (isSummonCheckbox) isSummonCheckbox.checked = false;
   if (isBaseCheckbox && !isBaseCheckbox.disabled) isBaseCheckbox.checked = false;
 });
 
@@ -414,7 +413,7 @@ board.addEventListener('click', e => {
   if (x + selectedPlayer.size > boardWidth) x = boardWidth - selectedPlayer.size;
   if (y + selectedPlayer.size > boardHeight) y = boardHeight - selectedPlayer.size;
 
-  sendMessage({ type:'movePlayer', id:selectedPlayer.id, x, y });
+  sendMessage({ type: 'movePlayer', id: selectedPlayer.id, x, y });
   const el = playerElements.get(selectedPlayer.id);
   if (el) el.classList.remove('selected');
   selectedPlayer = null;
@@ -423,16 +422,16 @@ board.addEventListener('click', e => {
 // ================== DICE ==================
 rollBtn.addEventListener('click', () => {
   const sides = parseInt(dice.value);
-  const result = Math.floor(Math.random()*sides)+1;
+  const result = Math.floor(Math.random() * sides) + 1;
   rollResult.textContent = `Результат: ${result}`;
-  sendMessage({ type:'log', text:`Бросок d${sides}: ${result}` });
+  sendMessage({ type: 'log', text: `Бросок d${sides}: ${result}` });
 });
 
 // ================== END TURN ==================
-endTurnBtn.addEventListener('click', () => sendMessage({ type:'endTurn' }));
+endTurnBtn.addEventListener('click', () => sendMessage({ type: 'endTurn' }));
 
 // ================== INITIATIVE ==================
-rollInitiativeBtn.addEventListener('click', () => sendMessage({ type:'rollInitiative' }));
+rollInitiativeBtn.addEventListener('click', () => sendMessage({ type: 'rollInitiative' }));
 
 // ================== WALLS ==================
 editEnvBtn.addEventListener('click', () => {
@@ -443,60 +442,70 @@ editEnvBtn.addEventListener('click', () => {
   editEnvBtn.textContent = editEnvironment ? "Редактирование: ВКЛ" : "Редактирование: ВЫКЛ";
 });
 
-addWallBtn.addEventListener('click', () => wallMode='add');
-removeWallBtn.addEventListener('click', () => wallMode='remove');
+addWallBtn.addEventListener('click', () => wallMode = 'add');
+removeWallBtn.addEventListener('click', () => wallMode = 'remove');
 
-board.addEventListener('mousedown', e => { if(!editEnvironment||!wallMode) return; mouseDown=true; toggleWall(e.target.closest('.cell')); });
-board.addEventListener('mouseover', e => { if(!mouseDown||!editEnvironment||!wallMode) return; toggleWall(e.target.closest('.cell')); });
-board.addEventListener('mouseup', () => mouseDown=false);
+board.addEventListener('mousedown', e => {
+  if (!editEnvironment || !wallMode) return;
+  const cell = e.target.closest('.cell');
+  if (!cell) return;
+  mouseDown = true;
+  toggleWall(cell);
+});
 
-function toggleWall(cell){
-  if(!cell) return;
-  const x=+cell.dataset.x, y=+cell.dataset.y;
-  if(wallMode==='add'){ sendMessage({ type:'addWall', wall:{x,y} }); cell.classList.add('wall'); }
-  else if(wallMode==='remove'){ sendMessage({ type:'removeWall', wall:{x,y} }); cell.classList.remove('wall'); }
+board.addEventListener('mouseover', e => {
+  if (!mouseDown || !editEnvironment || !wallMode) return;
+  const cell = e.target.closest('.cell');
+  if (!cell) return;
+  toggleWall(cell);
+});
+
+board.addEventListener('mouseup', () => mouseDown = false);
+
+function toggleWall(cell) {
+  if (!cell) return;
+  const x = +cell.dataset.x, y = +cell.dataset.y;
+  if (wallMode === 'add') { sendMessage({ type: 'addWall', wall: { x, y } }); cell.classList.add('wall'); }
+  else if (wallMode === 'remove') { sendMessage({ type: 'removeWall', wall: { x, y } }); cell.classList.remove('wall'); }
 }
 
 // ================== CREATE BOARD ==================
 createBoardBtn.addEventListener('click', () => {
-  const width=parseInt(boardWidthInput.value);
-  const height=parseInt(boardHeightInput.value);
-  if(isNaN(width)||isNaN(height)||width<1||height<1||width>20||height>20) return alert("Введите корректные размеры поля (1–20)");
-  sendMessage({ type:'resizeBoard', width, height });
+  const width = parseInt(boardWidthInput.value);
+  const height = parseInt(boardHeightInput.value);
+  if (isNaN(width) || isNaN(height) || width < 1 || height < 1 || width > 20 || height > 20)
+    return alert("Введите корректные размеры поля (1–20)");
+  sendMessage({ type: 'resizeBoard', width, height });
 });
 
 // ================== RESET GAME ==================
 resetGameBtn.addEventListener('click', () => {
   playerElements.forEach(el => el.remove());
   playerElements.clear();
-  sendMessage({ type:'resetGame' });
+  sendMessage({ type: 'resetGame' });
 });
 
 // ================== CLEAR BOARD ==================
 clearBoardBtn.addEventListener('click', () => {
-  // Не трогаем playerElements руками — дождёмся state от сервера
-  // (так синхронизация будет одинаковой у всех)
   sendMessage({ type: 'clearBoard' });
 });
 
 // ================== HELPER ==================
-function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+function sendMessage(msg) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+}
 
 function updatePhaseUI(state) {
   const allRolled = state.players?.length
     ? state.players.every(p => p.hasRolledInitiative)
     : false;
 
-  // ---------- КНОПКА "Фаза инициативы" ----------
-  // (красная = активная фаза; зелёная = все бросили)
   if (state.phase === "initiative") {
     rollInitiativeBtn.style.display = "inline-block";
 
     startInitiativeBtn.classList.remove('active', 'ready', 'pending');
     startInitiativeBtn.classList.add(allRolled ? 'ready' : 'active');
 
-    // 🔑 Как только все бросили — автоматически завершаем инициативу
-    // чтобы сервер перевёл фазу в placement и можно было начинать бой.
     if (myRole === 'GM' && allRolled && !finishInitiativeSent) {
       finishInitiativeSent = true;
       sendMessage({ type: 'finishInitiative' });
@@ -504,40 +513,20 @@ function updatePhaseUI(state) {
   } else {
     rollInitiativeBtn.style.display = "none";
     startInitiativeBtn.classList.remove('active', 'ready', 'pending');
-
-    // если мы вышли из инициативы — подготовим флаг к следующему разу
     finishInitiativeSent = false;
   }
 
-  // ---------- КНОПКА "Начало боя" ----------
-  // оранжевая = можно начинать бой (placement)
-  // зелёная   = бой идёт (combat)
   startCombatBtn.classList.remove('active', 'ready', 'pending');
 
   if (state.phase === 'placement') {
     startCombatBtn.disabled = false;
-    startCombatBtn.classList.add('pending'); // оранжевая
+    startCombatBtn.classList.add('pending');
   } else if (state.phase === 'combat') {
     startCombatBtn.disabled = false;
-    startCombatBtn.classList.add('ready'); // зелёная
+    startCombatBtn.classList.add('ready');
   } else {
     startCombatBtn.disabled = true;
   }
 
-  // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
