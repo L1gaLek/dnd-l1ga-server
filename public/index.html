@@ -33,17 +33,60 @@
   <div id="content-row">
 
     <!-- Левая панель -->
-    <div id="action-log-container">
-      <div id="action-log">
-        <h3>Журнал действий:</h3>
-        <ul id="log-list"></ul>
-      </div>
+   <div id="action-log-container">
 
-      <div id="player-list-container">
-        <h3>Игроки и инициатива:</h3>
-        <ul id="player-list"></ul>
+  <!-- Верх: журнал + управление игроками -->
+  <div id="action-top-row">
+
+    <div id="action-log">
+      <h3>Журнал действий:</h3>
+      <ul id="log-list"></ul>
+    </div>
+
+    <div id="player-management">
+      <h3>Управление игроками:</h3>
+
+      <!-- сюда мы перенесём player-controls -->
+      <div id="player-controls">
+        <input type="text" id="player-name" placeholder="Имя игрока">
+
+        <label>Цвет:
+          <input type="color" id="player-color" value="#ff0000">
+        </label>
+
+        <label>Размер:
+          <select id="player-size">
+            <option value="1">1x1</option>
+            <option value="2">2x2</option>
+            <option value="3">3x3</option>
+          </select>
+        </label>
+
+        <!-- НОВОЕ: тип существа -->
+        <div class="player-type">
+          <label class="type-item">
+            <input type="checkbox" id="is-base">
+            Основа
+          </label>
+
+          <label class="type-item">
+            <input type="checkbox" id="is-summon">
+            Призвать
+          </label>
+        </div>
+
+        <button id="add-player">Добавить</button>
       </div>
     </div>
+
+  </div>
+
+  <!-- Низ: список инициативы -->
+  <div id="player-list-container">
+    <h3>Игроки и инициатива:</h3>
+    <ul id="player-list"></ul>
+  </div>
+</div>
 
     <!-- Игровая колонка -->
     <div id="game-container">
@@ -95,16 +138,6 @@
 <button id="start-combat">Начало боя</button>
       </div>
 
-      <div id="player-controls">
-        <input type="text" id="player-name" placeholder="Имя игрока">
-        <input type="color" id="player-color" value="#ff0000">
-        <label>Размер (в клетках):
-          <input type="number" id="player-size" value="1" min="1" max="5">
-        </label>
-        <button id="add-player">Добавить игрока</button>
-        <button id="roll-initiative">Бросить инициативу</button>
-      </div>
-
 
     </div>
   </div>
@@ -113,6 +146,7 @@
 <script src="client.js"></script>
 </body>
 </html>
+
 
 
 
