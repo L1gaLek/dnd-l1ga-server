@@ -114,9 +114,9 @@ joinBtn.addEventListener('click', () => {
 
       // ✅ Основа одна на всю игру — блокируем чекбокс у всех
       if (isBaseCheckbox) {
-        const baseExists = players.some(p => p.isBase);
-        isBaseCheckbox.disabled = baseExists;
-        if (baseExists) isBaseCheckbox.checked = false;
+const baseExistsForMe = players.some(p => p.isBase && p.ownerId === myId);
+isBaseCheckbox.disabled = baseExistsForMe;
+if (baseExistsForMe) isBaseCheckbox.checked = false;
       }
 
       // Если выбранный игрок был удалён — сбрасываем выбор
@@ -534,4 +534,5 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
