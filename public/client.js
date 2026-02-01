@@ -180,12 +180,21 @@ function setupRoleUI(role) {
 
 // ================== LOG ==================
 function renderLog(logs) {
+  // Был ли пользователь внизу (или почти внизу) до обновления?
+  const wasNearBottom =
+    (logList.scrollTop + logList.clientHeight) >= (logList.scrollHeight - 30);
+
   logList.innerHTML = '';
   logs.slice(-50).forEach(line => {
     const li = document.createElement('li');
     li.textContent = line;
     logList.appendChild(li);
   });
+
+  // Если пользователь был внизу — прокручиваем вниз автоматически
+  if (wasNearBottom) {
+    logList.scrollTop = logList.scrollHeight;
+  }
 }
 
 // ================== CURRENT PLAYER ==================
@@ -511,6 +520,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
