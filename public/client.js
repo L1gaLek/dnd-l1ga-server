@@ -144,6 +144,377 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function toViewModel(sheet, fallbackName = "-") {
+  // Под Charbox/LSS структура (как в твоих json):
+  const name = safeGet(sheet, 'name.value', fallbackName);
+  const cls = safeGet(sheet, 'info.charClass.value', '-');
+  const lvl = safeGet(sheet, 'info.level.value', '-');
+  const race = safeGet(sheet, 'info.race.value', '-');
+  const bg = safeGet(sheet, 'info.background.value', '-');
+  const align = safeGet(sheet, 'info.alignment.value', '-');
+
+  const hp = safeGet(sheet, 'vitality.hp-max.value', '-');
+  const ac = safeGet(sheet, 'vitality.ac.value', '-');
+  const spd = safeGet(sheet, 'vitality.speed.value', '-');
+
+  const stats = ["str","dex","con","int","wis","cha"].map(k => ({
+    key: k.toUpperCase(),
+    score: safeGet(sheet, `stats.${k}.score`, '-'),
+    mod: safeGet(sheet, `stats.${k}.modifier`, '-')
+  }));
+
+  // skills: берём все ключи, у кого есть score/modifier/proficiency
+  const skillsRaw = sheet?.skills && typeof sheet.skills === "object" ? sheet.skills : {};
+  const skills = Object.keys(skillsRaw).map(key => {
+    const obj = skillsRaw[key] || {};
+    const val = obj.score ?? obj.modifier ?? "-";
+    const prof = obj.proficiency ?? false;
+    return { key, val, prof };
+  }).sort((a,b) => a.key.localeCompare(b.key));
+
+  // saves
+  const savesRaw = sheet?.saves && typeof sheet.saves === "object" ? sheet.saves : {};
+  const saves = Object.keys(savesRaw).map(key => {
+    const obj = savesRaw[key] || {};
+    const val = obj.score ?? obj.modifier ?? "-";
+    const prof = obj.proficiency ?? false;
+    return { key: key.toUpperCase(), val, prof };
+  }).sort((a,b) => a.key.localeCompare(b.key));
+
+  // weapons / combat
+  const weapons = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
+  const weaponsVm = weapons.map(w => ({
+    name: w?.name ?? "-",
+    atk: w?.attackBonus ?? w?.atkBonus ?? w?.toHit ?? "-",
+    dmg: w?.damage ?? w?.dmg ?? "-",
+    type: w?.type ?? w?.damageType ?? ""
+  })).filter(w => w.name && w.name !== "-");
+
+  // coins/inventory
+  const coins = sheet?.coins || null;
+  const inventory = Array.isArray(sheet?.inventory) ? sheet.inventory : [];
+  const inventoryVm = inventory.map(i => i?.name || i?.itemName || i).filter(Boolean);
+
+  // spells: у Charbox часто лежат в sheet.text["spells-level-0"] и т.п.
+  const text = sheet?.text && typeof sheet.text === "object" ? sheet.text : {};
+  const spellKeys = Object.keys(text).filter(k => k.startsWith("spells-level-"));
+  const spellsByLevel = spellKeys
+    .sort((a,b) => {
+      const la = parseInt(a.split("-").pop(),10);
+      const lb = parseInt(b.split("-").pop(),10);
+      return la - lb;
+    })
+    .map(k => {
+      const level = k.split("-").pop();
+      const raw = text[k];
+      // может быть строка с переносами или массив — приводим к массиву строк
+      let items = [];
+      if (Array.isArray(raw)) items = raw.map(String);
+      else if (typeof raw === "string") items = raw.split("\n").map(s => s.trim()).filter(Boolean);
+      else if (raw != null) items = [String(raw)];
+      return { level, items };
+    })
+    .filter(x => x.items.length);
+
+  return {
+    name, cls, lvl, race, bg, align,
+    hp, ac, spd,
+    stats, skills, saves,
+    weapons: weaponsVm,
+    coins,
+    inventory: inventoryVm,
+    spellsByLevel
+  };
+}
+
+function renderSheetTabContent(tabId, vm) {
+  // tabId: basic | stats | skills | combat | spells | inventory
+  if (tabId === "basic") {
+    return `
+      <div class="sheet-section">
+        <h3>Основное</h3>
+        <div class="sheet-grid-2">
+          <div class="sheet-card">
+            <h4>Профиль</h4>
+            <div class="kv"><div class="k">Имя</div><div class="v">${escapeHtml(vm.name)}</div></div>
+            <div class="kv"><div class="k">Класс</div><div class="v">${escapeHtml(vm.cls)}</div></div>
+            <div class="kv"><div class="k">Уровень</div><div class="v">${escapeHtml(vm.lvl)}</div></div>
+            <div class="kv"><div class="k">Раса</div><div class="v">${escapeHtml(vm.race)}</div></div>
+          </div>
+          <div class="sheet-card">
+            <h4>Фон</h4>
+            <div class="kv"><div class="k">Предыстория</div><div class="v">${escapeHtml(vm.bg)}</div></div>
+            <div class="kv"><div class="k">Мировоззрение</div><div class="v">${escapeHtml(vm.align)}</div></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (tabId === "stats") {
+    const cards = vm.stats.map(s => `
+      <div class="sheet-card">
+        <h4>${s.key}</h4>
+        <div class="kv"><div class="k">Score</div><div class="v">${escapeHtml(s.score)}</div></div>
+        <div class="kv"><div class="k">Mod</div><div class="v">${escapeHtml(formatMod(s.mod))}</div></div>
+      </div>
+    `).join("");
+
+    return `
+      <div class="sheet-section">
+        <h3>Характеристики</h3>
+        <div class="sheet-grid-3">
+          ${cards}
+        </div>
+      </div>
+    `;
+  }
+
+  if (tabId === "skills") {
+    const skills = vm.skills.length
+      ? vm.skills.map(x => `
+        <div class="kv">
+          <div class="k">${escapeHtml(x.key)}${x.prof ? " ★" : ""}</div>
+          <div class="v">${escapeHtml(x.val)}</div>
+        </div>
+      `).join("")
+      : `<div class="sheet-note">Нет данных</div>`;
+
+    const saves = vm.saves.length
+      ? vm.saves.map(x => `
+        <div class="kv">
+          <div class="k">${escapeHtml(x.key)}${x.prof ? " ★" : ""}</div>
+          <div class="v">${escapeHtml(x.val)}</div>
+        </div>
+      `).join("")
+      : `<div class="sheet-note">Нет данных</div>`;
+
+    return `
+      <div class="sheet-section">
+        <h3>Навыки и сейвы</h3>
+        <div class="sheet-grid-2">
+          <div class="sheet-card">
+            <h4>Skills</h4>
+            ${skills}
+          </div>
+          <div class="sheet-card">
+            <h4>Saves</h4>
+            ${saves}
+          </div>
+        </div>
+        <div class="sheet-note" style="margin-top:8px;">★ — отмечены как proficiency (если есть в файле)</div>
+      </div>
+    `;
+  }
+
+  if (tabId === "combat") {
+    const weapons = vm.weapons.length
+      ? vm.weapons.map(w => `
+        <div class="sheet-card">
+          <h4>${escapeHtml(w.name)}</h4>
+          <div class="kv"><div class="k">Atk</div><div class="v">${escapeHtml(w.atk)}</div></div>
+          <div class="kv"><div class="k">Dmg</div><div class="v">${escapeHtml(w.dmg)} ${escapeHtml(w.type || "")}</div></div>
+        </div>
+      `).join("")
+      : `<div class="sheet-note">Оружие не указано</div>`;
+
+    return `
+      <div class="sheet-section">
+        <h3>Бой</h3>
+        <div class="sheet-grid-2">
+          ${weapons}
+        </div>
+      </div>
+    `;
+  }
+
+  if (tabId === "spells") {
+    if (!vm.spellsByLevel.length) {
+      return `<div class="sheet-note">Заклинания не указаны</div>`;
+    }
+
+    const blocks = vm.spellsByLevel.map(b => `
+      <div class="sheet-card">
+        <h4>Уровень ${escapeHtml(b.level)}</h4>
+        <div>
+          ${b.items.map(s => `<span class="sheet-pill">${escapeHtml(s)}</span>`).join("")}
+        </div>
+      </div>
+    `).join("");
+
+    return `
+      <div class="sheet-section">
+        <h3>Заклинания</h3>
+        <div class="sheet-grid-2">
+          ${blocks}
+        </div>
+      </div>
+    `;
+  }
+
+  if (tabId === "inventory") {
+    const coins = vm.coins
+      ? ["cp","sp","ep","gp","pp"]
+          .filter(k => typeof vm.coins[k] !== "undefined")
+          .map(k => `<span class="sheet-pill">${k.toUpperCase()}: ${escapeHtml(vm.coins[k])}</span>`)
+          .join("")
+      : `<div class="sheet-note">Нет данных</div>`;
+
+    const inv = vm.inventory.length
+      ? `<ul class="sheet-list">${vm.inventory.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
+      : `<div class="sheet-note">Инвентарь не указан</div>`;
+
+    return `
+      <div class="sheet-section">
+        <h3>Инвентарь</h3>
+        <div class="sheet-grid-2">
+          <div class="sheet-card">
+            <h4>Монеты</h4>
+            <div>${coins}</div>
+          </div>
+          <div class="sheet-card">
+            <h4>Предметы</h4>
+            ${inv}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `<div class="sheet-note">Раздел в разработке</div>`;
+}
+
+function renderSheetModal(player) {
+  if (!sheetTitle || !sheetSubtitle || !sheetActions || !sheetContent) return;
+
+  sheetTitle.textContent = `Инфа: ${player.name}`;
+  sheetSubtitle.textContent = `Владелец: ${player.ownerName || 'Unknown'} • Тип: ${player.isBase ? 'Основа' : '-'}`;
+
+  const canEdit = (myRole === "GM" || player.ownerId === myId);
+
+  // actions (upload + hint)
+  sheetActions.innerHTML = '';
+  const note = document.createElement('div');
+  note.className = 'sheet-note';
+  note.textContent = canEdit
+    ? "Можно загрузить .json (Charbox/LSS). После загрузки лист сохраняется на сервере."
+    : "Просмотр. Загружать лист может только владелец или GM.";
+  sheetActions.appendChild(note);
+
+  if (canEdit) {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.json,application/json';
+
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const sheet = parseCharboxFileText(text);
+        sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
+
+        const tmp = document.createElement('div');
+        tmp.className = 'sheet-note';
+        tmp.textContent = "Файл отправлен на сервер. Сейчас обновится состояние…";
+        sheetActions.appendChild(tmp);
+      } catch (err) {
+        alert("Не удалось прочитать/распарсить файл .json");
+        console.error(err);
+      } finally {
+        fileInput.value = '';
+      }
+    });
+
+    sheetActions.appendChild(fileInput);
+  }
+
+  // content
+  const sheet = player.sheet?.parsed || null;
+  if (!sheet) {
+    sheetContent.innerHTML = `<div class="sheet-note">Лист не загружен.${canEdit ? " Загрузите .json через кнопку выше." : ""}</div>`;
+    return;
+  }
+
+  const vm = toViewModel(sheet, player.name);
+
+  // левое меню вкладок
+  const tabs = [
+    { id: "basic", label: "Основное" },
+    { id: "stats", label: "Характеристики" },
+    { id: "skills", label: "Навыки / Сейвы" },
+    { id: "combat", label: "Бой" },
+    { id: "spells", label: "Заклинания" },
+    { id: "inventory", label: "Инвентарь" }
+  ];
+
+  // запоминаем активную вкладку (на игрока)
+  if (!player._activeSheetTab) player._activeSheetTab = "basic";
+  let activeTab = player._activeSheetTab;
+
+  const hero = `
+    <div class="sheet-hero">
+      <div class="sheet-hero-top">
+        <div>
+          <div class="sheet-hero-title">${escapeHtml(vm.name)}</div>
+          <div class="sheet-hero-sub">
+            ${escapeHtml(vm.cls)} • lvl ${escapeHtml(vm.lvl)} • ${escapeHtml(vm.race)}
+          </div>
+        </div>
+        <div class="sheet-chips">
+          <div class="sheet-chip"><div class="k">AC</div><div class="v">${escapeHtml(vm.ac)}</div></div>
+          <div class="sheet-chip"><div class="k">HP</div><div class="v">${escapeHtml(vm.hp)}</div></div>
+          <div class="sheet-chip"><div class="k">Speed</div><div class="v">${escapeHtml(vm.spd)}</div></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const sidebarHtml = `
+    <div class="sheet-sidebar">
+      ${tabs.map(t => `
+        <button class="sheet-tab ${t.id === activeTab ? "active" : ""}" data-tab="${t.id}">
+          ${escapeHtml(t.label)}
+        </button>
+      `).join("")}
+    </div>
+  `;
+
+  const mainHtml = `
+    <div class="sheet-main" id="sheet-main">
+      ${renderSheetTabContent(activeTab, vm)}
+    </div>
+  `;
+
+  sheetContent.innerHTML = `
+    ${hero}
+    <div class="sheet-layout">
+      ${sidebarHtml}
+      ${mainHtml}
+    </div>
+  `;
+
+  // навешиваем обработчики на табы
+  const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
+  const main = sheetContent.querySelector("#sheet-main");
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tabId = btn.dataset.tab;
+      if (!tabId) return;
+
+      activeTab = tabId;
+      player._activeSheetTab = tabId;
+
+      tabButtons.forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+
+      if (main) main.innerHTML = renderSheetTabContent(activeTab, vm);
+    });
+  });
+}
+
 function renderSheetModal(player) {
   if (!sheetTitle || !sheetSubtitle || !sheetActions || !sheetContent) return;
 
@@ -801,3 +1172,4 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
