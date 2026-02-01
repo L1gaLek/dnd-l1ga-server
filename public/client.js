@@ -231,18 +231,19 @@ function updatePlayerList() {
     grouped[p.ownerId].players.push(p);
   });
 
-  Object.values(grouped).forEach(group => {
-    const ownerId = Object.keys(grouped).find(k => grouped[k] === group); // не идеально, но работает без доп. структуры
+  Object.entries(grouped).forEach(([ownerId, group]) => {
     const userInfo = ownerId ? usersById.get(ownerId) : null;
 
+    // ===== контейнер группы владельца =====
     const ownerLi = document.createElement('li');
-    ownerLi.style.marginTop = '8px';
-    ownerLi.style.fontWeight = 'bold';
-    ownerLi.style.display = 'flex';
-    ownerLi.style.alignItems = 'center';
-    ownerLi.style.gap = '8px';
+    ownerLi.className = 'owner-group';
+
+    // ===== заголовок владельца (имя + роль) =====
+    const ownerHeader = document.createElement('div');
+    ownerHeader.className = 'owner-header';
 
     const ownerNameSpan = document.createElement('span');
+    ownerNameSpan.className = 'owner-name';
     ownerNameSpan.textContent = userInfo?.name || group.ownerName;
 
     const role = userInfo?.role;
@@ -250,20 +251,16 @@ function updatePlayerList() {
     badge.className = `role-badge ${roleToClass(role)}`;
     badge.textContent = `(${roleToLabel(role)})`;
 
-    ownerLi.appendChild(ownerNameSpan);
-    ownerLi.appendChild(badge);
+    ownerHeader.appendChild(ownerNameSpan);
+    ownerHeader.appendChild(badge);
 
+    // ===== список персонажей владельца (ниже заголовка) =====
     const ul = document.createElement('ul');
-    ul.style.paddingLeft = '0px';
-    ul.style.marginLeft = '12px';
+    ul.className = 'owner-players';
 
     group.players.forEach(p => {
       const li = document.createElement('li');
       li.className = 'player-list-item';
-      li.style.fontWeight = 'normal';
-
-      // ✅ выделение основы
-      if (p.isBase) li.classList.add('base-player');
 
       const indicator = document.createElement('span');
       indicator.classList.add('placement-indicator');
@@ -273,14 +270,20 @@ function updatePlayerList() {
       const text = document.createElement('span');
       text.classList.add('player-name-text');
       const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
-
-      // Добавим пометку "Основа" прямо в строке
-      text.textContent = `${p.name} (${initVal})${p.isBase ? " — Основа" : ""}`;
+      text.textContent = `${p.name} (${initVal})`;
 
       const nameWrap = document.createElement('div');
       nameWrap.classList.add('player-name-wrap');
       nameWrap.appendChild(indicator);
       nameWrap.appendChild(text);
+
+      // ✅ маленький бейдж "основа"
+      if (p.isBase) {
+        const baseBadge = document.createElement('span');
+        baseBadge.className = 'base-badge';
+        baseBadge.textContent = 'основа';
+        nameWrap.appendChild(baseBadge);
+      }
 
       li.appendChild(nameWrap);
 
@@ -315,6 +318,7 @@ function updatePlayerList() {
       ul.appendChild(li);
     });
 
+    ownerLi.appendChild(ownerHeader);
     ownerLi.appendChild(ul);
     playerList.appendChild(ownerLi);
   });
@@ -530,3 +534,4 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
