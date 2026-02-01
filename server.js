@@ -129,12 +129,13 @@ case "startInitiative": {
   break;
 }        
 
-  case "addPlayer": {
+      case "addPlayer": {
   const user = users.find(u => u.ws === ws);
   if (!user) return;
 
   const isBase = !!data.player?.isBase;
 
+  // ✅ "Основа" может быть только одна на пользователя
   if (isBase) {
     const alreadyHasBase = gameState.players.some(p => p.ownerId === user.id && p.isBase);
     if (alreadyHasBase) {
@@ -144,22 +145,22 @@ case "startInitiative": {
   }
 
   gameState.players.push({
-  id: data.player.id || uuidv4(),
-  name: data.player.name,
-  color: data.player.color,
-  size: data.player.size,
-  x: null,
-  y: null,
-  initiative: 0,
+    id: data.player.id || uuidv4(),
+    name: data.player.name,
+    color: data.player.color,
+    size: data.player.size,
+    x: null,
+    y: null,
+    initiative: 0,
 
-  // ✅ тип игрока
-  isBase: isBase,
+    // ✅ тип
+    isBase: isBase,
 
-  // 🔑 владелец
-  ownerId: user.id,
-  ownerName: user.name,
-  ownerRole: user.role
-});
+    // 🔑 владелец
+    ownerId: user.id,
+    ownerName: user.name,
+    ownerRole: user.role
+  });
 
   logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
   broadcast();
@@ -401,8 +402,3 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
-
-
-
-
