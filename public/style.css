@@ -372,14 +372,35 @@ button:hover {
   border-color: #555;
 }
 
-/* ===== ВЫДЕЛЕНИЕ "ОСНОВЫ" В СПИСКЕ ===== */
-.player-list-item.base-player {
-  border: 1px solid rgba(255, 215, 0, 0.85); /* золотая рамка */
-  background-color: rgba(255, 215, 0, 0.08);
+/* ===== ГРУППА ВЛАДЕЛЬЦА В СПИСКЕ ===== */
+.owner-group {
+  margin-top: 10px;
 }
 
-.player-list-item.base-player .player-name-text {
+.owner-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.owner-players {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 0 12px;
+}
+
+/* ===== МАЛЕНЬКИЙ БЕЙДЖ "ОСНОВА" ===== */
+.base-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 215, 0, 0.95);
   color: #ffd966;
+  background: rgba(255, 215, 0, 0.08);
+  text-transform: lowercase;
 }
-
 
