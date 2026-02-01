@@ -247,7 +247,8 @@ function updatePlayerList() {
     ownerLi.style.fontWeight = 'bold';
 
     const ul = document.createElement('ul');
-    ul.style.paddingLeft = '15px';
+    ul.style.paddingLeft = '0px';     // 🔑 убираем расширяющий padding
+ul.style.marginLeft = '12px';     // 🔑 отступ делаем margin'ом (не увеличивает ширину)
 
     group.players.forEach(p => {
       const li = document.createElement('li');
@@ -526,6 +527,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
