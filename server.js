@@ -16,6 +16,7 @@ const wss = new WebSocket.Server({ server });
 let gameState = {
   boardWidth: 10,
   boardHeight: 10,
+  phase: "lobby", // lobby | initiative | placement | combat
   players: [],      // {id, name, color, size, x, y, initiative}
   walls: [],        // {x, y}
   turnOrder: [],    // массив id игроков по инициативе
@@ -72,6 +73,22 @@ wss.on("connection", ws => {
     try { data = JSON.parse(msg); } catch { return; }
 
     switch (data.type) {
+
+        case "startInitiative": {
+  if (!isGM(ws)) return;
+
+  gameState.phase = "initiative";
+
+  // сбрасываем инициативу
+  gameState.players.forEach(p => {
+    p.initiative = null;
+    p.hasRolledInitiative = false;
+  });
+
+  logEvent("GM начал фазу инициативы");
+  broadcast();
+  break;
+}
 
       // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
       case "register": {
@@ -137,6 +154,10 @@ case "resizeBoard":
 }
 
 case "movePlayer": {
+  if (gameState.phase === "combat") {
+  const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+  if (p.id !== currentId) return;
+}
   const p = gameState.players.find(p => p.id === data.id);
   if (!p) return;
 
@@ -195,17 +216,42 @@ case "removeWall":
   broadcast();
   break;
 
-case "rollInitiative":
+case "rollInitiative": {
+  if (gameState.phase !== "initiative") return;
+
+  const user = getUserByWS(ws);
+  if (!user) return;
+
+  const ownedPlayers = gameState.players.filter(
+    p => p.ownerId === user.id && !p.hasRolledInitiative
+  );
+
+  ownedPlayers.forEach(p => {
+    p.initiative = Math.floor(Math.random() * 20) + 1;
+    p.hasRolledInitiative = true;
+    logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
+  });
+
+  broadcast();
+  break;
+}
+
+  case "finishInitiative": {
   if (!isGM(ws)) return;
 
-  gameState.players.forEach(p => p.initiative = Math.floor(Math.random() * 20) + 1);
+  // проверка: все ли бросили
+  const allRolled = gameState.players.every(p => p.hasRolledInitiative);
+  if (!allRolled) return;
+
   gameState.turnOrder = [...gameState.players]
     .sort((a,b)=>b.initiative - a.initiative)
     .map(p=>p.id);
-  gameState.currentTurnIndex = 0;
-  logEvent("Инициатива брошена");
+
+  gameState.phase = "placement";
+  logEvent("Все инициативы определены. Фаза размещения");
   broadcast();
   break;
+}      
 
 case "endTurn":
   if (!isGM(ws)) return;
@@ -278,7 +324,39 @@ function sendFullSync(ws) {
   }));
 }
 
+function autoPlacePlayers() {
+  let x = 0, y = 0;
+
+  gameState.players.forEach(p => {
+    p.x = x;
+    p.y = y;
+
+    x++;
+    if (x >= gameState.boardWidth) {
+      x = 0;
+      y++;
+    }
+  });
+}
+
+case "startCombat": {
+  if (!isGM(ws)) return;
+  if (gameState.phase !== "placement") return;
+
+  autoPlacePlayers();
+
+  gameState.phase = "combat";
+  gameState.currentTurnIndex = 0;
+
+  const first = gameState.players.find(p => p.id === gameState.turnOrder[0]);
+  logEvent(`Бой начался. Первый ход: ${first?.name}`);
+
+  broadcast();
+  break;
+}
+
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
