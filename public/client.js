@@ -38,11 +38,16 @@ const removeWallBtn = document.getElementById('remove-wall');
 const startInitiativeBtn = document.getElementById("start-initiative");
 const startCombatBtn = document.getElementById("start-combat");
 
+const inheritInitiativeRow = document.getElementById('inherit-initiative-row');
+const inheritInitiativeCheckbox = document.getElementById('inherit-initiative');
+const readyCombatBtn = document.getElementById('ready-combat');
+
 // ================== VARIABLES ==================
 let ws;
 let myId;
 let myRole;
 let players = [];
+let lastState = null;
 let boardWidth = parseInt(boardWidthInput.value) || 10;
 let boardHeight = parseInt(boardHeightInput.value) || 10;
 
@@ -90,6 +95,7 @@ if (msg.type === "registered") {
 if (msg.type === "init" || msg.type === "state") {
   boardWidth = msg.state.boardWidth;
   boardHeight = msg.state.boardHeight;
+  lastState = msg.state;
 
   // ✅ 1) Удаляем DOM-элементы игроков, которых больше нет в состоянии
   const existingIds = new Set((msg.state.players || []).map(p => p.id));
@@ -331,7 +337,13 @@ addPlayerBtn.addEventListener('click', () => {
   color: playerColorInput.value,
   size: parseInt(playerSizeInput.value)
 };
-  sendMessage({ type:'addPlayer', player });
+sendMessage({
+  type: 'addPlayer',
+  name,
+  color,
+  inheritInitiative: (lastState?.phase === 'combat') ? inheritInitiativeCheckbox.checked : false,
+  sourceId: (lastState?.phase === 'combat') ? (lastState?.turnOrder?.[lastState.currentTurnIndex] ?? null) : null
+});
   playerNameInput.value='';
 });
 
@@ -456,9 +468,38 @@ function updatePhaseUI(state) {
     startCombatBtn.disabled = true;
   }
 
+// Показываем чекбокс наследования инициативы только в бою
+if (state.phase === 'combat') {
+  inheritInitiativeRow.style.display = 'flex';
+} else {
+  inheritInitiativeRow.style.display = 'none';
+  inheritInitiativeCheckbox.checked = false;
+}
+
+readyCombatBtn.addEventListener('click', () => {
+  sendMessage({ type: 'readyForCombat' });
+});
+  
+// Кнопка "К бою" показывается, если у меня есть pending существа в бою
+const myPending = (state.players || []).some(p => p.ownerId === myUserId && p.pendingJoinCombat);
+if (state.phase === 'combat' && myPending) {
+  readyCombatBtn.style.display = 'inline-block';
+
+  // включаем её только если все мои pending готовы (есть инициатива и позиция)
+  const allReady = (state.players || [])
+    .filter(p => p.ownerId === myUserId && p.pendingJoinCombat)
+    .every(p => p.hasRolledInitiative && p.initiative !== null && p.x !== null && p.y !== null);
+
+  readyCombatBtn.disabled = !allReady;
+} else {
+  readyCombatBtn.style.display = 'none';
+  readyCombatBtn.disabled = true;
+}
+  
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
