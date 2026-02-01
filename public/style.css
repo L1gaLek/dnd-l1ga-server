@@ -14,32 +14,32 @@ body {
 /* Основной контейнер */
 #main-container {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-start; /* выравнивание по верху */
   gap: 20px;
 }
 
-/* Левая панель */
+/* Левая панель: журнал + управление + инициатива (в одну строку) */
 #action-log-container {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  width: 540px;
+  width: 540px; /* ширина под 2 карточки */
 }
 
 #content-row {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-start; /* 🔑 теперь ВЕРХ СОВПАДАЕТ */
   gap: 20px;
 }
 
-/* Статус */
+/* Статус (Вы | Роль) */
 #status-bar {
   font-weight: bold;
   color: #fff;
   margin-bottom: 10px;
 }
 
-/* Карточки */
+/* Журнал, управление, список инициативы */
 #action-log, #player-management, #player-list-container {
   background-color: #1e1e1e;
   border: 1px solid #555;
@@ -49,7 +49,9 @@ body {
   overflow-y: auto;
 }
 
-#action-log { max-height: 200px; }
+#action-log {
+  max-height: 200px;
+}
 
 #player-management {
   width: 260px;
@@ -82,18 +84,22 @@ body {
 #game-container {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: center;      /* ⬅ центрируем СОДЕРЖИМОЕ */
   gap: 10px;
-  margin: 0 auto;
-  max-width: fit-content;
+
+  /* КЛЮЧЕВОЕ */
+  margin: 0 auto;           /* ⬅ центрируем колонку */
+  max-width: fit-content;   /* ⬅ ширина = контент (поле) */
 }
 
+/* Текущий игрок */
 #current-turn {
   font-weight: bold;
   font-size: 18px;
   color: #fff;
 }
 
+/* Настройки поля и игрока */
 #board-settings, #controls, #player-controls, #environment-controls {
   display: flex;
   flex-wrap: wrap;
@@ -114,11 +120,13 @@ button:hover {
   cursor: pointer;
 }
 
-/* Рамка поля */
+/* Рамка поля боя */
 #board-wrapper {
   border: 2px solid #555;
   background-color: #111;
   padding: 2px;
+
+  /* КЛЮЧЕВОЕ */
   overflow: hidden;
   width: fit-content;
   height: fit-content;
@@ -128,16 +136,21 @@ button:hover {
 #game-board {
   position: relative;
   display: grid;
+
+  /* УБИРАЕМ gap — он ломает расчёты */
   gap: 0;
+
   background-color: #111;
 }
 
-/* Клетки */
+/* Клетки поля */
 .cell {
   width: 50px;
   height: 50px;
   background-color: #2a2a2a;
   box-sizing: border-box;
+
+  /* вместо border */
   outline: 1px solid #444;
 }
 
@@ -160,15 +173,26 @@ button:hover {
   cursor: grabbing;
 }
 
-/* Стены */
-.cell.wall { background-color: #555 !important; }
+/* Стены и подсветка */
+.cell.wall {
+  background-color: #555 !important;
+}
+
+.wall.dragging {
+  opacity: 0.6;
+  outline: 2px dashed yellow;
+}
+
+.cell.hovering {
+  outline: 2px dashed #f0f;
+}
 
 #gm-controls button {
   margin-right: 5px;
   padding: 5px 10px;
 }
 
-/* Подсветки фаз */
+/* Подсветки фаз (используем классы на конкретных кнопках) */
 #start-initiative.active {
   background-color: red;
   color: white;
@@ -179,6 +203,7 @@ button:hover {
   color: white;
 }
 
+/* Оранжевая подсветка: можно начинать бой */
 #start-combat.pending {
   background-color: orange;
   color: black;
@@ -189,20 +214,27 @@ button:hover {
   color: white;
 }
 
-/* Подсветка текущего хода */
+/* Подсветка игрока, который сейчас ходит */
 .player.current-turn {
   outline: 4px solid orange;
   box-shadow: 0 0 12px rgba(255, 165, 0, 0.8);
 }
 
+/* Если персонаж одновременно "ходит" и "выбран", приоритет у выбора (жёлтый) */
 .player.selected.current-turn {
   outline: 4px solid yellow;
   box-shadow: 0 0 12px rgba(255, 255, 0, 0.75);
 }
 
+/* Призванные/временные до "К бою" — лёгкая пунктирная рамка */
 .player.pending-combat {
   outline: 2px dashed rgba(255,255,255,0.7);
   outline-offset: 2px;
+}
+
+#player-management h3 {
+  margin-top: 0;
+  color: #fff;
 }
 
 .player-type {
@@ -217,13 +249,14 @@ button:hover {
   gap: 6px;
 }
 
+/* Строка под журналом: управление + инициатива */
 #action-bottom-row {
   display: flex;
   gap: 16px;
   align-items: flex-start;
 }
 
-/* Индикатор размещения */
+/* Индикатор размещения игрока */
 .placement-indicator {
   width: 10px;
   height: 10px;
@@ -233,20 +266,74 @@ button:hover {
   flex-shrink: 0;
 }
 
-.placement-indicator.not-placed { background-color: orange; }
-.placement-indicator.placed { background-color: #3cb371; }
+/* Не размещён */
+.placement-indicator.not-placed {
+  background-color: orange;
+}
 
+/* Размещён */
+.placement-indicator.placed {
+  background-color: #3cb371; /* зелёный */
+}
+
+/* Строка игрока в списке */
+.player-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 6px;
+}
+
+/* Имя занимает всё свободное место и НЕ сжимается до нуля */
+.player-name-text {
+  flex: 1 1 100%;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Кнопки не должны сжиматься */
+.player-list-item button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 3px 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+/* левая часть: индикатор + имя + бейдж "основа" */
+.player-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* уменьшаем текст и "высоту" строки */
+.player-name-text {
+  font-size: 12px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Рамка одного игрока в списке инициативы */
 .player-list-item {
   width: 100%;
   max-width: 100%;
+
   border: 1px solid #444;
   border-radius: 4px;
   padding: 6px 8px;
   margin-bottom: 6px;
+
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 6px;
+
   background-color: #1a1a1a;
 }
 
@@ -255,28 +342,86 @@ button:hover {
   background-color: #222;
 }
 
-.player-name-wrap {
+/* ===== РОЛИ В СПИСКЕ "ИГРОКИ И ИНИЦИАТИВА" ===== */
+.role-badge {
+  font-weight: bold;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #1a1a1a;
+}
+
+.role-badge.role-gm {
+  color: #00ff66;
+  border-color: rgba(0,255,102,0.6);
+}
+
+.role-badge.role-player {
+  color: #3aa7ff;
+  border-color: rgba(58,167,255,0.6);
+}
+
+.role-badge.role-spectr {
+  color: #ddd;
+  border-color: #555;
+}
+
+/* ===== ГРУППА ВЛАДЕЛЬЦА В СПИСКЕ ===== */
+.owner-group {
+  margin-top: 10px;
+}
+
+.owner-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.owner-players {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 0 12px;
+}
+
+/* ===== МАЛЕНЬКИЙ БЕЙДЖ "ОСНОВА" ===== */
+.base-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 215, 0, 0.95);
+  color: #ffd966;
+  background: rgba(255, 215, 0, 0.08);
+  text-transform: lowercase;
+}
+
+/* справа: селект + кнопки */
+.player-actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 100%;
+  flex-shrink: 0;
 }
 
-.player-name-text {
-  white-space: normal;
-  word-break: break-word;
-  flex: 1 1 auto;
-  font-weight: bold;
-  color: #fff;
-}
-
-.player-list-item button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  padding: 3px 6px;
-  margin-top: 4px;
+.size-select {
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background: #111;
+  color: #eee;
   font-size: 12px;
-  border-radius: 3px;
+  line-height: 14px;
+}
+
+/* кнопки в списке игроков компактнее */
+.player-actions button {
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 14px;
 }
 
 /* ================== MODAL ================== */
