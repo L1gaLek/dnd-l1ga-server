@@ -220,3 +220,52 @@ button:hover {
   outline-offset: 2px;
 }
 
+
+/* Верхняя строка слева: журнал + управление игроками */
+#action-top-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+/* Расширяем левую колонку, чтобы влезли 2 блока */
+#action-log-container {
+  width: 520px; /* было 250px */
+}
+
+/* Карточка управления игроками */
+#player-management {
+  background-color: #1e1e1e;
+  border: 1px solid #555;
+  padding: 10px;
+  color: #ddd;
+  border-radius: 5px;
+  overflow-y: auto;
+  max-height: 400px; /* как журнал */
+  width: 250px;
+}
+
+#player-management h3 {
+  margin-top: 0;
+  color: #fff;
+}
+
+/* чтобы player-controls выглядел аккуратно */
+#player-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* блок с галочками типа */
+.player-type {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.type-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
