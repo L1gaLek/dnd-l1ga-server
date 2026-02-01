@@ -404,6 +404,13 @@ resetGameBtn.addEventListener('click', () => {
   sendMessage({ type:'resetGame' });
 });
 
+// ================== CLEAR BOARD ==================
+clearBoardBtn.addEventListener('click', () => {
+  // Не трогаем playerElements руками — дождёмся state от сервера
+  // (так синхронизация будет одинаковой у всех)
+  sendMessage({ type: 'clearBoard' });
+});
+
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
@@ -452,5 +459,6 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
