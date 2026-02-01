@@ -32,56 +32,55 @@
   <!-- Контент: 2 колонки -->
   <div id="content-row">
 
-<!-- Левая панель -->
-<div id="action-log-container">
+    <!-- Левая панель -->
+    <div id="action-log-container">
 
-  <!-- ЖУРНАЛ -->
-  <div id="action-log">
-    <h3>Журнал действий:</h3>
-    <ul id="log-list"></ul>
-  </div>
+      <!-- ЖУРНАЛ -->
+      <div id="action-log">
+        <h3>Журнал действий:</h3>
+        <ul id="log-list"></ul>
+      </div>
 
-  <!-- СТРОКА ПОД ЖУРНАЛОМ -->
-  <div id="action-bottom-row">
+      <!-- СТРОКА ПОД ЖУРНАЛОМ -->
+      <div id="action-bottom-row">
 
-    <!-- УПРАВЛЕНИЕ ИГРОКАМИ -->
-    <div id="player-management">
-      <h3>Управление игроками:</h3>
+        <!-- УПРАВЛЕНИЕ ИГРОКАМИ -->
+        <div id="player-management">
+          <h3>Управление игроками:</h3>
 
-      <div id="player-controls">
-        <input type="text" id="player-name" placeholder="Имя игрока">
-        <input type="color" id="player-color" value="#ff0000">
+          <div id="player-controls">
+            <input type="text" id="player-name" placeholder="Имя игрока">
+            <input type="color" id="player-color" value="#ff0000">
 
-<label>Размер:
-  <select id="player-size">
-    <option value="1">1x1</option>
-    <option value="2">2x2</option>
-    <option value="3">3x3</option>
-    <option value="4">4x4</option>
-    <option value="5">5x5</option>
-  </select>
-</label>
+            <label>Размер (в клетках):
+              <input type="number" id="player-size" value="1" min="1" max="5">
+            </label>
 
-        <div class="player-type">
-          <label class="type-item">
-            <input type="checkbox" id="is-base">
-            Основа
-          </label>
+            <div class="player-type">
+              <label class="type-item">
+                <input type="checkbox" id="is-base">
+                Основа
+              </label>
+
+              <label class="type-item">
+                <input type="checkbox" id="is-summon">
+                Призвать
+              </label>
+            </div>
+
+            <button id="add-player">Добавить игрока</button>
+            <button id="roll-initiative">Бросить инициативу</button>
+          </div>
         </div>
 
-        <button id="add-player">Добавить игрока</button>
-        <button id="roll-initiative">Бросить инициативу</button>
+        <!-- ИГРОКИ И ИНИЦИАТИВА -->
+        <div id="player-list-container">
+          <h3>Игроки и инициатива:</h3>
+          <ul id="player-list"></ul>
+        </div>
+
       </div>
     </div>
-
-    <!-- ИГРОКИ И ИНИЦИАТИВА -->
-    <div id="player-list-container">
-      <h3>Игроки и инициатива:</h3>
-      <ul id="player-list"></ul>
-    </div>
-
-  </div>
-</div>
 
     <!-- Игровая колонка -->
     <div id="game-container">
@@ -137,7 +136,25 @@
   </div>
 </div>
 
+<!-- ================== SHEET MODAL ================== -->
+<div id="sheet-modal" class="modal-overlay hidden" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="sheet-title">Информация о персонаже</div>
+        <div class="modal-subtitle" id="sheet-subtitle"></div>
+      </div>
+
+      <button id="sheet-close" class="modal-close" title="Закрыть">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div id="sheet-actions" class="sheet-actions"></div>
+      <div id="sheet-content" class="sheet-content"></div>
+    </div>
+  </div>
+</div>
+
 <script src="client.js"></script>
 </body>
 </html>
-
