@@ -101,8 +101,13 @@
         <label>Размер (в клетках):
           <input type="number" id="player-size" value="1" min="1" max="5">
         </label>
+        <label id="inherit-initiative-row" style="display:none; margin-top:6px; gap:6px; align-items:center;">
+  <input type="checkbox" id="inherit-initiative" />
+  Твоя инициатива
+</label>
         <button id="add-player">Добавить игрока</button>
         <button id="roll-initiative">Бросить инициативу</button>
+        <button id="ready-combat" style="display:none;">К бою</button>
       </div>
 
 
@@ -113,6 +118,7 @@
 <script src="client.js"></script>
 </body>
 </html>
+
 
 
 
