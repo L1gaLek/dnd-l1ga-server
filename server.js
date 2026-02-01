@@ -196,6 +196,33 @@ if (isBase) {
         break;
       }
 
+case "updatePlayerSize": {
+  const p = gameState.players.find(pl => pl.id === data.id);
+  if (!p) return;
+
+  const newSize = parseInt(data.size, 10);
+  if (!Number.isFinite(newSize) || newSize < 1 || newSize > 5) return;
+
+  const gm = isGM(ws);
+  const owner = ownsPlayer(ws, p);
+  if (!gm && !owner) return;
+
+  p.size = newSize;
+
+  // если стоит на поле — поджимаем координаты, чтобы не вылезал за границы
+  if (p.x !== null && p.y !== null) {
+    const maxX = gameState.boardWidth - p.size;
+    const maxY = gameState.boardHeight - p.size;
+    p.x = Math.max(0, Math.min(p.x, maxX));
+    p.y = Math.max(0, Math.min(p.y, maxY));
+  }
+
+  logEvent(`${p.name} изменил размер на ${p.size}x${p.size}`);
+  broadcast();
+  break;
+}
+
+        
       case "removePlayerFromBoard": {
         const p = gameState.players.find(p => p.id === data.id);
         if (!p) return;
@@ -387,4 +414,5 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
