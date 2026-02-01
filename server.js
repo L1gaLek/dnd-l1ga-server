@@ -259,16 +259,16 @@ case "startCombat": {
   gameState.phase = "combat";
   gameState.currentTurnIndex = 0;
 
-  const first = gameState.players.find(
-    p => p.id === gameState.turnOrder[0]
-  );
+  const firstId = gameState.turnOrder[0];
+  const first = gameState.players.find(p => p.id === firstId);
 
   logEvent(`Бой начался. Первый ход: ${first?.name}`);
   broadcast();
   break;
-}        
+}       
 
 case "endTurn":
+  if (gameState.phase !== "combat") return;      
   if (!isGM(ws)) return;
 
   if (gameState.turnOrder.length > 0) {
@@ -358,4 +358,5 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
