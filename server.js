@@ -129,38 +129,37 @@ case "startInitiative": {
   break;
 }        
 
-      case "addPlayer": {
+  case "addPlayer": {
   const user = users.find(u => u.ws === ws);
-        const isBase = !!data.player?.isBase;
-const isSummon = !!data.player?.isSummon;
-
-if (isBase && isSummon) {
-  ws.send(JSON.stringify({ type: "error", message: "Нельзя выбрать одновременно 'Основа' и 'Призвать'" }));
-  return;
-}
-
-if (isBase) {
-  const alreadyHasBase = gameState.players.some(p => p.ownerId === user.id && p.isBase);
-  if (alreadyHasBase) {
-    ws.send(JSON.stringify({ type: "error", message: "У вас уже есть основной персонаж (Основа)" }));
-    return;
-  }
-}
   if (!user) return;
 
-  gameState.players.push({
-    id: data.player.id || uuidv4(),
-    name: data.player.name,
-    color: data.player.color,
-    size: data.player.size,
-    x: null,
-    y: null,
-    initiative: 0,
+  const isBase = !!data.player?.isBase;
 
-    // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
-    ownerId: user.id,
-    ownerName: user.name
-  });
+  if (isBase) {
+    const alreadyHasBase = gameState.players.some(p => p.ownerId === user.id && p.isBase);
+    if (alreadyHasBase) {
+      ws.send(JSON.stringify({ type: "error", message: "У вас уже есть основной персонаж (Основа)" }));
+      return;
+    }
+  }
+
+  gameState.players.push({
+  id: data.player.id || uuidv4(),
+  name: data.player.name,
+  color: data.player.color,
+  size: data.player.size,
+  x: null,
+  y: null,
+  initiative: 0,
+
+  // ✅ тип игрока
+  isBase: isBase,
+
+  // 🔑 владелец
+  ownerId: user.id,
+  ownerName: user.name,
+  ownerRole: user.role
+});
 
   logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
   broadcast();
@@ -402,6 +401,7 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
