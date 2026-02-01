@@ -30,7 +30,6 @@ const playerColorInput = document.getElementById('player-color');
 const playerSizeInput = document.getElementById('player-size');
 
 const isBaseCheckbox = document.getElementById('is-base');
-const isSummonCheckbox = document.getElementById('is-summon');
 
 const dice = document.getElementById('dice');
 const rollResult = document.getElementById('roll-result');
@@ -58,17 +57,6 @@ let mouseDown = false;
 const playerElements = new Map();
 let finishInitiativeSent = false;
 
-function setupPlayerTypeToggles() {
-  if (!isBaseCheckbox || !isSummonCheckbox) return;
-
-  isBaseCheckbox.addEventListener('change', () => {
-    if (isBaseCheckbox.checked) isSummonCheckbox.checked = false;
-  });
-
-  isSummonCheckbox.addEventListener('change', () => {
-    if (isSummonCheckbox.checked) isBaseCheckbox.checked = false;
-  });
-}
 
 setupPlayerTypeToggles();
 
@@ -231,20 +219,42 @@ function updatePlayerList() {
   const grouped = {};
   players.forEach(p => {
     if (!grouped[p.ownerId]) {
-      grouped[p.ownerId] = {
-        ownerName: p.ownerName || 'Unknown',
-        players: []
-      };
+     grouped[p.ownerId] = {
+  ownerName: p.ownerName || 'Unknown',
+  ownerRole: p.ownerRole || 'Spectator',
+  players: []
+};
     }
     grouped[p.ownerId].players.push(p);
   });
 
   // 🔹 Рисуем
   Object.values(grouped).forEach(group => {
-    const ownerLi = document.createElement('li');
-    ownerLi.textContent = group.ownerName;
-    ownerLi.style.marginTop = '8px';
-    ownerLi.style.fontWeight = 'bold';
+const ownerLi = document.createElement('li');
+ownerLi.style.marginTop = '8px';
+ownerLi.style.fontWeight = 'bold';
+ownerLi.classList.add('owner-header');
+
+const nameSpan = document.createElement('span');
+nameSpan.textContent = group.ownerName;
+
+const roleSpan = document.createElement('span');
+roleSpan.classList.add('owner-role');
+
+const role = group.ownerRole || 'Spectator'; // сервер теперь отдаёт ownerRole
+if (role === 'GM') {
+  roleSpan.textContent = ' (GM)';
+  roleSpan.classList.add('role-gm');
+} else if (role === 'DnD-Player') {
+  roleSpan.textContent = ' (DND-P)';
+  roleSpan.classList.add('role-player');
+} else {
+  roleSpan.textContent = ' (Spectr)';
+  roleSpan.classList.add('role-spect');
+}
+
+ownerLi.appendChild(nameSpan);
+ownerLi.appendChild(roleSpan);
 
     const ul = document.createElement('ul');
     ul.style.paddingLeft = '0px';     // 🔑 убираем расширяющий padding
@@ -266,6 +276,15 @@ const text = document.createElement('span');
 text.classList.add('player-name-text');   // 👈 добавили класс
 const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
 text.textContent = `${p.name} (${initVal})`;
+
+      if (p.isBase) {
+  const baseBadge = document.createElement('span');
+  baseBadge.classList.add('base-badge');
+  baseBadge.textContent = 'Основа';
+  // вставим бейдж рядом с именем
+  text.appendChild(document.createTextNode(' '));
+  text.appendChild(baseBadge);
+}
 
 // 🧩 Контейнер: кружок + имя
 const nameWrap = document.createElement('div');
@@ -383,24 +402,17 @@ addPlayerBtn.addEventListener('click', () => {
   const name = playerNameInput.value.trim();
   if (!name) return alert("Введите имя");
 
-  const player = {
-    name,
-    color: playerColorInput.value,
-    size: parseInt(playerSizeInput.value),
-    isBase: !!isBaseCheckbox?.checked,
-    isSummon: !!isSummonCheckbox?.checked
-  };
+const player = {
+  name,
+  color: playerColorInput.value,
+  size: parseInt(playerSizeInput.value),
+  isBase: !!isBaseCheckbox?.checked
+};
 
-  // защита от двух галочек
-  if (player.isBase && player.isSummon) {
-    return alert("Выберите только один тип: Основа или Призвать");
-  }
+sendMessage({ type: 'addPlayer', player });
 
-  sendMessage({ type: 'addPlayer', player });
-
-  playerNameInput.value = '';
-  if (isSummonCheckbox) isSummonCheckbox.checked = false;
-  if (isBaseCheckbox && !isBaseCheckbox.disabled) isBaseCheckbox.checked = false;
+playerNameInput.value = '';
+if (isBaseCheckbox && !isBaseCheckbox.disabled) isBaseCheckbox.checked = false;
 });
 
 // ================== MOVE PLAYER ==================
@@ -527,6 +539,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
