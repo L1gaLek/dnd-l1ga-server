@@ -287,6 +287,27 @@ function updatePlayerList() {
 
       li.appendChild(nameWrap);
 
+      // ✅ изменение размера игрока (только владелец или GM)
+if (myRole === "GM" || p.ownerId === myId) {
+  const sizeSelect = document.createElement('select');
+  sizeSelect.className = 'size-select';
+  for (let s = 1; s <= 5; s++) {
+    const opt = document.createElement('option');
+    opt.value = String(s);
+    opt.textContent = `${s}x${s}`;
+    if (s === p.size) opt.selected = true;
+    sizeSelect.appendChild(opt);
+  }
+
+  sizeSelect.addEventListener('click', (e) => e.stopPropagation());
+  sizeSelect.addEventListener('change', (e) => {
+    e.stopPropagation();
+    sendMessage({ type: 'updatePlayerSize', id: p.id, size: parseInt(sizeSelect.value, 10) });
+  });
+
+  li.appendChild(sizeSelect);
+}
+
       li.addEventListener('click', () => {
         selectedPlayer = p;
         if (p.x === null || p.y === null) {
@@ -534,5 +555,6 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
 
