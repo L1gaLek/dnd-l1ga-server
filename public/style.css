@@ -44,7 +44,7 @@ body {
 }
 
 #action-log {
-  max-height: 400px;
+  max-height: 200px;
 }
 
 #player-management {
@@ -54,7 +54,7 @@ body {
 
 #player-list-container {
   width: 260px;
-  max-height: 260px;
+  max-height: 360px;
 }
 
 #action-log h3, #player-list-container h3 {
@@ -275,6 +275,24 @@ button:hover {
 .player-list-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  width: 100%;
 }
+
+/* Имя занимает всё свободное место и НЕ сжимается до нуля */
+.player-name-text {
+  flex: 1 1 auto;
+  min-width: 0;                 /* важно для корректного ellipsis */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Кнопки не должны сжиматься */
+.player-list-item button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 3px 8px;
+}
+
 
