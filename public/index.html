@@ -52,9 +52,15 @@
         <input type="text" id="player-name" placeholder="Имя игрока">
         <input type="color" id="player-color" value="#ff0000">
 
-        <label>Размер (в клетках):
-          <input type="number" id="player-size" value="1" min="1" max="5">
-        </label>
+<label>Размер:
+  <select id="player-size">
+    <option value="1">1x1</option>
+    <option value="2">2x2</option>
+    <option value="3">3x3</option>
+    <option value="4">4x4</option>
+    <option value="5">5x5</option>
+  </select>
+</label>
 
         <div class="player-type">
           <label class="type-item">
@@ -134,3 +140,4 @@
 <script src="client.js"></script>
 </body>
 </html>
+
