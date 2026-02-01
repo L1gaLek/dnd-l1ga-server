@@ -28,6 +28,10 @@ const clearBoardBtn = document.getElementById('clear-board');
 const playerNameInput = document.getElementById('player-name');
 const playerColorInput = document.getElementById('player-color');
 const playerSizeInput = document.getElementById('player-size');
+
+const isBaseCheckbox = document.getElementById('is-base');
+const isSummonCheckbox = document.getElementById('is-summon');
+
 const dice = document.getElementById('dice');
 const rollResult = document.getElementById('roll-result');
 
@@ -53,6 +57,20 @@ let mouseDown = false;
 
 const playerElements = new Map();
 let finishInitiativeSent = false;
+
+function setupPlayerTypeToggles() {
+  if (!isBaseCheckbox || !isSummonCheckbox) return;
+
+  isBaseCheckbox.addEventListener('change', () => {
+    if (isBaseCheckbox.checked) isSummonCheckbox.checked = false;
+  });
+
+  isSummonCheckbox.addEventListener('change', () => {
+    if (isSummonCheckbox.checked) isBaseCheckbox.checked = false;
+  });
+}
+
+setupPlayerTypeToggles();
 
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
@@ -102,6 +120,13 @@ if (msg.type === "init" || msg.type === "state") {
 
   // ✅ 2) Обновляем список игроков из state
   players = msg.state.players || [];
+
+  // Если у пользователя уже есть "Основа" — запрещаем создавать вторую
+if (isBaseCheckbox) {
+  const hasBase = players.some(p => p.ownerId === myId && p.isBase);
+  isBaseCheckbox.disabled = hasBase;
+  if (hasBase) isBaseCheckbox.checked = false; // чтобы не оставалась включенной
+}
 
   // Если выбранный игрок был удалён — сбрасываем выбор
   if (selectedPlayer && !existingIds.has(selectedPlayer.id)) {
@@ -326,13 +351,26 @@ function setPlayerPosition(player) {
 addPlayerBtn.addEventListener('click', () => {
   const name = playerNameInput.value.trim();
   if (!name) return alert("Введите имя");
- const player = {
-  name,
-  color: playerColorInput.value,
-  size: parseInt(playerSizeInput.value)
-};
-  sendMessage({ type:'addPlayer', player });
-  playerNameInput.value='';
+
+  const isBase = !!isBaseCheckbox?.checked;
+  const isSummon = !!isSummonCheckbox?.checked;
+
+  // защита от двойного выбора
+  if (isBase && isSummon) return alert("Выберите только один тип: Основа или Призвать");
+
+  const player = {
+    name,
+    color: playerColorInput.value,
+    size: parseInt(playerSizeInput.value),
+    isBase,
+    isSummon
+  };
+
+  sendMessage({ type: 'addPlayer', player });
+
+  playerNameInput.value = '';
+  if (isSummonCheckbox) isSummonCheckbox.checked = false;
+  if (isBaseCheckbox && !isBaseCheckbox.disabled) isBaseCheckbox.checked = false;
 });
 
 // ================== MOVE PLAYER ==================
@@ -459,6 +497,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
