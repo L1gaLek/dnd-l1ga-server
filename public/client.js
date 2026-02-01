@@ -58,8 +58,6 @@ const playerElements = new Map();
 let finishInitiativeSent = false;
 
 
-setupPlayerTypeToggles();
-
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
   const name = usernameInput.value.trim();
@@ -539,6 +537,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
