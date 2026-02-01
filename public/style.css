@@ -214,4 +214,9 @@ button:hover {
   box-shadow: 0 0 12px rgba(255, 255, 0, 0.75);
 }
 
+/* Призванные/временные до "К бою" — лёгкая пунктирная рамка */
+.player.pending-combat {
+  outline: 2px dashed rgba(255,255,255,0.7);
+  outline-offset: 2px;
+}
 
