@@ -417,11 +417,13 @@ function updatePhaseUI(state) {
 }
 
 // ================== HELPER ==================
-function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
-
-  // Фаза размещения
-  startCombatBtn.disabled = state.phase !== "placement";
+function sendMessage(msg){
+  if(ws && ws.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify(msg));
+  }
 }
+
+
 
 
 
