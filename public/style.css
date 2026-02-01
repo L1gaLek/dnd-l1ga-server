@@ -347,5 +347,39 @@ button:hover {
 
 
 
+/* ===== РОЛИ В СПИСКЕ "ИГРОКИ И ИНИЦИАТИВА" ===== */
+.role-badge {
+  font-weight: bold;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #1a1a1a;
+}
+
+.role-badge.role-gm {
+  color: #00ff66;           /* зелёный */
+  border-color: rgba(0,255,102,0.6);
+}
+
+.role-badge.role-player {
+  color: #3aa7ff;           /* голубой */
+  border-color: rgba(58,167,255,0.6);
+}
+
+.role-badge.role-spectr {
+  color: #ddd;              /* без “цветного” акцента */
+  border-color: #555;
+}
+
+/* ===== ВЫДЕЛЕНИЕ "ОСНОВЫ" В СПИСКЕ ===== */
+.player-list-item.base-player {
+  border: 1px solid rgba(255, 215, 0, 0.85); /* золотая рамка */
+  background-color: rgba(255, 215, 0, 0.08);
+}
+
+.player-list-item.base-player .player-name-text {
+  color: #ffd966;
+}
 
 
