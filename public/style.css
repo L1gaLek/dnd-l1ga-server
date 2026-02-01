@@ -195,3 +195,12 @@ button:hover {
   box-shadow: 0 0 10px gold;
 }
 
+#start-combat.ready { 
+  background-color: orange; 
+  color: white; 
+}
+
+#start-combat.active { 
+  background-color: green; 
+  color: white; 
+}
