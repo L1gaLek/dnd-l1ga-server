@@ -206,6 +206,15 @@ case "removePlayerFromBoard": {
   break;
 }
 
+case "log": {
+  // Разрешаем лог всем, но можно ограничить при желании
+  if (typeof data.text === "string" && data.text.trim()) {
+    logEvent(data.text.trim());
+    broadcast();
+  }
+  break;
+}        
+
 case "removePlayerCompletely": {
   const p = gameState.players.find(p => p.id === data.id);
   if (!p) return;
@@ -393,6 +402,7 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
 
