@@ -291,8 +291,10 @@ button:hover {
 .player-list-item button {
   flex: 0 0 auto;
   white-space: nowrap;
-  padding: 3px 8px;
+  padding: 3px 6px;
   margin-top: 4px;
+  font-size: 12px;
+  border-radius: 3px;
 }
 
 /* Обёртка: кружок + имя в одну строку */
@@ -308,6 +310,8 @@ button:hover {
   white-space: normal;
   word-break: break-word;
   flex: 1 1 auto;
+  font-weight: bold;
+  color: #fff;
 }
 
 
@@ -324,4 +328,9 @@ button:hover {
   gap: 6px;
 
   background-color: #1a1a1a;   /* чуть отличается от фона */
+}
+
+.player-list-item:hover {
+  border-color: #777;
+  background-color: #222;
 }
