@@ -306,6 +306,10 @@ addPlayerBtn.addEventListener('click', () => {
 // ================== MOVE PLAYER ==================
 board.addEventListener('click', e => {
   if (!selectedPlayer) return;
+  if (gameState.phase === "combat") {
+    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+    if (selectedPlayer.id !== currentId && myRole !== "GM") return;
+  }
   const cell = e.target.closest('.cell');
   if (!cell) return;
 
@@ -381,12 +385,51 @@ function updatePhaseUI(state) {
     rollInitiativeBtn.style.display = "inline-block";
 
     const allRolled = state.players.every(p => p.hasRolledInitiative);
+    startInitiativeBtn.classList.toggle("ready", allRolled);
+    startInitiativeBtn.classList.toggle("active", false);
+    startInitiativeBtn.classList.toggle("active", false); 
     startInitiativeBtn.style.backgroundColor = allRolled ? "green" : "red";
-  } else {
+
+    // Если все бросили инициативу — кнопка «Начало боя» готова
+    startCombatBtn.disabled = !allRolled;
+    startCombatBtn.classList.toggle("ready", allRolled);
+    startCombatBtn.classList.toggle("active", false);
+
+  } else if (state.phase === "placement") {
     rollInitiativeBtn.style.display = "none";
     startInitiativeBtn.style.backgroundColor = "";
-  }
+    startInitiativeBtn.classList.remove("ready","active");
 
-  // Фаза размещения
-  startCombatBtn.disabled = state.phase !== "placement";
+    startCombatBtn.disabled = false;
+    startCombatBtn.classList.add("ready");
+    startCombatBtn.classList.remove("active");
+
+  } else if (state.phase === "combat") {
+    rollInitiativeBtn.style.display = "none";
+    startInitiativeBtn.style.backgroundColor = "";
+    startInitiativeBtn.classList.remove("ready","active");
+
+    startCombatBtn.disabled = false;
+    startCombatBtn.classList.add("active");
+    startCombatBtn.classList.remove("ready");
+  } else {
+    // Лобби и другие фазы
+    rollInitiativeBtn.style.display = "none";
+    startInitiativeBtn.style.backgroundColor = "";
+    startInitiativeBtn.classList.remove("ready","active");
+
+    startCombatBtn.disabled = true;
+    startCombatBtn.classList.remove("ready","active");
+
+    startInitiativeBtn?.addEventListener("click", () => {
+  if (myRole !== "GM") return;
+  sendMessage({ type: "startInitiative" });
+});
+
+startCombatBtn?.addEventListener("click", () => {
+  if (myRole !== "GM") return;
+  sendMessage({ type: "startCombat" });
+});
+  }
 }
+
