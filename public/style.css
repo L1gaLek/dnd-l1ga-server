@@ -190,4 +190,8 @@ button:hover {
   color: white;
 }
 
+.player.active-turn {
+  outline: 4px solid gold;
+  box-shadow: 0 0 10px gold;
+}
 
