@@ -251,3 +251,30 @@ button:hover {
   align-items: flex-start;
 }
 
+/* Индикатор размещения игрока */
+.placement-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* Не размещён */
+.placement-indicator.not-placed {
+  background-color: orange;
+}
+
+/* Размещён */
+.placement-indicator.placed {
+  background-color: #3cb371; /* зелёный */
+}
+
+/* Строка игрока в списке */
+.player-list-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
