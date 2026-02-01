@@ -240,17 +240,36 @@ function updatePlayerList() {
     const ul = document.createElement('ul');
     ul.style.paddingLeft = '15px';
 
-    group.players.forEach(p => {
-      const li = document.createElement('li');
-      li.textContent = `${p.name} (${p.initiative || 0})`;
-      li.style.fontWeight = 'normal';
+   group.players.forEach(p => {
+  const li = document.createElement('li');
+  li.className = 'player-list-item'; // чтобы работали стили flex
 
-      li.addEventListener('click', () => {
-        selectedPlayer = p;
-        if (p.x === null || p.y === null) {
-          sendMessage({ type: 'movePlayer', id: p.id, x: 0, y: 0 });
-        }
-      });
+  // ✅ КРУЖОК слева
+  const indicator = document.createElement('span');
+  indicator.classList.add('placement-indicator');
+
+  const placed = (p.x !== null && p.y !== null);
+  indicator.classList.add(placed ? 'placed' : 'not-placed');
+
+  // ✅ ТЕКСТ справа
+  const text = document.createElement('span');
+  const initVal = (p.initiative !== null && p.initiative !== undefined) ? p.initiative : 0;
+  text.textContent = `${p.name} (${initVal})`;
+
+  li.appendChild(indicator);
+  li.appendChild(text);
+
+  li.style.fontWeight = 'normal';
+
+  li.addEventListener('click', () => {
+    selectedPlayer = p;
+    if (p.x === null || p.y === null) {
+      sendMessage({ type: 'movePlayer', id: p.id, x: 0, y: 0 });
+    }
+  });
+
+  ul.appendChild(li);
+});
 
       // 🔒 КНОПКИ — только владельцу или GM
       if (myRole === "GM" || p.ownerId === myId) {
@@ -496,6 +515,7 @@ function updatePhaseUI(state) {
   // Обновляем подпись "Текущий игрок" и подсветку
   updateCurrentPlayer(state);
 }
+
 
 
 
