@@ -17,7 +17,7 @@ let gameState = {
   boardWidth: 10,
   boardHeight: 10,
   phase: "lobby",
-  players: [],      // {id, name, color, size, x, y, initiative}
+  players: [],      // {id, name, color, size, x, y, initiative, ownerId, ownerName, isBase}
   walls: [],        // {x, y}
   turnOrder: [],    // массив id игроков по инициативе
   currentTurnIndex: 0,
@@ -92,274 +92,255 @@ wss.on("connection", ws => {
         const id = uuidv4();
         users.push({ id, name, role, ws });
 
-ws.send(JSON.stringify({ type: "registered", id, role, name }));
+        ws.send(JSON.stringify({ type: "registered", id, role, name }));
 
-// 🔑 ПОЛНАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЭТОМУ КЛИЕНТУ
-sendFullSync(ws);
+        // 🔑 ПОЛНАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЭТОМУ КЛИЕНТУ
+        sendFullSync(ws);
 
-// остальные — как и раньше
-broadcastUsers();
-broadcast(); // ← ДОБАВИТЬ
-logEvent(`${name} присоединился как ${role}`);
-break;
+        // остальные — как и раньше
+        broadcastUsers();
+        broadcast();
+        logEvent(`${name} присоединился как ${role}`);
+        break;
       }
 
       // ================= ИГРОВОЙ ЛОГИК =================
-case "resizeBoard":
-  if (!isGM(ws)) return;
+      case "resizeBoard":
+        if (!isGM(ws)) return;
 
-  gameState.boardWidth = data.width;
-  gameState.boardHeight = data.height;
-  logEvent("Поле изменено");
-  broadcast();
-  break;
+        gameState.boardWidth = data.width;
+        gameState.boardHeight = data.height;
+        logEvent("Поле изменено");
+        broadcast();
+        break;
 
-case "startInitiative": {
-  if (!isGM(ws)) return;
+      case "startInitiative": {
+        if (!isGM(ws)) return;
 
-  gameState.phase = "initiative";
+        gameState.phase = "initiative";
 
-  gameState.players.forEach(p => {
-    p.initiative = null;
-    p.hasRolledInitiative = false;
-  });
+        gameState.players.forEach(p => {
+          p.initiative = null;
+          p.hasRolledInitiative = false;
+        });
 
-  logEvent("GM начал фазу инициативы");
-  broadcast();
-  break;
-}        
+        logEvent("GM начал фазу инициативы");
+        broadcast();
+        break;
+      }
 
       case "addPlayer": {
-  const user = users.find(u => u.ws === ws);
+        const user = users.find(u => u.ws === ws);
+        if (!user) return;
+
         const isBase = !!data.player?.isBase;
-const isSummon = !!data.player?.isSummon;
 
-if (isBase && isSummon) {
-  ws.send(JSON.stringify({ type: "error", message: "Нельзя выбрать одновременно 'Основа' и 'Призвать'" }));
-  return;
-}
+        // ✅ Основа может быть только одна на всю игру
+        if (isBase) {
+          const baseAlreadyExists = gameState.players.some(p => p.isBase);
+          if (baseAlreadyExists) {
+            ws.send(JSON.stringify({ type: "error", message: "Основа уже существует. Можно иметь только одну основу на всю игру." }));
+            return;
+          }
+        }
 
-if (isBase) {
-  const alreadyHasBase = gameState.players.some(p => p.ownerId === user.id && p.isBase);
-  if (alreadyHasBase) {
-    ws.send(JSON.stringify({ type: "error", message: "У вас уже есть основной персонаж (Основа)" }));
-    return;
-  }
-}
-  if (!user) return;
+        gameState.players.push({
+          id: data.player.id || uuidv4(),
+          name: data.player.name,
+          color: data.player.color,
+          size: data.player.size,
+          x: null,
+          y: null,
+          initiative: 0,
 
-  gameState.players.push({
-    id: data.player.id || uuidv4(),
-    name: data.player.name,
-    color: data.player.color,
-    size: data.player.size,
-    x: null,
-    y: null,
-    initiative: 0,
+          isBase,
 
-    // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
-    ownerId: user.id,
-    ownerName: user.name
-  });
+          // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
+          ownerId: user.id,
+          ownerName: user.name
+        });
 
-  logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}`);
-  broadcast();
-  break;
-}
+        logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}${isBase ? " (Основа)" : ""}`);
+        broadcast();
+        break;
+      }
 
-case "movePlayer": {
-  const p = gameState.players.find(p => p.id === data.id);
-  if (!p) return;
+      case "movePlayer": {
+        const p = gameState.players.find(p => p.id === data.id);
+        if (!p) return;
 
-  const gm = isGM(ws);
-  const owner = ownsPlayer(ws, p);
+        const gm = isGM(ws);
+        const owner = ownsPlayer(ws, p);
 
-  // права: GM всегда может, владелец — только своих
-  if (!gm && !owner) return;
+        // права: GM всегда может, владелец — только своих
+        if (!gm && !owner) return;
 
-  // В бою НЕ-GM может двигать:
-  // 1) своего персонажа, если сейчас его ход
-  // 2) или своего персонажа, если он ещё не выставлен на поле (x/y null) — чтобы можно было "ввести" нового бойца
-  if (gameState.phase === "combat" && !gm) {
-    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-    const notPlacedYet = (p.x === null || p.y === null);
-    if (p.id !== currentId && !notPlacedYet) return;
-  }
+        // В бою НЕ-GM может двигать:
+        // 1) своего персонажа, если сейчас его ход
+        // 2) или своего персонажа, если он ещё не выставлен на поле (x/y null)
+        if (gameState.phase === "combat" && !gm) {
+          const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+          const notPlacedYet = (p.x === null || p.y === null);
+          if (p.id !== currentId && !notPlacedYet) return;
+        }
 
-  p.x = data.x;
-  p.y = data.y;
-  logEvent(`${p.name} перемещен в (${p.x},${p.y})`);
-  broadcast();
-  break;
-}
+        p.x = data.x;
+        p.y = data.y;
+        logEvent(`${p.name} перемещен в (${p.x},${p.y})`);
+        broadcast();
+        break;
+      }
 
-case "removePlayerFromBoard": {
-  const p = gameState.players.find(p => p.id === data.id);
-  if (!p) return;
+      case "removePlayerFromBoard": {
+        const p = gameState.players.find(p => p.id === data.id);
+        if (!p) return;
 
-  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
 
-  p.x = null;
-  p.y = null;
-  logEvent(`${p.name} удален с поля`);
-  broadcast();
-  break;
-}
+        p.x = null;
+        p.y = null;
+        logEvent(`${p.name} удален с поля`);
+        broadcast();
+        break;
+      }
 
-case "log": {
-  // Разрешаем лог всем, но можно ограничить при желании
-  if (typeof data.text === "string" && data.text.trim()) {
-    logEvent(data.text.trim());
-    broadcast();
-  }
-  break;
-}        
-
-case "removePlayerCompletely": {
-  const p = gameState.players.find(p => p.id === data.id);
-  if (!p) return;
-
-  if (!isGM(ws) && !ownsPlayer(ws, p)) return;
-
-  gameState.players = gameState.players.filter(pl => pl.id !== data.id);
-  gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
-  logEvent(`Игрок ${p.name} полностью удален`);
-  broadcast();
-  break;
-}
-
-case "addWall":
-  if (!isGM(ws)) return;
-
-  if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
-    gameState.walls.push(data.wall);
-    logEvent(`Стена добавлена (${data.wall.x},${data.wall.y})`);
-    broadcast();
-  }
-  break;
-
-case "removeWall":
-  if (!isGM(ws)) return;
-
-  gameState.walls = gameState.walls.filter(
-    w => !(w.x === data.wall.x && w.y === data.wall.y)
-  );
-  logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
-  broadcast();
-  break;
-
-case "rollInitiative": {
-  if (gameState.phase !== "initiative") return;
-
-  const user = getUserByWS(ws);
-  if (!user) return;
-
-  gameState.players
-    .filter(p => p.ownerId === user.id && !p.hasRolledInitiative)
-    .forEach(p => {
-      p.initiative = Math.floor(Math.random() * 20) + 1;
-      p.hasRolledInitiative = true;
-      logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
-    });
-
-  broadcast();
-  break;
-}
-
-case "finishInitiative": {
-  if (!isGM(ws)) return;
-
-  const allRolled = gameState.players.every(p => p.hasRolledInitiative);
-  if (!allRolled) return;
-
-  gameState.turnOrder = [...gameState.players]
-    .sort((a,b) => b.initiative - a.initiative)
-    .map(p => p.id);
-
-  gameState.phase = "placement";
-  logEvent("Все инициативы определены. Фаза размещения");
-  broadcast();
-  break;
-} 
-
-case "startCombat": {
-  if (!isGM(ws)) return;
-  if (gameState.phase !== "placement") return;
-
-  autoPlacePlayers();
-
-  gameState.phase = "combat";
-  gameState.currentTurnIndex = 0;
-
-  const first = gameState.players.find(
-    p => p.id === gameState.turnOrder[0]
-  );
-
-  logEvent(`Бой начался. Первый ход: ${first?.name}`);
-  broadcast();
-  break;
-}        
-
-case "endTurn":
-  if (!isGM(ws)) return;
-
-  if (gameState.turnOrder.length > 0) {
-    gameState.currentTurnIndex =
-      (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-    const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-    const current = gameState.players.find(p => p.id === currentId);
-    logEvent(`Ход игрока ${current?.name || '-'}`);
-    broadcast();
-  }
-  break;
-
-      case "rollDice": {
-        const sides = data.sides || 6;
-        const roller = gameState.players.find(p => p.id === data.id);
-        if (roller) {
-          const result = Math.floor(Math.random() * sides) + 1;
-          logEvent(`${roller.name} бросил d${sides}: ${result}`);
+      case "log": {
+        if (typeof data.text === "string" && data.text.trim()) {
+          logEvent(data.text.trim());
           broadcast();
         }
         break;
       }
 
-case "resetGame":
-  if (!isGM(ws)) return;
+      case "removePlayerCompletely": {
+        const p = gameState.players.find(p => p.id === data.id);
+        if (!p) return;
 
-  gameState.players = [];
-  gameState.walls = [];
-  gameState.turnOrder = [];
-  gameState.currentTurnIndex = 0;
-  gameState.log = ["Игра полностью сброшена"];
-  broadcast();
-  break;
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
 
-case "clearBoard":
-  if (!isGM(ws)) return;
+        gameState.players = gameState.players.filter(pl => pl.id !== data.id);
+        gameState.turnOrder = gameState.turnOrder.filter(id => id !== data.id);
+        logEvent(`Игрок ${p.name} полностью удален`);
+        broadcast();
+        break;
+      }
 
-  // ✅ убираем стены
-  gameState.walls = [];
+      case "addWall":
+        if (!isGM(ws)) return;
 
-  // ✅ убираем ВСЕХ игроков с поля (но не удаляем их полностью)
-  gameState.players.forEach(p => {
-    p.x = null;
-    p.y = null;
-  });
+        if (!gameState.walls.find(w => w.x === data.wall.x && w.y === data.wall.y)) {
+          gameState.walls.push(data.wall);
+          logEvent(`Стена добавлена (${data.wall.x},${data.wall.y})`);
+          broadcast();
+        }
+        break;
 
-  // также безопасно сбрасываем выделение/ход не трогаем — бой может продолжаться
-  logEvent("Поле очищено: стены удалены, все персонажи убраны с поля");
-  broadcast();
-  break;
+      case "removeWall":
+        if (!isGM(ws)) return;
 
+        gameState.walls = gameState.walls.filter(
+          w => !(w.x === data.wall.x && w.y === data.wall.y)
+        );
+        logEvent(`Стена удалена (${data.wall.x},${data.wall.y})`);
+        broadcast();
+        break;
+
+      case "rollInitiative": {
+        if (gameState.phase !== "initiative") return;
+
+        const user = getUserByWS(ws);
+        if (!user) return;
+
+        gameState.players
+          .filter(p => p.ownerId === user.id && !p.hasRolledInitiative)
+          .forEach(p => {
+            p.initiative = Math.floor(Math.random() * 20) + 1;
+            p.hasRolledInitiative = true;
+            logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
+          });
+
+        broadcast();
+        break;
+      }
+
+      case "finishInitiative": {
+        if (!isGM(ws)) return;
+
+        const allRolled = gameState.players.every(p => p.hasRolledInitiative);
+        if (!allRolled) return;
+
+        gameState.turnOrder = [...gameState.players]
+          .sort((a, b) => b.initiative - a.initiative)
+          .map(p => p.id);
+
+        gameState.phase = "placement";
+        logEvent("Все инициативы определены. Фаза размещения");
+        broadcast();
+        break;
+      }
+
+      case "startCombat": {
+        if (!isGM(ws)) return;
+        if (gameState.phase !== "placement") return;
+
+        autoPlacePlayers();
+
+        gameState.phase = "combat";
+        gameState.currentTurnIndex = 0;
+
+        const first = gameState.players.find(
+          p => p.id === gameState.turnOrder[0]
+        );
+
+        logEvent(`Бой начался. Первый ход: ${first?.name}`);
+        broadcast();
+        break;
+      }
+
+      case "endTurn":
+        if (!isGM(ws)) return;
+
+        if (gameState.turnOrder.length > 0) {
+          gameState.currentTurnIndex =
+            (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
+          const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+          const current = gameState.players.find(p => p.id === currentId);
+          logEvent(`Ход игрока ${current?.name || '-'}`);
+          broadcast();
+        }
+        break;
+
+      case "resetGame":
+        if (!isGM(ws)) return;
+
+        gameState.players = [];
+        gameState.walls = [];
+        gameState.turnOrder = [];
+        gameState.currentTurnIndex = 0;
+        gameState.log = ["Игра полностью сброшена"];
+        broadcast();
+        break;
+
+      case "clearBoard":
+        if (!isGM(ws)) return;
+
+        gameState.walls = [];
+        gameState.players.forEach(p => {
+          p.x = null;
+          p.y = null;
+        });
+
+        logEvent("Поле очищено: стены удалены, все персонажи убраны с поля");
+        broadcast();
+        break;
     }
   });
 
-ws.on("close", () => {
-  users = users.filter(u => u.ws !== ws);
-  broadcastUsers();
-  broadcast(); // чтобы все пересинхронизировались
-});
+  ws.on("close", () => {
+    users = users.filter(u => u.ws !== ws);
+    broadcastUsers();
+    broadcast();
+  });
 });
 
 function sendFullSync(ws) {
@@ -385,7 +366,6 @@ function autoPlacePlayers() {
   let y = 0;
 
   gameState.players.forEach(p => {
-    // 🔑 НЕ трогаем тех, кто уже выставлен вручную
     if (p.x !== null && p.y !== null) return;
 
     p.x = x;
@@ -402,7 +382,3 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
-
-
-
