@@ -386,6 +386,10 @@ resetGameBtn.addEventListener('click', () => {
 // ================== HELPER ==================
 function sendMessage(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
 
+  // Фаза размещения
+  startCombatBtn.disabled = state.phase !== "placement";
+}
+
 function updatePhaseUI(state) {
 
   // ================= ИНИЦИАТИВА =================
@@ -417,9 +421,5 @@ function updatePhaseUI(state) {
   if (state.phase !== "initiative" && state.phase !== "combat") {
     startCombatBtn.style.backgroundColor = "";
   }
-}
-
-  // Фаза размещения
-  startCombatBtn.disabled = state.phase !== "placement";
 }
 
