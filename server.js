@@ -230,12 +230,6 @@ case "rollInitiative": {
       logEvent(`${p.name} бросил инициативу: ${p.initiative}`);
     });
 
-  // ✅ ПРОВЕРЯЕМ ПОСЛЕ БРОСКОВ
-  if (gameState.players.every(p => p.hasRolledInitiative)) {
-    gameState.phase = "placement";
-    logEvent("Все бросили инициативу. Фаза размещения.");
-  }
-
   broadcast();
   break;
 }
@@ -257,23 +251,13 @@ case "finishInitiative": {
 } 
 
 case "startCombat": {
-  if (!isGM(ws)) {
-    console.log("DENY startCombat: not GM");
-    return;
-  }
+  if (!isGM(ws)) return;
+  if (gameState.phase !== "placement") return;
 
-  if (gameState.phase !== "placement") {
-    console.log("DENY startCombat: wrong phase", gameState.phase);
-    return;
-  }
+  autoPlacePlayers();
 
-  gameState.turnOrder = [...gameState.players]
-    .filter(p => p.x !== null && p.y !== null)
-    .sort((a, b) => b.initiative - a.initiative)
-    .map(p => p.id);
-
-  gameState.currentTurnIndex = 0;
   gameState.phase = "combat";
+  gameState.currentTurnIndex = 0;
 
   const first = gameState.players.find(
     p => p.id === gameState.turnOrder[0]
@@ -282,10 +266,9 @@ case "startCombat": {
   logEvent(`Бой начался. Первый ход: ${first?.name}`);
   broadcast();
   break;
-}
-     
+}        
+
 case "endTurn":
-  if (gameState.phase !== "combat") return;      
   if (!isGM(ws)) return;
 
   if (gameState.turnOrder.length > 0) {
@@ -375,9 +358,4 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
-
-
-
-
 
