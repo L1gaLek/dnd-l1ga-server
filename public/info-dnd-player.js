@@ -21,6 +21,10 @@
   // состояние модалки
   let openedSheetPlayerId = null;
 
+  // UI-состояние модалки по игрокам (чтобы не сбрасывало вкладки/скролл при обновлениях state)
+  // Map<playerId, { activeTab: string, scrollByTab: Record<string, number> }>
+  const uiStateByPlayerId = new Map();
+
   // debounce save timers
   const sheetSaveTimers = new Map();
 
@@ -779,7 +783,36 @@
   }
 
   // ================== RENDER MODAL ==================
-  function renderSheetModal(player) {
+  function getUiState(playerId) {
+    if (!playerId) return { activeTab: "basic", scrollByTab: {} };
+    if (!uiStateByPlayerId.has(playerId)) {
+      uiStateByPlayerId.set(playerId, { activeTab: "basic", scrollByTab: {} });
+    }
+    return uiStateByPlayerId.get(playerId);
+  }
+
+  function captureCurrentUiState() {
+    if (!openedSheetPlayerId) return;
+    const st = getUiState(openedSheetPlayerId);
+    const activeBtn = sheetContent?.querySelector?.('.sheet-tab.active');
+    if (activeBtn?.dataset?.tab) st.activeTab = activeBtn.dataset.tab;
+    const main = sheetContent?.querySelector?.('#sheet-main');
+    if (main) {
+      const tab = st.activeTab || 'basic';
+      st.scrollByTab[tab] = main.scrollTop || 0;
+    }
+  }
+
+  function restoreScroll(playerId) {
+    const st = getUiState(playerId);
+    const main = sheetContent?.querySelector?.('#sheet-main');
+    if (!main) return;
+    const tab = st.activeTab || 'basic';
+    const top = st.scrollByTab?.[tab];
+    if (typeof top === 'number') main.scrollTop = top;
+  }
+
+  function renderSheetModal(player, opts = {}) {
     if (!sheetTitle || !sheetSubtitle || !sheetActions || !sheetContent) return;
     if (!ctx) return;
 
@@ -840,8 +873,9 @@
       { id: "inventory", label: "Инвентарь" }
     ];
 
-    if (!player._activeSheetTab) player._activeSheetTab = "basic";
-    let activeTab = player._activeSheetTab;
+    // Берём активную вкладку из UI-state, а не из объекта player (он пересоздаётся сервером)
+    const st = getUiState(player.id);
+    let activeTab = st.activeTab || "basic";
 
     const hero = `
       <div class="sheet-hero">
@@ -885,6 +919,11 @@
       </div>
     `;
 
+    // Восстанавливаем скролл после перерендера, чтобы не было "подбросов"
+    if (opts.preserveScroll) {
+      restoreScroll(player.id);
+    }
+
     bindEditableInputs(sheetContent, player, canEdit);
     bindSkillBoostDots(sheetContent, player, canEdit);
 
@@ -896,8 +935,14 @@
         const tabId = btn.dataset.tab;
         if (!tabId) return;
 
+        // сохраняем скролл уходящей вкладки
+        const prevMain = sheetContent.querySelector('#sheet-main');
+        if (prevMain) {
+          st.scrollByTab[activeTab] = prevMain.scrollTop || 0;
+        }
+
         activeTab = tabId;
-        player._activeSheetTab = tabId;
+        st.activeTab = tabId;
 
         tabButtons.forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
@@ -909,6 +954,10 @@
 
           bindEditableInputs(sheetContent, player, canEdit);
           bindSkillBoostDots(sheetContent, player, canEdit);
+
+          // восстановим скролл для новой вкладки
+          const newTop = st.scrollByTab?.[activeTab];
+          if (typeof newTop === 'number') main.scrollTop = newTop;
         }
       });
     });
@@ -923,7 +972,8 @@
   function open(player) {
     if (!player) return;
     openedSheetPlayerId = player.id;
-    renderSheetModal(player);
+    // при открытии — восстанавливаем последнюю вкладку/скролл
+    renderSheetModal(player, { preserveScroll: true });
     openModal();
   }
 
@@ -931,7 +981,20 @@
     if (!openedSheetPlayerId) return;
     if (!Array.isArray(players)) return;
     const pl = players.find(x => x.id === openedSheetPlayerId);
-    if (pl) renderSheetModal(pl);
+    if (!pl) return;
+
+    // Если пользователь сейчас взаимодействует с модалкой (фокус внутри) — НЕ перерисовываем,
+    // чтобы не сбивало вкладку и не подпрыгивал скролл.
+    // Данные уже меняются локально, а серверный echo нам тут не нужен.
+    if (sheetModal && sheetModal.contains(document.activeElement)) {
+      // но UI-состояние (скролл/вкладка) всё равно запомним
+      captureCurrentUiState();
+      return;
+    }
+
+    // иначе — можно обновить, но с сохранением таба/скролла
+    captureCurrentUiState();
+    renderSheetModal(pl, { preserveScroll: true });
   }
 
   window.InfoModal = { init, open, refresh, close: closeModal };
