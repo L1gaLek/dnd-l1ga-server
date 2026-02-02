@@ -478,11 +478,9 @@ button:hover {
   line-height: 1;
 }
 
-.modal-body{
-  display: flex;          /* ✅ важно */
-  flex-direction: column; /* ✅ важно */
-  min-height: 0;          /* ✅ важно для вложенного скролла */
-  overflow: hidden;       /* скролл будет внутри sheet-main */
+.modal-body {
+  padding: 12px 14px;
+  overflow: auto;
 }
 
 .sheet-actions {
@@ -493,12 +491,11 @@ button:hover {
   margin-bottom: 12px;
 }
 
-.sheet-content{
-  display:flex;
-  flex-direction:column;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
+.sheet-content {
+  background: #141414;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
 }
 
 .sheet-grid {
@@ -550,9 +547,9 @@ button:hover {
   overflow: hidden;        /* скролл будет внутри контента */
 }
 
-.sheet-layout{
-  flex: 1 1 auto;   /* ✅ важно */
-  min-height: 0;    /* ✅ важно */
+.sheet-layout {
+  display: flex;
+  height: min(76vh, 720px);
 }
 
 /* левое меню */
@@ -590,10 +587,10 @@ button:hover {
 }
 
 /* правая часть */
-.sheet-main{
-  overflow:auto;
-  min-height:0;
-  padding-bottom: 18px; /* ✅ чуть воздуха внизу, чтобы ничего не пряталось */
+.sheet-main {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 14px;
 }
 
 /* "шапка" как у LSS: имя + краткие значения */
@@ -1110,4 +1107,3 @@ button:hover {
   overflow:auto;
   min-height:0;
 }
-
