@@ -1049,31 +1049,3 @@ button:hover {
   border-color:#4aa3ff;
   box-shadow:0 0 0 2px rgba(74,163,255,0.15);
 }
-
-/* ===== DND INFO: compact abilities + star dots ===== */
-.lss-ability{ padding:8px; }
-.lss-ability-head{ padding-bottom:4px; }
-.lss-ability-name{ font-size:11px; line-height:12px; }
-.lss-ability-score{ font-size:14px; }
-.lss-ability-actions{ margin-top:6px; gap:8px; }
-.lss-pill{ padding:4px 6px; border-radius:8px; }
-.lss-pill-label{ font-size:10px; }
-.lss-pill-val{ min-width:28px; padding:1px 6px; border-radius:7px; }
-.lss-skill-list{ margin-top:6px; gap:5px; }
-.lss-skill-row{ padding:5px 6px; border-radius:8px; }
-.lss-skill-name{ font-size:12px; }
-.lss-skill-val{ min-width:38px; padding:1px 8px; border-radius:7px; font-size:12px; }
-.lss-dot{ width:11px; height:11px; border-width:2px; }
-.lss-dot.clickable{ cursor:pointer; }
-.lss-dot.star1{
-  border-color: rgba(255,255,255,0.95);
-  box-shadow: 0 0 10px rgba(255,255,255,0.35);
-}
-.lss-dot.star3{
-  border-color: orange;
-  box-shadow: 0 0 0 2px rgba(255,165,0,0.18), 0 0 12px rgba(255,165,0,0.45);
-}
-
-.lss-stars{ margin-left:6px; font-size:11px; letter-spacing:1px; }
-.lss-stars.white{ color:#fff; opacity:0.9; }
-.lss-stars.orange{ color: orange; opacity:0.95; }
