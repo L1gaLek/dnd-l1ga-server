@@ -349,13 +349,11 @@
     sheet.skills[skillKey].isProf = lvl;
   }
 
-function boostLevelToAdd(lvl, prof) {
-  const p = safeInt(prof, 0);
-  const L = safeInt(lvl, 0);
-  // ★ = +prof, ★★ = +2*prof
-  if (L <= 0) return 0;
-  return p * L;
-}
+  function boostLevelToAdd(lvl) {
+    if (lvl === 1) return 1;
+    if (lvl === 2) return 3;
+    return 0;
+  }
 
   function boostLevelToStars(lvl) {
     if (lvl === 1) return "★";
@@ -365,18 +363,16 @@ function boostLevelToAdd(lvl, prof) {
 
   // Скилл-бонус: statMod + boostAdd (+ бонусы из sheet.skills[skillKey].bonus если есть)
   // (важно: никакого prof* по isProf — иначе снова будет двойное начисление)
-function calcSkillBonus(sheet, skillKey) {
-  const skill = sheet?.skills?.[skillKey];
-  const baseStat = skill?.baseStat;
-  const statMod = safeInt(sheet?.stats?.[baseStat]?.modifier, 0);
+  function calcSkillBonus(sheet, skillKey) {
+    const skill = sheet?.skills?.[skillKey];
+    const baseStat = skill?.baseStat;
+    const statMod = safeInt(sheet?.stats?.[baseStat]?.modifier, 0);
 
-  const extra = safeInt(skill?.bonus, 0); // если в файле есть отдельный бонус — учитываем
-  const boostLevel = getSkillBoostLevel(sheet, skillKey);
+    const extra = safeInt(skill?.bonus, 0); // если в файле есть отдельный бонус — учитываем
+    const boostLevel = getSkillBoostLevel(sheet, skillKey);
 
-  const prof = getProfBonus(sheet);
-
-  return statMod + extra + boostLevelToAdd(boostLevel, prof);
-}
+    return statMod + extra + boostLevelToAdd(boostLevel);
+  }
 
   function calcSaveBonus(sheet, statKey) {
     const prof = getProfBonus(sheet);
@@ -704,7 +700,6 @@ function calcSkillBonus(sheet, skillKey) {
             <div class="kv"><div class="k">HP max</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">HP current</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">Speed</div><div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Владение</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
           </div>
         </div>
 
@@ -1047,4 +1042,3 @@ function calcSkillBonus(sheet, skillKey) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
-
