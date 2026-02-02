@@ -270,6 +270,24 @@
     return safeInt(sheet?.proficiency, 2) + safeInt(sheet?.proficiencyCustom, 0);
   }
 
+  // ===== NEW: boost for skills via clickable dots =====
+  function getSkillBoostLevel(sheet, skillKey) {
+    const lvl = safeInt(sheet?.skills?.[skillKey]?.boostLevel, 0);
+    if (lvl === 1) return 1;
+    if (lvl === 2) return 2;
+    return 0;
+  }
+  function boostLevelToAdd(lvl) {
+    if (lvl === 1) return 1;
+    if (lvl === 2) return 3;
+    return 0;
+  }
+  function boostLevelToStars(lvl) {
+    if (lvl === 1) return "★";
+    if (lvl === 2) return "★★★";
+    return "";
+  }
+
   function calcSkillBonus(sheet, skillKey) {
     const prof = getProfBonus(sheet);
     const skill = sheet?.skills?.[skillKey];
@@ -286,6 +304,11 @@
     if (isProf === 0 && hasHalfProfBonusForSkill(sheet, skillKey)) {
       bonus += Math.floor(prof / 2);
     }
+
+    // NEW: add dot boost
+    const boostLevel = getSkillBoostLevel(sheet, skillKey);
+    bonus += boostLevelToAdd(boostLevel);
+
     return bonus;
   }
 
@@ -341,10 +364,13 @@
       const baseStat = sk?.baseStat;
       const label = sk?.label || key;
       const isProf = safeInt(sk?.isProf, 0);
+
+      const boostLevel = getSkillBoostLevel(sheet, key);
       const bonus = calcSkillBonus(sheet, key);
+
       const statBlock = stats.find(s => s.k === baseStat);
       if (!statBlock) continue;
-      statBlock.skills.push({ key, label, isProf, bonus });
+      statBlock.skills.push({ key, label, isProf, bonus, boostLevel, boostStars: boostLevelToStars(boostLevel) });
     }
     stats.forEach(s => s.skills.sort((a,b) => a.label.localeCompare(b.label, 'ru')));
 
@@ -464,16 +490,83 @@
     });
   }
 
+  // ===== NEW: clickable dots binding (skills boost) =====
+  function ensureSkillNode(sheet, skillKey) {
+    if (!sheet.skills || typeof sheet.skills !== "object") sheet.skills = {};
+    if (!sheet.skills[skillKey] || typeof sheet.skills[skillKey] !== "object") sheet.skills[skillKey] = {};
+  }
+
+  function bindSkillBoostDots(root, player, canEdit) {
+    if (!root || !player?.sheet?.parsed) return;
+
+    const sheet = player.sheet.parsed;
+    const dots = root.querySelectorAll(".lss-dot[data-skill-key]");
+    dots.forEach(dot => {
+      const skillKey = dot.getAttribute("data-skill-key");
+      if (!skillKey) return;
+
+      // делаем кликабельным визуально
+      dot.classList.add("clickable");
+
+      // если нельзя редактировать — просто не вешаем обработчик
+      if (!canEdit) return;
+
+      dot.addEventListener("click", (e) => {
+        e.stopPropagation();
+
+        ensureSkillNode(sheet, skillKey);
+
+        const cur = safeInt(sheet.skills[skillKey].boostLevel, 0);
+        const next = (cur === 0) ? 1 : (cur === 1) ? 2 : 0;
+        sheet.skills[skillKey].boostLevel = next;
+
+        // обновим UI точечно (без полного ререндера)
+        dot.classList.remove("boost1", "boost2");
+        if (next === 1) dot.classList.add("boost1");
+        if (next === 2) dot.classList.add("boost2");
+
+        const row = dot.closest(".lss-skill-row");
+        if (row) {
+          const valEl = row.querySelector(".lss-skill-val");
+          if (valEl) valEl.textContent = formatMod(calcSkillBonus(sheet, skillKey));
+
+          const nameEl = row.querySelector(".lss-skill-name");
+          if (nameEl) {
+            // обновим/вставим звездочки boost
+            let boostSpan = nameEl.querySelector(".lss-boost");
+            const stars = boostLevelToStars(next);
+
+            if (!boostSpan) {
+              boostSpan = document.createElement("span");
+              boostSpan.className = "lss-boost";
+              nameEl.appendChild(boostSpan);
+            }
+            boostSpan.textContent = stars ? ` ${stars}` : "";
+          }
+        }
+
+        scheduleSheetSave(player);
+      });
+    });
+  }
+
   // ================== RENDER: BASIC (WITH STATS INSIDE) ==================
   function renderAbilitiesGrid(vm) {
     const blocks = vm.stats.map(s => {
       const skillRows = (s.skills || []).map(sk => {
         const profMark = (sk.isProf === 1) ? "★" : (sk.isProf === 2) ? "★★" : "";
+        const boostMark = sk.boostStars || "";
+
+        const dotClass = (sk.boostLevel === 1) ? "boost1" : (sk.boostLevel === 2) ? "boost2" : "";
         return `
           <div class="lss-skill-row">
             <div class="lss-skill-left">
-              <span class="lss-dot ${sk.isProf ? "on" : ""}"></span>
-              <span class="lss-skill-name">${escapeHtml(sk.label)}${profMark ? ` <span class="lss-prof">${profMark}</span>` : ""}</span>
+              <span class="lss-dot ${dotClass}" data-skill-key="${escapeHtml(sk.key)}"></span>
+              <span class="lss-skill-name">
+                ${escapeHtml(sk.label)}
+                ${profMark ? ` <span class="lss-prof">${profMark}</span>` : ""}
+                ${boostMark ? ` <span class="lss-boost"> ${boostMark}</span>` : `<span class="lss-boost"></span>`}
+              </span>
             </div>
             <div class="lss-skill-val">${escapeHtml(formatMod(sk.bonus))}</div>
           </div>
@@ -818,6 +911,7 @@
     `;
 
     bindEditableInputs(sheetContent, player, canEdit);
+    bindSkillBoostDots(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -837,7 +931,9 @@
           const freshSheet = player.sheet?.parsed || createEmptySheet(player.name);
           const freshVm = toViewModel(freshSheet, player.name);
           main.innerHTML = renderActiveTab(activeTab, freshVm);
+
           bindEditableInputs(sheetContent, player, canEdit);
+          bindSkillBoostDots(sheetContent, player, canEdit);
         }
       });
     });
