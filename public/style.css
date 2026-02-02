@@ -710,3 +710,338 @@ button:hover {
   color: #fff;
 }
 
+/* ===== DND INFO: abilities layout (LSS-like) ===== */
+.ab-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.ab-card {
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.ab-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ab-title {
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.ab-score {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+}
+
+.ab-mini-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ab-mini {
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: #171717;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ab-mini-label {
+  font-size: 11px;
+  color: #aaa;
+}
+
+.ab-mini-val {
+  font-weight: 900;
+  color: #fff;
+}
+
+.ab-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ab-skill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #233152;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.ab-skill .left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ab-skill .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(0,0,0,0.25);
+}
+
+.ab-skill .label {
+  font-size: 12px;
+  color: #eaeaea;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ab-skill .val {
+  font-weight: 900;
+  color: #fff;
+  min-width: 36px;
+  text-align: right;
+}
+
+.sheet-scrollbox {
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 10px;
+  background: #141414;
+  color: #ddd;
+  font-size: 13px;
+}
+
+
+/* ===== LSS-like abilities layout inside "Основное" ===== */
+.lss-abilities-grid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap:12px;
+}
+@media (max-width: 900px){
+  .lss-abilities-grid{ grid-template-columns: 1fr; }
+}
+
+.lss-ability{
+  background:#182035;
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:12px;
+  padding:10px;
+}
+
+.lss-ability-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+  padding-bottom:6px;
+  border-bottom:1px solid rgba(255,255,255,0.10);
+}
+.lss-ability-name{
+  font-weight:900;
+  letter-spacing:0.6px;
+  color:#fff;
+}
+.lss-ability-score{
+  font-weight:900;
+  font-size:18px;
+  color:#fff;
+  opacity:0.95;
+}
+
+.lss-ability-actions{
+  display:flex;
+  gap:10px;
+  margin-top:8px;
+  flex-wrap:wrap;
+}
+
+.lss-pill{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(255,255,255,0.16);
+  background:rgba(0,0,0,0.15);
+  border-radius:10px;
+  padding:6px 8px;
+}
+.lss-pill-label{
+  font-size:11px;
+  font-weight:800;
+  color:#d0d6e4;
+}
+.lss-pill-val{
+  min-width:34px;
+  text-align:center;
+  font-weight:900;
+  color:#fff;
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px;
+  padding:2px 8px;
+}
+
+.lss-skill-list{
+  margin-top:8px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.lss-skill-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  background:rgba(0,0,0,0.12);
+  border:1px solid rgba(255,255,255,0.10);
+  border-radius:10px;
+  padding:7px 8px;
+}
+.lss-skill-left{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+.lss-dot{
+  width:12px;
+  height:12px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,0.35);
+  flex:0 0 auto;
+}
+.lss-dot.on{
+  border-color:#4aa3ff;
+  box-shadow:0 0 0 2px rgba(74,163,255,0.15);
+}
+.lss-skill-name{
+  font-size:13px;
+  color:#eef2ff;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.lss-prof{
+  opacity:0.9;
+  font-size:12px;
+}
+.lss-skill-val{
+  font-weight:900;
+  color:#fff;
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px;
+  padding:2px 10px;
+  min-width:44px;
+  text-align:center;
+}
+
+/* пассивки + владения */
+.lss-bottom-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:12px;
+  margin-top:12px;
+}
+@media (max-width: 900px){
+  .lss-bottom-grid{ grid-template-columns: 1fr; }
+}
+.lss-passives, .lss-profbox{
+  background:#121212;
+  border:1px solid #333;
+  border-radius:12px;
+  padding:10px;
+}
+.lss-passives-title{
+  font-weight:900;
+  letter-spacing:0.6px;
+  color:#d8dde8;
+  font-size:12px;
+  margin-bottom:8px;
+}
+.lss-passive-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border:1px solid rgba(255,255,255,0.10);
+  background:rgba(255,255,255,0.04);
+  border-radius:10px;
+  padding:6px 8px;
+  margin-bottom:6px;
+}
+.lss-passive-row:last-child{ margin-bottom:0; }
+.lss-passive-val{
+  font-weight:900;
+  color:#fff;
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px;
+  padding:2px 10px;
+  min-width:44px;
+  text-align:center;
+}
+.lss-passive-label{
+  color:#d8dde8;
+  font-size:13px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.lss-prof-scroll{
+  max-height:160px;
+  overflow:auto;
+  padding-right:6px;
+}
+.lss-prof-line{
+  color:#d8dde8;
+  font-size:13px;
+  padding:4px 2px;
+  border-bottom:1px dashed rgba(255,255,255,0.10);
+}
+.lss-prof-line:last-child{ border-bottom:none; }
+
+/* spells slots */
+.lss-slots{ display:flex; flex-direction:column; gap:8px; }
+.lss-slot{ display:flex; align-items:center; gap:10px; }
+.lss-slot-lvl{
+  width:28px; height:28px; border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:900;
+  border:1px solid rgba(255,255,255,0.16);
+  background:rgba(255,255,255,0.08);
+  color:#fff;
+}
+.lss-slot-bar{
+  flex:1;
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:10px;
+  background:rgba(255,255,255,0.04);
+  padding:6px 10px;
+}
+.lss-slot-text{ font-size:13px; color:#e7ecff; font-weight:800; }
+
+/* clickable spell pills */
+.spell-link{ text-decoration:none; }
+.spell-link:hover{
+  border-color:#4aa3ff;
+  box-shadow:0 0 0 2px rgba(74,163,255,0.15);
+}
