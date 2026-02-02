@@ -60,21 +60,6 @@
   function safeInt(x, fallback = 0) {
     const n = Number(x);
     return Number.isFinite(n) ? n : fallback;
-
-  // ===== STAR BUFF (0 / +1 / +3) =====
-  function normalizeStarBuff(x) {
-    const n = Number(x);
-    if (n === 1) return 1;
-    if (n === 3) return 3;
-    return 0;
-  }
-
-  function nextStarBuff(current) {
-    const c = normalizeStarBuff(current);
-    if (c === 0) return 1;
-    if (c === 1) return 3;
-    return 0;
-  }
   }
 
   // ================== MODAL HELPERS ==================
@@ -128,24 +113,6 @@
       raw: outer,
       parsed: inner || outer
     };
-  }
-
-  // Более надёжное чтение файла (на случай браузеров, где file.text() ведёт себя нестабильно)
-  function readFileAsText(file) {
-    if (!file) return Promise.resolve('');
-    if (typeof file.text === 'function') {
-      return file.text();
-    }
-    return new Promise((resolve, reject) => {
-      try {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(reader.error || new Error('FileReader error'));
-        reader.readAsText(file);
-      } catch (e) {
-        reject(e);
-      }
-    });
   }
 
   // ================== TIPTAP DOC PARSING ==================
@@ -319,10 +286,6 @@
     if (isProf === 0 && hasHalfProfBonusForSkill(sheet, skillKey)) {
       bonus += Math.floor(prof / 2);
     }
-
-    // ⭐ star buff: 0 / +1 / +3 (user-togglable)
-    bonus += normalizeStarBuff(skill?._starBuff ?? skill?.starBuff ?? 0);
-
     return bonus;
   }
 
@@ -381,8 +344,7 @@
       const bonus = calcSkillBonus(sheet, key);
       const statBlock = stats.find(s => s.k === baseStat);
       if (!statBlock) continue;
-      const starBuff = normalizeStarBuff(sk?._starBuff ?? sk?.starBuff ?? 0);
-      statBlock.skills.push({ key, label, isProf, bonus, starBuff });
+      statBlock.skills.push({ key, label, isProf, bonus });
     }
     stats.forEach(s => s.skills.sort((a,b) => a.label.localeCompare(b.label, 'ru')));
 
@@ -502,53 +464,16 @@
     });
   }
 
-
-  // ================== STAR DOTS (CLICK 0 -> +1 -> +3) ==================
-  function bindStarDots(root, player, canEdit) {
-    if (!root || !canEdit || !player?.sheet?.parsed) return;
-
-    const dots = root.querySelectorAll(".lss-dot[data-skill]");
-    dots.forEach(dot => {
-      dot.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const skillKey = dot.getAttribute("data-skill");
-        if (!skillKey) return;
-
-        const sheet = player.sheet.parsed;
-        if (!sheet.skills || typeof sheet.skills !== "object") sheet.skills = {};
-        if (!sheet.skills[skillKey] || typeof sheet.skills[skillKey] !== "object") {
-          // если навыка нет — создадим минимально, чтобы бафф сохранился
-          sheet.skills[skillKey] = { name: skillKey, label: skillKey, baseStat: "dex", isProf: 0 };
-        }
-
-        const skill = sheet.skills[skillKey];
-        const cur = normalizeStarBuff(skill._starBuff ?? skill.starBuff ?? 0);
-        const nxt = nextStarBuff(cur);
-
-        // храним только в _starBuff (чтобы не конфликтовать с исходным json)
-        skill._starBuff = nxt;
-
-        scheduleSheetSave(player);
-
-        // перерисовываем модалку, чтобы пересчитались бонусы/пассивки
-        renderSheetModal(player);
-      }, { passive: false });
-    });
-  }
-
   // ================== RENDER: BASIC (WITH STATS INSIDE) ==================
-  function renderAbilitiesGrid(vm, canEdit) {
+  function renderAbilitiesGrid(vm) {
     const blocks = vm.stats.map(s => {
       const skillRows = (s.skills || []).map(sk => {
         const profMark = (sk.isProf === 1) ? "★" : (sk.isProf === 2) ? "★★" : "";
-        const starMark = (sk.starBuff === 1) ? "★" : (sk.starBuff === 3) ? "★★★" : "";
         return `
           <div class="lss-skill-row">
             <div class="lss-skill-left">
-              <span class="lss-dot ${sk.starBuff === 1 ? "star1" : sk.starBuff === 3 ? "star3" : ""} ${canEdit ? "clickable" : ""}" data-skill="${escapeHtml(sk.key)}" data-star="${sk.starBuff}"></span>
-              <span class="lss-skill-name">${escapeHtml(sk.label)}${profMark ? ` <span class="lss-prof">${profMark}</span>` : ""}${starMark ? ` <span class="lss-stars ${sk.starBuff === 3 ? "orange" : "white"}">${starMark}</span>` : ""}</span>
+              <span class="lss-dot ${sk.isProf ? "on" : ""}"></span>
+              <span class="lss-skill-name">${escapeHtml(sk.label)}${profMark ? ` <span class="lss-prof">${profMark}</span>` : ""}</span>
             </div>
             <div class="lss-skill-val">${escapeHtml(formatMod(sk.bonus))}</div>
           </div>
@@ -610,7 +535,7 @@
     `;
   }
 
-  function renderBasicTab(vm, canEdit) {
+  function renderBasicTab(vm) {
     return `
       <div class="sheet-section">
         <h3>Основное</h3>
@@ -638,7 +563,7 @@
 
         <div class="sheet-section" style="margin-top:12px;">
           <h3>Характеристики и навыки</h3>
-          ${renderAbilitiesGrid(vm, canEdit)}
+          ${renderAbilitiesGrid(vm)}
         </div>
 
         <div class="lss-bottom-grid">
@@ -777,8 +702,8 @@
     `;
   }
 
-  function renderActiveTab(tabId, vm, canEdit) {
-    if (tabId === "basic") return renderBasicTab(vm, canEdit);
+  function renderActiveTab(tabId, vm) {
+    if (tabId === "basic") return renderBasicTab(vm);
     if (tabId === "spells") return renderSpellsTab(vm);
     if (tabId === "combat") return renderCombatTab(vm);
     if (tabId === "inventory") return renderInventoryTab(vm);
@@ -808,61 +733,33 @@
     sheetActions.appendChild(note);
 
     if (canEdit) {
-	      // Делаем импорт максимально надёжным: кнопка + скрытый input.
-	      const importRow = document.createElement('div');
-	      importRow.style.display = 'flex';
-	      importRow.style.alignItems = 'center';
-	      importRow.style.gap = '10px';
-	      importRow.style.flexWrap = 'wrap';
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = '.json,application/json';
 
-	      const importBtn = document.createElement('button');
-	      importBtn.textContent = 'Загрузить .json';
-	      importBtn.type = 'button';
+      fileInput.addEventListener('change', async () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
 
-	      const fileName = document.createElement('span');
-	      fileName.className = 'sheet-note';
-	      fileName.style.margin = '0';
-	      fileName.textContent = 'файл не выбран';
+        try {
+          const text = await file.text();
+          const sheet = parseCharboxFileText(text);
+          player.sheet = sheet; // локально
+          ctx.sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
 
-	      const fileInput = document.createElement('input');
-	      fileInput.type = 'file';
-	      fileInput.accept = '.json,application/json';
-	      fileInput.style.display = 'none';
+          const tmp = document.createElement('div');
+          tmp.className = 'sheet-note';
+          tmp.textContent = "Файл отправлен. Сейчас обновится состояние…";
+          sheetActions.appendChild(tmp);
+        } catch (err) {
+          alert("Не удалось прочитать/распарсить файл .json");
+          console.error(err);
+        } finally {
+          fileInput.value = '';
+        }
+      });
 
-	      const doImport = async () => {
-	        const file = fileInput.files?.[0];
-	        if (!file) return;
-	        try {
-	          const text = await readFileAsText(file);
-	          const sheet = parseCharboxFileText(text);
-	          player.sheet = sheet; // локально
-	          ctx.sendMessage({ type: 'setPlayerSheet', id: player.id, sheet });
-
-	          const tmp = document.createElement('div');
-	          tmp.className = 'sheet-note';
-	          tmp.textContent = 'Файл отправлен. Сейчас обновится состояние…';
-	          sheetActions.appendChild(tmp);
-	        } catch (err) {
-	          alert('Не удалось прочитать/распарсить файл .json');
-	          console.error(err);
-	        } finally {
-	          // чтобы повторный выбор того же файла тоже вызывал change
-	          fileInput.value = '';
-	          fileName.textContent = 'файл не выбран';
-	        }
-	      };
-
-	      importBtn.addEventListener('click', () => fileInput.click());
-	      fileInput.addEventListener('change', async () => {
-	        const file = fileInput.files?.[0];
-	        fileName.textContent = file ? file.name : 'файл не выбран';
-	        await doImport();
-	      });
-
-	      importRow.appendChild(importBtn);
-	      importRow.appendChild(fileName);
-	      importRow.appendChild(fileInput);
-	      sheetActions.appendChild(importRow);
+      sheetActions.appendChild(fileInput);
     }
 
     const sheet = player.sheet?.parsed || createEmptySheet(player.name);
@@ -908,7 +805,7 @@
 
     const mainHtml = `
       <div class="sheet-main" id="sheet-main">
-        ${renderActiveTab(activeTab, vm, canEdit)}
+        ${renderActiveTab(activeTab, vm)}
       </div>
     `;
 
@@ -921,7 +818,6 @@
     `;
 
     bindEditableInputs(sheetContent, player, canEdit);
-    bindStarDots(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -940,9 +836,8 @@
         if (main) {
           const freshSheet = player.sheet?.parsed || createEmptySheet(player.name);
           const freshVm = toViewModel(freshSheet, player.name);
-          main.innerHTML = renderActiveTab(activeTab, freshVm, canEdit);
+          main.innerHTML = renderActiveTab(activeTab, freshVm);
           bindEditableInputs(sheetContent, player, canEdit);
-    bindStarDots(sheetContent, player, canEdit);
         }
       });
     });
