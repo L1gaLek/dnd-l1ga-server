@@ -270,7 +270,26 @@
     return safeInt(sheet?.proficiency, 2) + safeInt(sheet?.proficiencyCustom, 0);
   }
 
-  function calcSkillBonus(sheet, skillKey) {
+  
+  function getStarBuffForSkill(sheet, skillKey) {
+    const sk = sheet?.skills?.[skillKey];
+    const n = Number(sk?._starBuff);
+    if (n === 1 || n === 3) return n;
+
+    // поддержка возможных вариантов в json
+    const alt = Number(sk?.starBuff ?? sk?.stars ?? sk?.starLevel);
+    if (alt === 1 || alt === 3) return alt;
+
+    return 0;
+  }
+
+  function setStarBuffForSkill(sheet, skillKey, val) {
+    if (!sheet.skills) sheet.skills = {};
+    if (!sheet.skills[skillKey]) sheet.skills[skillKey] = { baseStat: "str", name: skillKey, label: skillKey, isProf: 0 };
+    sheet.skills[skillKey]._starBuff = val;
+  }
+
+function calcSkillBonus(sheet, skillKey) {
     const prof = getProfBonus(sheet);
     const skill = sheet?.skills?.[skillKey];
     const baseStat = skill?.baseStat;
@@ -286,6 +305,8 @@
     if (isProf === 0 && hasHalfProfBonusForSkill(sheet, skillKey)) {
       bonus += Math.floor(prof / 2);
     }
+    bonus += getStarBuffForSkill(sheet, skillKey);
+
     return bonus;
   }
 
@@ -394,7 +415,7 @@
     const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
     const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
 
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, spellsInfo, slots, spellsByLevel, weapons: weaponsVm, coins };
+    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, spellsInfo, slots, spellsByLevel, weapons: weaponsVm, coins, _sheet: sheet };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -446,6 +467,42 @@
         return;
       }
 
+
+  function bindStarDots(root, player, canEdit) {
+    if (!root || !player?.sheet?.parsed) return;
+    const sheet = player.sheet.parsed;
+
+    const dots = root.querySelectorAll(".lss-dot[data-skill-key]");
+    dots.forEach(dot => {
+      const key = dot.getAttribute("data-skill-key");
+      if (!key) return;
+
+      const applyCls = () => {
+        const b = getStarBuffForSkill(sheet, key);
+        dot.classList.toggle("star-1", b === 1);
+        dot.classList.toggle("star-3", b === 3);
+      };
+      applyCls();
+
+      if (!canEdit) {
+        dot.style.cursor = "default";
+        return;
+      }
+
+      dot.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const cur = getStarBuffForSkill(sheet, key);
+        const next = (cur === 0) ? 1 : (cur === 1) ? 3 : 0;
+        setStarBuffForSkill(sheet, key, next);
+        scheduleSheetSave(player);
+
+        // перерисуем, чтобы пересчитались бонусы/пассивы
+        renderSheetModal(player);
+      });
+    });
+  }
+
+
       const handler = () => {
         let val;
         if (inp.type === "checkbox") val = !!inp.checked;
@@ -468,12 +525,13 @@
   function renderAbilitiesGrid(vm) {
     const blocks = vm.stats.map(s => {
       const skillRows = (s.skills || []).map(sk => {
-        const profMark = (sk.isProf === 1) ? "★" : (sk.isProf === 2) ? "★★" : "";
+        const buff = getStarBuffForSkill(vm._sheet, sk.key);
+        const stars = (buff === 1) ? "★" : (buff === 3) ? "★★★" : "";
         return `
           <div class="lss-skill-row">
             <div class="lss-skill-left">
-              <span class="lss-dot ${sk.isProf ? "on" : ""}"></span>
-              <span class="lss-skill-name">${escapeHtml(sk.label)}${profMark ? ` <span class="lss-prof">${profMark}</span>` : ""}</span>
+              <span class="lss-dot ${buff === 1 ? "star-1" : buff === 3 ? "star-3" : ""}" data-skill-key="${escapeHtml(sk.key)}" title="Клик: 0 → +1 → +3"></span>
+              <span class="lss-skill-name">${escapeHtml(sk.label)}${stars ? ` <span class="lss-stars">${stars}</span>` : ""}</span>
             </div>
             <div class="lss-skill-val">${escapeHtml(formatMod(sk.bonus))}</div>
           </div>
@@ -818,6 +876,10 @@
     `;
 
     bindEditableInputs(sheetContent, player, canEdit);
+          bindStarDots(sheetContent, player, canEdit);
+
+    // кликабельные кружки (0/+1/+3)
+    bindStarDots(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -838,6 +900,7 @@
           const freshVm = toViewModel(freshSheet, player.name);
           main.innerHTML = renderActiveTab(activeTab, freshVm);
           bindEditableInputs(sheetContent, player, canEdit);
+          bindStarDots(sheetContent, player, canEdit);
         }
       });
     });
