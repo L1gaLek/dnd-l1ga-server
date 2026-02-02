@@ -952,8 +952,8 @@ button:hover {
 
 /* 2-е состояние: белое свечение */
 .lss-dot.boost1{
-  border-color: rgba(255,255,255,0.95);
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.22), 0 0 10px rgba(255,255,255,0.18);
+  border-color: rgba(197,163,99,0.95);
+  box-shadow: 0 0 0 2px rgba(197,163,99,0.22), 0 0 10px rgba(197,163,99,0.18);
 }
 
 /* 3-е состояние: оранжевое свечение */
@@ -1085,3 +1085,4 @@ button:hover {
   border-color:#4aa3ff;
   box-shadow:0 0 0 2px rgba(74,163,255,0.15);
 }
+
