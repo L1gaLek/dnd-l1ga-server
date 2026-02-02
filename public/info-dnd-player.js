@@ -243,73 +243,61 @@
     }
   }
 
-  // ================== CALC MODIFIERS (LSS) ==================
-  function hasHalfProfBonusForSkill(sheet, skillKey) {
-    const bs = sheet?.bonusesSkills;
-    if (!bs || typeof bs !== "object") return false;
-    for (const k of Object.keys(bs)) {
-      const val = bs[k]?.value;
-      const arr = val?.[skillKey];
-      if (Array.isArray(arr) && arr.some(x => x?.type === "spread" && x?.key === "halfProfType")) return true;
-    }
-    return false;
-  }
-
-  function hasHalfProfBonusForStat(sheet, statKey) {
-    const bs = sheet?.bonusesStats;
-    if (!bs || typeof bs !== "object") return false;
-    for (const k of Object.keys(bs)) {
-      const val = bs[k]?.value;
-      const arr = val?.[statKey];
-      if (Array.isArray(arr) && arr.some(x => x?.type === "spread" && x?.key === "halfProfType")) return true;
-    }
-    return false;
-  }
-
+  // ================== CALC MODIFIERS ==================
   function getProfBonus(sheet) {
     return safeInt(sheet?.proficiency, 2) + safeInt(sheet?.proficiencyCustom, 0);
   }
 
-  // ===== NEW: boost for skills via clickable dots =====
+  // ===== ВАЖНО: теперь "звезды" навыка = это boost (0/1/2), БЕЗ двойного суммирования =====
+  // Поддержка старых файлов:
+  // - если sheet.skills[skillKey].boostLevel есть -> используем его
+  // - иначе используем sheet.skills[skillKey].isProf как уровень звезд (0/1/2), как у тебя в json
   function getSkillBoostLevel(sheet, skillKey) {
-    const lvl = safeInt(sheet?.skills?.[skillKey]?.boostLevel, 0);
-    if (lvl === 1) return 1;
-    if (lvl === 2) return 2;
-    return 0;
+    const sk = sheet?.skills?.[skillKey];
+    if (!sk || typeof sk !== "object") return 0;
+
+    if (sk.boostLevel !== undefined && sk.boostLevel !== null) {
+      const lvl = safeInt(sk.boostLevel, 0);
+      return (lvl === 1 || lvl === 2) ? lvl : 0;
+    }
+
+    // fallback: isProf уже содержит 0/1/2 (звезды в файле)
+    const legacy = safeInt(sk.isProf, 0);
+    return (legacy === 1 || legacy === 2) ? legacy : 0;
   }
+
+  function setSkillBoostLevel(sheet, skillKey, lvl) {
+    if (!sheet.skills || typeof sheet.skills !== "object") sheet.skills = {};
+    if (!sheet.skills[skillKey] || typeof sheet.skills[skillKey] !== "object") sheet.skills[skillKey] = {};
+    sheet.skills[skillKey].boostLevel = lvl;
+
+    // чтобы при повторной загрузке/экспорте и в других местах (если где-то ожидается isProf) не было рассинхрона:
+    sheet.skills[skillKey].isProf = lvl;
+  }
+
   function boostLevelToAdd(lvl) {
     if (lvl === 1) return 1;
     if (lvl === 2) return 3;
     return 0;
   }
+
   function boostLevelToStars(lvl) {
     if (lvl === 1) return "★";
-    if (lvl === 2) return "★★★";
+    if (lvl === 2) return "★★";
     return "";
   }
 
+  // Скилл-бонус: statMod + boostAdd (+ бонусы из sheet.skills[skillKey].bonus если есть)
+  // (важно: никакого prof* по isProf — иначе снова будет двойное начисление)
   function calcSkillBonus(sheet, skillKey) {
-    const prof = getProfBonus(sheet);
     const skill = sheet?.skills?.[skillKey];
     const baseStat = skill?.baseStat;
     const statMod = safeInt(sheet?.stats?.[baseStat]?.modifier, 0);
-    const isProf = safeInt(skill?.isProf, 0);
 
-    let bonus = statMod;
-
-    if (isProf === 1) bonus += prof;
-    if (isProf === 2) bonus += prof * 2;
-
-    // Jack of all trades / half-prof if not proficient
-    if (isProf === 0 && hasHalfProfBonusForSkill(sheet, skillKey)) {
-      bonus += Math.floor(prof / 2);
-    }
-
-    // NEW: add dot boost
+    const extra = safeInt(skill?.bonus, 0); // если в файле есть отдельный бонус — учитываем
     const boostLevel = getSkillBoostLevel(sheet, skillKey);
-    bonus += boostLevelToAdd(boostLevel);
 
-    return bonus;
+    return statMod + extra + boostLevelToAdd(boostLevel);
   }
 
   function calcSaveBonus(sheet, statKey) {
@@ -329,10 +317,6 @@
     let bonus = statMod;
     if (check === 1) bonus += prof;
     if (check === 2) bonus += prof * 2;
-
-    if (check === 0 && hasHalfProfBonusForStat(sheet, statKey)) {
-      bonus += Math.floor(prof / 2);
-    }
     return bonus;
   }
 
@@ -363,14 +347,20 @@
       const sk = skillsRaw[key];
       const baseStat = sk?.baseStat;
       const label = sk?.label || key;
-      const isProf = safeInt(sk?.isProf, 0);
 
       const boostLevel = getSkillBoostLevel(sheet, key);
       const bonus = calcSkillBonus(sheet, key);
 
       const statBlock = stats.find(s => s.k === baseStat);
       if (!statBlock) continue;
-      statBlock.skills.push({ key, label, isProf, bonus, boostLevel, boostStars: boostLevelToStars(boostLevel) });
+
+      statBlock.skills.push({
+        key,
+        label,
+        bonus,
+        boostLevel,
+        boostStars: boostLevelToStars(boostLevel)
+      });
     }
     stats.forEach(s => s.skills.sort((a,b) => a.label.localeCompare(b.label, 'ru')));
 
@@ -490,12 +480,7 @@
     });
   }
 
-  // ===== NEW: clickable dots binding (skills boost) =====
-  function ensureSkillNode(sheet, skillKey) {
-    if (!sheet.skills || typeof sheet.skills !== "object") sheet.skills = {};
-    if (!sheet.skills[skillKey] || typeof sheet.skills[skillKey] !== "object") sheet.skills[skillKey] = {};
-  }
-
+  // ===== clickable dots binding (skills boost) =====
   function bindSkillBoostDots(root, player, canEdit) {
     if (!root || !player?.sheet?.parsed) return;
 
@@ -505,22 +490,17 @@
       const skillKey = dot.getAttribute("data-skill-key");
       if (!skillKey) return;
 
-      // делаем кликабельным визуально
       dot.classList.add("clickable");
-
-      // если нельзя редактировать — просто не вешаем обработчик
       if (!canEdit) return;
 
       dot.addEventListener("click", (e) => {
         e.stopPropagation();
 
-        ensureSkillNode(sheet, skillKey);
-
-        const cur = safeInt(sheet.skills[skillKey].boostLevel, 0);
+        const cur = getSkillBoostLevel(sheet, skillKey);
         const next = (cur === 0) ? 1 : (cur === 1) ? 2 : 0;
-        sheet.skills[skillKey].boostLevel = next;
 
-        // обновим UI точечно (без полного ререндера)
+        setSkillBoostLevel(sheet, skillKey, next);
+
         dot.classList.remove("boost1", "boost2");
         if (next === 1) dot.classList.add("boost1");
         if (next === 2) dot.classList.add("boost2");
@@ -532,7 +512,6 @@
 
           const nameEl = row.querySelector(".lss-skill-name");
           if (nameEl) {
-            // обновим/вставим звездочки boost
             let boostSpan = nameEl.querySelector(".lss-boost");
             const stars = boostLevelToStars(next);
 
@@ -550,13 +529,10 @@
     });
   }
 
-  // ================== RENDER: BASIC (WITH STATS INSIDE) ==================
+  // ================== RENDER ==================
   function renderAbilitiesGrid(vm) {
     const blocks = vm.stats.map(s => {
       const skillRows = (s.skills || []).map(sk => {
-        const profMark = (sk.isProf === 1) ? "★" : (sk.isProf === 2) ? "★★" : "";
-        const boostMark = sk.boostStars || "";
-
         const dotClass = (sk.boostLevel === 1) ? "boost1" : (sk.boostLevel === 2) ? "boost2" : "";
         return `
           <div class="lss-skill-row">
@@ -564,8 +540,7 @@
               <span class="lss-dot ${dotClass}" data-skill-key="${escapeHtml(sk.key)}"></span>
               <span class="lss-skill-name">
                 ${escapeHtml(sk.label)}
-                ${profMark ? ` <span class="lss-prof">${profMark}</span>` : ""}
-                ${boostMark ? ` <span class="lss-boost"> ${boostMark}</span>` : `<span class="lss-boost"></span>`}
+                <span class="lss-boost">${sk.boostStars ? ` ${escapeHtml(sk.boostStars)}` : ""}</span>
               </span>
             </div>
             <div class="lss-skill-val">${escapeHtml(formatMod(sk.bonus))}</div>
@@ -837,7 +812,7 @@
         try {
           const text = await file.text();
           const sheet = parseCharboxFileText(text);
-          player.sheet = sheet; // локально
+          player.sheet = sheet;
           ctx.sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
 
           const tmp = document.createElement('div');
