@@ -70,8 +70,10 @@ const usersById = new Map();
 // состояние модалки
 let openedSheetPlayerId = null;
 
+// debounce timers for sheet save (playerId -> timer)
+const sheetSaveTimers = new Map();
+
 // ================== UTILS ==================
-// достаёт value из {value: ...} или возвращает само значение
 function v(x, fallback = "-") {
   if (x && typeof x === "object") {
     if ("value" in x) return (x.value ?? fallback);
@@ -79,7 +81,6 @@ function v(x, fallback = "-") {
   return (x ?? fallback);
 }
 
-// безопасный доступ по пути + авто unwrap {value}
 function get(obj, path, fallback = "-") {
   try {
     const raw = path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj);
@@ -102,6 +103,12 @@ function escapeHtml(s) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function clamp(n, min, max) {
+  const x = Number(n);
+  if (Number.isNaN(x)) return min;
+  return Math.max(min, Math.min(max, x));
 }
 
 // ================== MODAL HELPERS ==================
@@ -155,6 +162,54 @@ function parseCharboxFileText(fileText) {
   };
 }
 
+// ================== MANUAL SHEET DEFAULT ==================
+function createEmptySheet(fallbackName = "-") {
+  return {
+    name: { value: fallbackName },
+    info: {
+      charClass: { value: "" },
+      level: { value: 1 },
+      race: { value: "" },
+      background: { value: "" },
+      alignment: { value: "" }
+    },
+    vitality: {
+      "hp-max": { value: 0 },
+      "hp-current": { value: 0 },
+      ac: { value: 0 },
+      speed: { value: 0 }
+    },
+    stats: {
+      str: { score: 10, modifier: 0 },
+      dex: { score: 10, modifier: 0 },
+      con: { score: 10, modifier: 0 },
+      int: { score: 10, modifier: 0 },
+      wis: { score: 10, modifier: 0 },
+      cha: { score: 10, modifier: 0 }
+    },
+    skills: {},
+    saves: {},
+    weaponsList: [],
+    coins: { cp: { value: 0 }, sp: { value: 0 }, ep: { value: 0 }, gp: { value: 0 }, pp: { value: 0 } }
+  };
+}
+
+function ensurePlayerSheetWrapper(player) {
+  // всегда гарантируем player.sheet + player.sheet.parsed
+  if (!player.sheet || typeof player.sheet !== "object") {
+    player.sheet = {
+      source: "manual",
+      importedAt: Date.now(),
+      raw: null,
+      parsed: createEmptySheet(player.name)
+    };
+    return;
+  }
+  if (!player.sheet.parsed || typeof player.sheet.parsed !== "object") {
+    player.sheet.parsed = createEmptySheet(player.name);
+  }
+}
+
 // ================== VIEW MODEL ==================
 function toViewModel(sheet, fallbackName = "-") {
   const name = get(sheet, 'name.value', fallbackName);
@@ -165,11 +220,13 @@ function toViewModel(sheet, fallbackName = "-") {
   const align = get(sheet, 'info.alignment.value', '-');
 
   const hp = get(sheet, 'vitality.hp-max.value', '-');
+  const hpCur = get(sheet, 'vitality.hp-current.value', '-');
   const ac = get(sheet, 'vitality.ac.value', '-');
   const spd = get(sheet, 'vitality.speed.value', '-');
 
   const stats = ["str","dex","con","int","wis","cha"].map(k => ({
     key: k.toUpperCase(),
+    k,
     score: v(sheet?.stats?.[k]?.score, '-'),
     mod: v(sheet?.stats?.[k]?.modifier, '-')
   }));
@@ -240,22 +297,105 @@ function toViewModel(sheet, fallbackName = "-") {
       else if (typeof raw === "string") items = raw.split("\n").map(s => s.trim()).filter(Boolean);
       else if (raw != null) items = [String(v(raw, ""))];
 
-      // чистим пустые
       items = items.map(s => s.trim()).filter(Boolean);
-
       return { level, items };
     })
     .filter(x => x.items.length);
 
   return {
     name, cls, lvl, race, bg, align,
-    hp, ac, spd,
+    hp, hpCur, ac, spd,
     stats, skills, saves,
     weapons: weaponsVm,
     coins,
     inventory,
     spellsByLevel
   };
+}
+
+// ================== SHEET UPDATE HELPERS ==================
+function setByPath(obj, path, value) {
+  const parts = path.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const k = parts[i];
+    if (!cur[k] || typeof cur[k] !== "object") cur[k] = {};
+    cur = cur[k];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
+function getByPath(obj, path) {
+  try {
+    return path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj);
+  } catch {
+    return undefined;
+  }
+}
+
+function scheduleSheetSave(player) {
+  if (!player?.id) return;
+  const key = player.id;
+
+  const prev = sheetSaveTimers.get(key);
+  if (prev) clearTimeout(prev);
+
+  const t = setTimeout(() => {
+    // отправляем текущий sheet wrapper (player.sheet)
+    sendMessage({ type: "setPlayerSheet", id: player.id, sheet: player.sheet });
+    sheetSaveTimers.delete(key);
+  }, 450);
+
+  sheetSaveTimers.set(key, t);
+}
+
+function bindEditableInputs(root, player, canEdit) {
+  if (!root || !player?.sheet?.parsed) return;
+
+  const inputs = root.querySelectorAll("[data-sheet-path]");
+  inputs.forEach(inp => {
+    const path = inp.getAttribute("data-sheet-path");
+    if (!path) return;
+
+    // начальное значение
+    const raw = getByPath(player.sheet.parsed, path);
+    if (inp.type === "checkbox") {
+      inp.checked = !!raw;
+    } else {
+      inp.value = (raw ?? "");
+    }
+
+    if (!canEdit) {
+      inp.disabled = true;
+      return;
+    }
+
+    const handler = () => {
+      let val;
+      if (inp.type === "checkbox") {
+        val = !!inp.checked;
+      } else if (inp.type === "number") {
+        // оставляем число или 0
+        val = inp.value === "" ? "" : Number(inp.value);
+      } else {
+        val = inp.value;
+      }
+
+      // спец: если поле вида {value: ...}, то пишем в .value, иначе как есть
+      // (но тут path уже нацелен на конкретное поле, так что просто set)
+      setByPath(player.sheet.parsed, path, val);
+
+      // актуализируем title/hero если меняли имя
+      if (path === "name.value") {
+        player.name = val || player.name;
+      }
+
+      scheduleSheetSave(player);
+    };
+
+    inp.addEventListener("input", handler);
+    inp.addEventListener("change", handler);
+  });
 }
 
 // ================== MODAL UI (LEFT TABS) ==================
@@ -267,15 +407,61 @@ function renderSheetTabContent(tabId, vm) {
         <div class="sheet-grid-2">
           <div class="sheet-card">
             <h4>Профиль</h4>
-            <div class="kv"><div class="k">Имя</div><div class="v">${escapeHtml(vm.name)}</div></div>
-            <div class="kv"><div class="k">Класс</div><div class="v">${escapeHtml(vm.cls)}</div></div>
-            <div class="kv"><div class="k">Уровень</div><div class="v">${escapeHtml(vm.lvl)}</div></div>
-            <div class="kv"><div class="k">Раса</div><div class="v">${escapeHtml(vm.race)}</div></div>
+
+            <div class="kv">
+              <div class="k">Имя</div>
+              <div class="v"><input type="text" data-sheet-path="name.value" style="width:160px"></div>
+            </div>
+
+            <div class="kv">
+              <div class="k">Класс</div>
+              <div class="v"><input type="text" data-sheet-path="info.charClass.value" style="width:160px"></div>
+            </div>
+
+            <div class="kv">
+              <div class="k">Уровень</div>
+              <div class="v"><input type="number" min="1" max="20" data-sheet-path="info.level.value" style="width:90px"></div>
+            </div>
+
+            <div class="kv">
+              <div class="k">Раса</div>
+              <div class="v"><input type="text" data-sheet-path="info.race.value" style="width:160px"></div>
+            </div>
           </div>
+
           <div class="sheet-card">
             <h4>Фон</h4>
-            <div class="kv"><div class="k">Предыстория</div><div class="v">${escapeHtml(vm.bg)}</div></div>
-            <div class="kv"><div class="k">Мировоззрение</div><div class="v">${escapeHtml(vm.align)}</div></div>
+
+            <div class="kv">
+              <div class="k">Предыстория</div>
+              <div class="v"><input type="text" data-sheet-path="info.background.value" style="width:160px"></div>
+            </div>
+
+            <div class="kv">
+              <div class="k">Мировоззрение</div>
+              <div class="v"><input type="text" data-sheet-path="info.alignment.value" style="width:160px"></div>
+            </div>
+
+            <div class="kv">
+              <div class="k">AC</div>
+              <div class="v"><input type="number" min="0" max="40" data-sheet-path="vitality.ac.value" style="width:90px"></div>
+            </div>
+
+            <div class="kv">
+              <div class="k">HP max</div>
+              <div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div>
+            </div>
+
+            <div class="kv">
+              <div class="k">HP current</div>
+              <div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div>
+            </div>
+
+            <div class="kv">
+              <div class="k">Speed</div>
+              <div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div>
+            </div>
+
           </div>
         </div>
       </div>
@@ -286,8 +472,21 @@ function renderSheetTabContent(tabId, vm) {
     const cards = vm.stats.map(s => `
       <div class="sheet-card">
         <h4>${escapeHtml(s.key)}</h4>
-        <div class="kv"><div class="k">Score</div><div class="v">${escapeHtml(s.score)}</div></div>
-        <div class="kv"><div class="k">Mod</div><div class="v">${escapeHtml(formatMod(s.mod))}</div></div>
+
+        <div class="kv">
+          <div class="k">Score</div>
+          <div class="v">
+            <input type="number" min="1" max="30" data-sheet-path="stats.${s.k}.score" style="width:90px">
+          </div>
+        </div>
+
+        <div class="kv">
+          <div class="k">Mod</div>
+          <div class="v">
+            <input type="number" min="-10" max="10" data-sheet-path="stats.${s.k}.modifier" style="width:90px">
+          </div>
+        </div>
+
       </div>
     `).join("");
 
@@ -296,6 +495,9 @@ function renderSheetTabContent(tabId, vm) {
         <h3>Характеристики</h3>
         <div class="sheet-grid-3">
           ${cards}
+        </div>
+        <div class="sheet-note" style="margin-top:8px;">
+          Подсказка: модификатор можно вводить вручную, либо считать самому.
         </div>
       </div>
     `;
@@ -309,7 +511,7 @@ function renderSheetTabContent(tabId, vm) {
           <div class="v">${escapeHtml(x.val)}</div>
         </div>
       `).join("")
-      : `<div class="sheet-note">Нет данных</div>`;
+      : `<div class="sheet-note">Нет данных (из файла). Навыки вручную пока не редактируются в этом UI.</div>`;
 
     const saves = vm.saves.length
       ? vm.saves.map(x => `
@@ -318,7 +520,7 @@ function renderSheetTabContent(tabId, vm) {
           <div class="v">${escapeHtml(x.val)}</div>
         </div>
       `).join("")
-      : `<div class="sheet-note">Нет данных</div>`;
+      : `<div class="sheet-note">Нет данных (из файла). Сейвы вручную пока не редактируются в этом UI.</div>`;
 
     return `
       <div class="sheet-section">
@@ -347,7 +549,7 @@ function renderSheetTabContent(tabId, vm) {
           <div class="kv"><div class="k">Dmg</div><div class="v">${escapeHtml(w.dmg)} ${escapeHtml(w.type || "")}</div></div>
         </div>
       `).join("")
-      : `<div class="sheet-note">Оружие не указано</div>`;
+      : `<div class="sheet-note">Оружие не указано (из файла). Ручное добавление оружия в этом UI пока не сделано.</div>`;
 
     return `
       <div class="sheet-section">
@@ -361,7 +563,7 @@ function renderSheetTabContent(tabId, vm) {
 
   if (tabId === "spells") {
     if (!vm.spellsByLevel.length) {
-      return `<div class="sheet-note">Заклинания не указаны</div>`;
+      return `<div class="sheet-note">Заклинания не указаны (из файла). Ручное редактирование заклинаний в этом UI пока не сделано.</div>`;
     }
 
     const blocks = vm.spellsByLevel.map(b => `
@@ -385,20 +587,26 @@ function renderSheetTabContent(tabId, vm) {
 
   if (tabId === "inventory") {
     const coins = vm.coins
-      ? ["cp","sp","ep","gp","pp"].map(k => `<span class="sheet-pill">${k.toUpperCase()}: ${escapeHtml(vm.coins[k])}</span>`).join("")
+      ? `
+        <div class="kv"><div class="k">CP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.cp.value" style="width:110px"></div></div>
+        <div class="kv"><div class="k">SP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.sp.value" style="width:110px"></div></div>
+        <div class="kv"><div class="k">EP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.ep.value" style="width:110px"></div></div>
+        <div class="kv"><div class="k">GP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.gp.value" style="width:110px"></div></div>
+        <div class="kv"><div class="k">PP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.pp.value" style="width:110px"></div></div>
+      `
       : `<div class="sheet-note">Нет данных</div>`;
 
     const inv = vm.inventory.length
       ? `<ul class="sheet-list">${vm.inventory.map(x => `<li>${escapeHtml(x)}</li>`).join("")}</ul>`
-      : `<div class="sheet-note">Инвентарь не указан</div>`;
+      : `<div class="sheet-note">Инвентарь не указан (из файла). Ручное редактирование инвентаря в этом UI пока не сделано.</div>`;
 
     return `
       <div class="sheet-section">
         <h3>Инвентарь</h3>
         <div class="sheet-grid-2">
           <div class="sheet-card">
-            <h4>Монеты</h4>
-            <div>${coins}</div>
+            <h4>Монеты (редактируемые)</h4>
+            ${coins}
           </div>
           <div class="sheet-card">
             <h4>Предметы</h4>
@@ -415,18 +623,21 @@ function renderSheetTabContent(tabId, vm) {
 function renderSheetModal(player) {
   if (!sheetTitle || !sheetSubtitle || !sheetActions || !sheetContent) return;
 
+  const canEdit = (myRole === "GM" || player.ownerId === myId);
+
   sheetTitle.textContent = `Инфа: ${player.name}`;
   sheetSubtitle.textContent = `Владелец: ${player.ownerName || 'Unknown'} • Тип: ${player.isBase ? 'Основа' : '-'}`;
 
-  const canEdit = (myRole === "GM" || player.ownerId === myId);
+  // гарантируем sheet даже если файл не загружали
+  ensurePlayerSheetWrapper(player);
 
   // actions (upload + hint)
   sheetActions.innerHTML = '';
   const note = document.createElement('div');
   note.className = 'sheet-note';
   note.textContent = canEdit
-    ? "Можно загрузить .json (Charbox/LSS). После загрузки лист сохраняется на сервере."
-    : "Просмотр. Загружать лист может только владелец или GM.";
+    ? "Можно загрузить .json (Charbox/LSS) или просто редактировать поля вручную — всё сохраняется на сервере."
+    : "Просмотр. Редактировать лист может только владелец или GM.";
   sheetActions.appendChild(note);
 
   if (canEdit) {
@@ -441,6 +652,7 @@ function renderSheetModal(player) {
       try {
         const text = await file.text();
         const sheet = parseCharboxFileText(text);
+        player.sheet = sheet; // сразу обновим локально
         sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
 
         const tmp = document.createElement('div');
@@ -458,13 +670,7 @@ function renderSheetModal(player) {
     sheetActions.appendChild(fileInput);
   }
 
-  // content
-  const sheet = player.sheet?.parsed || null;
-  if (!sheet) {
-    sheetContent.innerHTML = `<div class="sheet-note">Лист не загружен.${canEdit ? " Загрузите .json через кнопку выше." : ""}</div>`;
-    return;
-  }
-
+  const sheet = player.sheet?.parsed || createEmptySheet(player.name);
   const vm = toViewModel(sheet, player.name);
 
   const tabs = [
@@ -476,7 +682,6 @@ function renderSheetModal(player) {
     { id: "inventory", label: "Инвентарь" }
   ];
 
-  // активный таб сохраняем на player (в рантайме)
   if (!player._activeSheetTab) player._activeSheetTab = "basic";
   let activeTab = player._activeSheetTab;
 
@@ -522,6 +727,9 @@ function renderSheetModal(player) {
     </div>
   `;
 
+  // биндим инпуты текущей вкладки
+  bindEditableInputs(sheetContent, player, canEdit);
+
   const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
   const main = sheetContent.querySelector("#sheet-main");
 
@@ -536,7 +744,15 @@ function renderSheetModal(player) {
       tabButtons.forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
 
-      if (main) main.innerHTML = renderSheetTabContent(activeTab, vm);
+      if (main) {
+        // пересобираем vm из актуального sheet (после ручных правок)
+        const freshSheet = player.sheet?.parsed || createEmptySheet(player.name);
+        const freshVm = toViewModel(freshSheet, player.name);
+        main.innerHTML = renderSheetTabContent(activeTab, freshVm);
+
+        // заново привязываем инпуты
+        bindEditableInputs(sheetContent, player, canEdit);
+      }
     });
   });
 }
@@ -772,7 +988,7 @@ function updatePlayerList() {
       const actions = document.createElement('div');
       actions.className = 'player-actions';
 
-      // КНОПКА "ИНФА"
+      // КНОПКА "ИНФА" — теперь открывает модалку ВСЕГДА, даже если файл не загружали
       if (p.isBase) {
         const infoBtn = document.createElement('button');
         infoBtn.textContent = 'Инфа';
