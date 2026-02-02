@@ -130,6 +130,24 @@
     };
   }
 
+  // Более надёжное чтение файла (на случай браузеров, где file.text() ведёт себя нестабильно)
+  function readFileAsText(file) {
+    if (!file) return Promise.resolve('');
+    if (typeof file.text === 'function') {
+      return file.text();
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('FileReader error'));
+        reader.readAsText(file);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
   // ================== TIPTAP DOC PARSING ==================
   function tiptapToPlainLines(doc) {
     if (!doc || typeof doc !== "object") return [];
@@ -790,33 +808,61 @@
     sheetActions.appendChild(note);
 
     if (canEdit) {
-      const fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.accept = '.json,application/json';
+	      // Делаем импорт максимально надёжным: кнопка + скрытый input.
+	      const importRow = document.createElement('div');
+	      importRow.style.display = 'flex';
+	      importRow.style.alignItems = 'center';
+	      importRow.style.gap = '10px';
+	      importRow.style.flexWrap = 'wrap';
 
-      fileInput.addEventListener('change', async () => {
-        const file = fileInput.files?.[0];
-        if (!file) return;
+	      const importBtn = document.createElement('button');
+	      importBtn.textContent = 'Загрузить .json';
+	      importBtn.type = 'button';
 
-        try {
-          const text = await file.text();
-          const sheet = parseCharboxFileText(text);
-          player.sheet = sheet; // локально
-          ctx.sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
+	      const fileName = document.createElement('span');
+	      fileName.className = 'sheet-note';
+	      fileName.style.margin = '0';
+	      fileName.textContent = 'файл не выбран';
 
-          const tmp = document.createElement('div');
-          tmp.className = 'sheet-note';
-          tmp.textContent = "Файл отправлен. Сейчас обновится состояние…";
-          sheetActions.appendChild(tmp);
-        } catch (err) {
-          alert("Не удалось прочитать/распарсить файл .json");
-          console.error(err);
-        } finally {
-          fileInput.value = '';
-        }
-      });
+	      const fileInput = document.createElement('input');
+	      fileInput.type = 'file';
+	      fileInput.accept = '.json,application/json';
+	      fileInput.style.display = 'none';
 
-      sheetActions.appendChild(fileInput);
+	      const doImport = async () => {
+	        const file = fileInput.files?.[0];
+	        if (!file) return;
+	        try {
+	          const text = await readFileAsText(file);
+	          const sheet = parseCharboxFileText(text);
+	          player.sheet = sheet; // локально
+	          ctx.sendMessage({ type: 'setPlayerSheet', id: player.id, sheet });
+
+	          const tmp = document.createElement('div');
+	          tmp.className = 'sheet-note';
+	          tmp.textContent = 'Файл отправлен. Сейчас обновится состояние…';
+	          sheetActions.appendChild(tmp);
+	        } catch (err) {
+	          alert('Не удалось прочитать/распарсить файл .json');
+	          console.error(err);
+	        } finally {
+	          // чтобы повторный выбор того же файла тоже вызывал change
+	          fileInput.value = '';
+	          fileName.textContent = 'файл не выбран';
+	        }
+	      };
+
+	      importBtn.addEventListener('click', () => fileInput.click());
+	      fileInput.addEventListener('change', async () => {
+	        const file = fileInput.files?.[0];
+	        fileName.textContent = file ? file.name : 'файл не выбран';
+	        await doImport();
+	      });
+
+	      importRow.appendChild(importBtn);
+	      importRow.appendChild(fileName);
+	      importRow.appendChild(fileInput);
+	      sheetActions.appendChild(importRow);
     }
 
     const sheet = player.sheet?.parsed || createEmptySheet(player.name);
