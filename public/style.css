@@ -540,16 +540,23 @@ button:hover {
 .modal {
   width: min(980px, 96vw);
   max-height: min(86vh, 900px);
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-body {
   padding: 0;              /* чтобы sidebar был встык */
   overflow: hidden;        /* скролл будет внутри контента */
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;           /* важно для правильного скролла внутри */
 }
 
 .sheet-layout {
   display: flex;
-  height: min(76vh, 720px);
+  flex: 1 1 auto;
+  min-height: 0;           /* чтобы .sheet-main мог нормально скроллиться */
 }
 
 /* левое меню */
@@ -591,6 +598,7 @@ button:hover {
   flex: 1;
   overflow: auto;
   padding: 12px 14px;
+  min-height: 0;
 }
 
 /* "шапка" как у LSS: имя + краткие значения */
@@ -952,8 +960,8 @@ button:hover {
 
 /* 2-е состояние: белое свечение */
 .lss-dot.boost1{
-  border-color: rgba(197,163,99,0.95);
-  box-shadow: 0 0 0 2px rgba(197,163,99,0.22), 0 0 10px rgba(197,163,99,0.18);
+  border-color: rgba(199,153,67,0.95);
+  box-shadow: 0 0 0 2px rgba(199,153,67,0.22), 0 0 10px rgba(199,153,67,0.18);
 }
 
 /* 3-е состояние: оранжевое свечение */
@@ -1035,25 +1043,29 @@ button:hover {
   background:rgba(255,255,255,0.10);
   border:1px solid rgba(255,255,255,0.12);
   border-radius:8px;
-  padding:2px 10px;
-  min-width:44px;
+  font-size:12px;
+  line-height:14px;
+  padding:1px 8px;
+  min-width:40px;
   text-align:center;
 }
 .lss-passive-label{
   color:#d8dde8;
-  font-size:13px;
+  font-size:12px;
+  line-height:14px;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
 }
 .lss-prof-scroll{
-  max-height:160px;
-  overflow:auto;
-  padding-right:6px;
+  max-height:none;
+  overflow:visible;
+  padding-right:0;
 }
 .lss-prof-line{
   color:#d8dde8;
-  font-size:13px;
+  font-size:12px;
+  line-height:14px;
   padding:4px 2px;
   border-bottom:1px dashed rgba(255,255,255,0.10);
 }
@@ -1085,4 +1097,3 @@ button:hover {
   border-color:#4aa3ff;
   box-shadow:0 0 0 2px rgba(74,163,255,0.15);
 }
-
