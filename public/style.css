@@ -833,16 +833,18 @@ button:hover {
 /* ===== LSS-like abilities layout inside "Основное" ===== */
 .lss-abilities-grid{
   display:grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap:12px;
+}
+@media (max-width: 1100px){
+  .lss-abilities-grid{ grid-template-columns: repeat(2, minmax(240px, 1fr)); }
 }
 @media (max-width: 900px){
   .lss-abilities-grid{ grid-template-columns: 1fr; }
 }
-
 .lss-ability{
-  background:#182035;
-  border:1px solid rgba(255,255,255,0.08);
+  background:#1c1c1c; /* как карточки (Профиль) */
+  border:1px solid #333;
   border-radius:12px;
   padding:10px;
 }
@@ -853,12 +855,14 @@ button:hover {
   justify-content:space-between;
   gap:12px;
   padding-bottom:6px;
-  border-bottom:1px solid rgba(255,255,255,0.10);
+  border-bottom:1px solid rgba(255,255,255,0.08);
 }
 .lss-ability-name{
   font-weight:900;
   letter-spacing:0.6px;
   color:#fff;
+
+  font-size:13px;
 }
 .lss-ability-score{
   font-weight:900;
@@ -911,8 +915,8 @@ button:hover {
   align-items:center;
   justify-content:space-between;
   gap:10px;
-  background:rgba(0,0,0,0.12);
-  border:1px solid rgba(255,255,255,0.10);
+  background:#1a1a1a; /* серый вместо синего */
+  border:1px solid #333;
   border-radius:10px;
   padding:7px 8px;
 }
@@ -930,8 +934,8 @@ button:hover {
   flex:0 0 auto;
 }
 .lss-dot.on{
-  border-color:#4aa3ff;
-  box-shadow:0 0 0 2px rgba(74,163,255,0.15);
+  border-color: orange;
+  box-shadow: 0 0 0 2px rgba(255,165,0,0.18);
 }
 .lss-skill-name{
   font-size:13px;
