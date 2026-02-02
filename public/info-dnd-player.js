@@ -21,8 +21,8 @@
   // состояние модалки
   let openedSheetPlayerId = null;
 
-  // UI-состояние модалки по игрокам (чтобы не сбрасывало вкладки/скролл при обновлениях state)
-  // Map<playerId, { activeTab: string, scrollByTab: Record<string, number> }>
+  // UI-состояние модалки (чтобы обновления state не сбрасывали вкладку/скролл)
+  // Map<playerId, { activeTab: string, scrollTopByTab: Record<string, number>, lastInteractAt: number }>
   const uiStateByPlayerId = new Map();
 
   // debounce save timers
@@ -99,6 +99,51 @@
         closeModal();
       }
     });
+  }
+
+  // ================== UI STATE (tab/scroll/anti-jump) ==================
+  function getUiState(playerId) {
+    if (!playerId) return { activeTab: "basic", scrollTopByTab: {}, lastInteractAt: 0 };
+    if (!uiStateByPlayerId.has(playerId)) {
+      uiStateByPlayerId.set(playerId, { activeTab: "basic", scrollTopByTab: {}, lastInteractAt: 0 });
+    }
+    return uiStateByPlayerId.get(playerId);
+  }
+
+  function captureUiStateFromDom(player) {
+    if (!player?.id) return;
+    const st = getUiState(player.id);
+    const activeTab = player._activeSheetTab || st.activeTab || "basic";
+    st.activeTab = activeTab;
+
+    const main = sheetContent?.querySelector?.("#sheet-main");
+    if (main) {
+      st.scrollTopByTab[activeTab] = main.scrollTop || 0;
+    }
+  }
+
+  function restoreUiStateToDom(player) {
+    if (!player?.id) return;
+    const st = getUiState(player.id);
+    const activeTab = player._activeSheetTab || st.activeTab || "basic";
+    const main = sheetContent?.querySelector?.("#sheet-main");
+    if (main && st.scrollTopByTab && typeof st.scrollTopByTab[activeTab] === "number") {
+      main.scrollTop = st.scrollTopByTab[activeTab];
+    }
+  }
+
+  function markModalInteracted(playerId) {
+    if (!playerId) return;
+    const st = getUiState(playerId);
+    st.lastInteractAt = Date.now();
+  }
+
+  function isModalBusy(playerId) {
+    if (!sheetModal || sheetModal.classList.contains('hidden')) return false;
+    const activeEl = document.activeElement;
+    if (activeEl && sheetModal.contains(activeEl)) return true;
+    const st = getUiState(playerId);
+    return (Date.now() - (st.lastInteractAt || 0)) < 900;
   }
 
   // ================== SHEET PARSER (Charbox/LSS) ==================
@@ -222,7 +267,32 @@
         wis: { isProf: false, bonus: 0 },
         cha: { isProf: false, bonus: 0 }
       },
-      skills: {},
+      // Навыки должны существовать даже до загрузки .json (всё по 0)
+      skills: {
+        // STR
+        athletics: { label: "Атлетика", baseStat: "str", isProf: 0, bonus: 0 },
+        // DEX
+        acrobatics: { label: "Акробатика", baseStat: "dex", isProf: 0, bonus: 0 },
+        "sleight of hand": { label: "Ловкость рук", baseStat: "dex", isProf: 0, bonus: 0 },
+        stealth: { label: "Скрытность", baseStat: "dex", isProf: 0, bonus: 0 },
+        // INT
+        arcana: { label: "Магия", baseStat: "int", isProf: 0, bonus: 0 },
+        history: { label: "История", baseStat: "int", isProf: 0, bonus: 0 },
+        investigation: { label: "Анализ", baseStat: "int", isProf: 0, bonus: 0 },
+        nature: { label: "Природа", baseStat: "int", isProf: 0, bonus: 0 },
+        religion: { label: "Религия", baseStat: "int", isProf: 0, bonus: 0 },
+        // WIS
+        "animal handling": { label: "Уход за животными", baseStat: "wis", isProf: 0, bonus: 0 },
+        insight: { label: "Проницательность", baseStat: "wis", isProf: 0, bonus: 0 },
+        medicine: { label: "Медицина", baseStat: "wis", isProf: 0, bonus: 0 },
+        perception: { label: "Восприятие", baseStat: "wis", isProf: 0, bonus: 0 },
+        survival: { label: "Выживание", baseStat: "wis", isProf: 0, bonus: 0 },
+        // CHA
+        deception: { label: "Обман", baseStat: "cha", isProf: 0, bonus: 0 },
+        intimidation: { label: "Запугивание", baseStat: "cha", isProf: 0, bonus: 0 },
+        performance: { label: "Выступление", baseStat: "cha", isProf: 0, bonus: 0 },
+        persuasion: { label: "Убеждение", baseStat: "cha", isProf: 0, bonus: 0 }
+      },
       bonusesSkills: {},
       bonusesStats: {},
       spellsInfo: {
@@ -783,38 +853,18 @@
   }
 
   // ================== RENDER MODAL ==================
-  function getUiState(playerId) {
-    if (!playerId) return { activeTab: "basic", scrollByTab: {} };
-    if (!uiStateByPlayerId.has(playerId)) {
-      uiStateByPlayerId.set(playerId, { activeTab: "basic", scrollByTab: {} });
-    }
-    return uiStateByPlayerId.get(playerId);
-  }
-
-  function captureCurrentUiState() {
-    if (!openedSheetPlayerId) return;
-    const st = getUiState(openedSheetPlayerId);
-    const activeBtn = sheetContent?.querySelector?.('.sheet-tab.active');
-    if (activeBtn?.dataset?.tab) st.activeTab = activeBtn.dataset.tab;
-    const main = sheetContent?.querySelector?.('#sheet-main');
-    if (main) {
-      const tab = st.activeTab || 'basic';
-      st.scrollByTab[tab] = main.scrollTop || 0;
-    }
-  }
-
-  function restoreScroll(playerId) {
-    const st = getUiState(playerId);
-    const main = sheetContent?.querySelector?.('#sheet-main');
-    if (!main) return;
-    const tab = st.activeTab || 'basic';
-    const top = st.scrollByTab?.[tab];
-    if (typeof top === 'number') main.scrollTop = top;
-  }
-
   function renderSheetModal(player, opts = {}) {
     if (!sheetTitle || !sheetSubtitle || !sheetActions || !sheetContent) return;
     if (!ctx) return;
+
+    const force = !!opts.force;
+    // Если пользователь сейчас редактирует что-то внутри модалки — не перерисовываем, чтобы не прыгал скролл/вкладка.
+    if (!force && player?.id && isModalBusy(player.id)) {
+      return;
+    }
+
+    // сохраняем текущую вкладку/скролл перед любым ререндером
+    captureUiStateFromDom(player);
 
     const myRole = ctx.getMyRole?.();
     const myId = ctx.getMyId?.();
@@ -848,6 +898,11 @@
           player.sheet = sheet;
           ctx.sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
 
+          // Мгновенно обновляем UI (не ждём round-trip через сервер)
+          // и при этом не сбрасываем вкладку/скролл.
+          markModalInteracted(player.id);
+          renderSheetModal(player, { force: true });
+
           const tmp = document.createElement('div');
           tmp.className = 'sheet-note';
           tmp.textContent = "Файл отправлен. Сейчас обновится состояние…";
@@ -873,9 +928,10 @@
       { id: "inventory", label: "Инвентарь" }
     ];
 
-    // Берём активную вкладку из UI-state, а не из объекта player (он пересоздаётся сервером)
-    const st = getUiState(player.id);
-    let activeTab = st.activeTab || "basic";
+    // восстановление вкладки (если была)
+    const st = player?.id ? getUiState(player.id) : null;
+    if (!player._activeSheetTab) player._activeSheetTab = (st?.activeTab || "basic");
+    let activeTab = player._activeSheetTab;
 
     const hero = `
       <div class="sheet-hero">
@@ -919,10 +975,19 @@
       </div>
     `;
 
-    // Восстанавливаем скролл после перерендера, чтобы не было "подбросов"
-    if (opts.preserveScroll) {
-      restoreScroll(player.id);
-    }
+    // восстанавливаем скролл после рендера
+    restoreUiStateToDom(player);
+
+    // отмечаем взаимодействие, чтобы state-обновления не ломали скролл
+    const mainEl = sheetContent.querySelector('#sheet-main');
+    mainEl?.addEventListener('scroll', () => {
+      markModalInteracted(player.id);
+      // и сохраняем текущий скролл в uiState
+      captureUiStateFromDom(player);
+    }, { passive: true });
+
+    sheetContent.addEventListener('pointerdown', () => markModalInteracted(player.id), { passive: true });
+    sheetContent.addEventListener('keydown', () => markModalInteracted(player.id), { passive: true });
 
     bindEditableInputs(sheetContent, player, canEdit);
     bindSkillBoostDots(sheetContent, player, canEdit);
@@ -935,14 +1000,8 @@
         const tabId = btn.dataset.tab;
         if (!tabId) return;
 
-        // сохраняем скролл уходящей вкладки
-        const prevMain = sheetContent.querySelector('#sheet-main');
-        if (prevMain) {
-          st.scrollByTab[activeTab] = prevMain.scrollTop || 0;
-        }
-
         activeTab = tabId;
-        st.activeTab = tabId;
+        player._activeSheetTab = tabId;
 
         tabButtons.forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
@@ -954,13 +1013,11 @@
 
           bindEditableInputs(sheetContent, player, canEdit);
           bindSkillBoostDots(sheetContent, player, canEdit);
-
-          // восстановим скролл для новой вкладки
-          const newTop = st.scrollByTab?.[activeTab];
-          if (typeof newTop === 'number') main.scrollTop = newTop;
         }
       });
     });
+
+    // (скролл/взаимодействия уже повешены выше)
   }
 
   // ================== PUBLIC API ==================
@@ -972,8 +1029,7 @@
   function open(player) {
     if (!player) return;
     openedSheetPlayerId = player.id;
-    // при открытии — восстанавливаем последнюю вкладку/скролл
-    renderSheetModal(player, { preserveScroll: true });
+    renderSheetModal(player);
     openModal();
   }
 
@@ -981,20 +1037,7 @@
     if (!openedSheetPlayerId) return;
     if (!Array.isArray(players)) return;
     const pl = players.find(x => x.id === openedSheetPlayerId);
-    if (!pl) return;
-
-    // Если пользователь сейчас взаимодействует с модалкой (фокус внутри) — НЕ перерисовываем,
-    // чтобы не сбивало вкладку и не подпрыгивал скролл.
-    // Данные уже меняются локально, а серверный echo нам тут не нужен.
-    if (sheetModal && sheetModal.contains(document.activeElement)) {
-      // но UI-состояние (скролл/вкладка) всё равно запомним
-      captureCurrentUiState();
-      return;
-    }
-
-    // иначе — можно обновить, но с сохранением таба/скролла
-    captureCurrentUiState();
-    renderSheetModal(pl, { preserveScroll: true });
+    if (pl) renderSheetModal(pl);
   }
 
   window.InfoModal = { init, open, refresh, close: closeModal };
