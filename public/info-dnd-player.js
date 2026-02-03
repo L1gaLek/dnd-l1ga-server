@@ -55,7 +55,14 @@
       .replaceAll("'", "&#039;");
   }
 
-  function formatMod(n) {
+  
+  function cleanSpellName(name) {
+    return String(name || "")
+      .replace(/\s*[-–—]\s*заклинани[еяё].*$/i, "")
+      .trim();
+  }
+
+function formatMod(n) {
     const x = Number(n);
     if (!Number.isFinite(x)) return String(n);
     return x >= 0 ? `+${x}` : `${x}`;
@@ -1047,36 +1054,48 @@ function bindSlotEditors(root, player, canEdit) {
   const sheet = player.sheet.parsed;
   if (!sheet.spells || typeof sheet.spells !== "object") sheet.spells = {};
 
-  const inputs = root.querySelectorAll(".slot-current-input[data-slot-level]");
-  inputs.forEach(inp => {
+  function getSlot(lvl) {
+    const key = `slots-${lvl}`;
+    if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") sheet.spells[key] = { value: 0, filled: 0 };
+    // normalize possible {value:{value:..}} etc
+    sheet.spells[key].value = Math.max(0, Math.min(12, safeNum(sheet.spells[key].value, 0)));
+    sheet.spells[key].filled = Math.max(0, Math.min(sheet.spells[key].value, safeNum(sheet.spells[key].filled, 0)));
+    return sheet.spells[key];
+  }
+
+  function renderDots(lvl) {
+    const slot = getSlot(lvl);
+    const total = slot.value;
+    const used = slot.filled;
+    const remaining = Math.max(0, total - used);
+
+    const wrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
+    if (!wrap) return;
+
+    const dots = Array.from({ length: total }).map((_, idx) => {
+      const on = idx < remaining;
+      return `<button type="button" class="slot-dot ${on ? "slot-dot-on" : "slot-dot-off"}" data-slot-level="${lvl}" data-slot-index="${idx}" aria-label="slot"></button>`;
+    }).join("");
+
+    wrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
+
+    const inp = root.querySelector(`.slot-current-input[data-slot-level="${lvl}"]`);
+    if (inp) inp.value = String(remaining);
+  }
+
+  // Remaining input: set total=remaining and used=0 (all blue)
+  root.querySelectorAll(".slot-current-input[data-slot-level]").forEach(inp => {
     const lvl = safeInt(inp.getAttribute("data-slot-level"), 0);
     if (!lvl) return;
 
     if (!canEdit) { inp.disabled = true; return; }
 
     const handler = () => {
-      // desired = сколько ячеек ДОЛЖНО быть доступно (0..12)
-      // По ТЗ: если игрок правит число — считаем, что он "обновил" ячейки, и все кружки снова голубые.
       const desired = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
-
-      const key = `slots-${lvl}`;
-      if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
-        sheet.spells[key] = { value: 0, filled: 0 };
-      }
-
-      sheet.spells[key].value = desired; // total
-      sheet.spells[key].filled = 0;      // used
-
-      // update dots (total=desired, remaining=desired)
-      const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
-      if (dotsWrap) {
-        const dots = Array.from({ length: desired }).map((_, idx) =>
-          `<span class="slot-dot on" data-slot-level="${lvl}" data-slot-idx="${idx}"></span>`
-        ).join("");
-        dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
-      }
-
-      inp.value = String(desired);
+      const slot = getSlot(lvl);
+      slot.value = desired;
+      slot.filled = 0;
+      renderDots(lvl);
       scheduleSheetSave(player);
     };
 
@@ -1084,48 +1103,27 @@ function bindSlotEditors(root, player, canEdit) {
     inp.addEventListener("change", handler);
   });
 
-  // dot click (toggle use/restore)
-  const dotWraps = root.querySelectorAll('.slot-dots[data-slot-dots]');
-  dotWraps.forEach(wrap => {
-    if (wrap.dataset.boundClicks === '1') return;
-    wrap.dataset.boundClicks = '1';
-    wrap.addEventListener('click', (e) => {
-      const dot = e.target?.closest?.('.slot-dot');
-      if (!dot) return;
-      if (!canEdit) return;
-      const lvl = safeInt(dot.getAttribute('data-slot-level') || wrap.getAttribute('data-slot-dots'), 0);
-      if (!lvl) return;
+  // Click dots: toggle spend/refund
+  root.querySelectorAll(".slot-dot[data-slot-level][data-slot-index]").forEach(dot => {
+    const lvl = safeInt(dot.getAttribute("data-slot-level"), 0);
+    if (!lvl) return;
 
-      const key = `slots-${lvl}`;
-      if (!sheet.spells[key] || typeof sheet.spells[key] !== 'object') sheet.spells[key] = { value: 0, filled: 0 };
-      const total = Math.max(0, Math.min(12, safeNum(sheet.spells[key].value, 0)));
-      let used = Math.max(0, Math.min(12, safeNum(sheet.spells[key].filled, 0)));
-      let remaining = Math.max(0, total - used);
+    if (!canEdit) { dot.disabled = true; return; }
 
-      // if clicked on an "on" dot => spend 1 (remaining--)
-      // if clicked on an "off" dot => restore 1 (remaining++)
-      if (dot.classList.contains('on')) {
-        if (remaining <= 0) return;
-        used = Math.min(total, used + 1);
+    dot.addEventListener("click", () => {
+      const slot = getSlot(lvl);
+      const total = slot.value;
+      const used = slot.filled;
+      const remaining = Math.max(0, total - used);
+      const idx = safeInt(dot.getAttribute("data-slot-index"), 0);
+
+      if (idx < remaining) {
+        slot.filled = Math.min(total, used + 1); // spend
       } else {
-        if (remaining >= total) return;
-        used = Math.max(0, used - 1);
+        slot.filled = Math.max(0, used - 1); // refund
       }
 
-      sheet.spells[key].value = total;
-      sheet.spells[key].filled = used;
-
-      // refresh dots + remaining input
-      remaining = Math.max(0, total - used);
-      const dots = wrap.querySelectorAll('.slot-dot');
-      dots.forEach((d, idx) => {
-        if (idx < remaining) d.classList.add('on');
-        else d.classList.remove('on');
-      });
-
-      const inp = root.querySelector(`.slot-current-input[data-slot-level="${lvl}"]`);
-      if (inp) inp.value = String(remaining);
-
+      renderDots(lvl);
       scheduleSheetSave(player);
     });
   });
@@ -1145,6 +1143,7 @@ function bindCustomSpellsEditors(root, player, canEdit) {
     if (!Array.isArray(sheet.customSpells.levels[l])) sheet.customSpells.levels[l] = [];
   }
 
+  
   // Add buttons
   root.querySelectorAll('[data-spell-add-level]').forEach(btn => {
     if (!canEdit) { btn.disabled = true; return; }
@@ -1154,25 +1153,38 @@ function bindCustomSpellsEditors(root, player, canEdit) {
     btn.addEventListener('click', async () => {
       const lvl = safeInt(btn.getAttribute('data-spell-add-level'), 0);
       if (lvl < 0 || lvl > 9) return;
-      const url = prompt('Вставь ссылку на заклинание (dnd.su):', 'https://dnd.su/spells/');
-      if (!url) return;
 
-      let name = url;
-      let description = '';
-      try {
-        const r = await fetch(`/api/spellmeta?url=${encodeURIComponent(url)}`);
-        if (r.ok) {
-          const j = await r.json();
-          name = (j?.name || url);
-          description = (j?.description || '');
+      const mode = prompt('Как добавить?\n1 — по ссылке\n2 — вручную\n\nВведи 1 или 2:', '1');
+      if (!mode) return;
+
+      if (String(mode).trim() === '2') {
+        const name = prompt('Название заклинания:', '');
+        if (!name) return;
+        const description = prompt('Описание (можно пусто, потом отредактируешь):', '') || '';
+        sheet.customSpells.levels[lvl].push({ url: '', name: cleanSpellName(name), description, expanded: true });
+        scheduleSheetSave(player);
+      } else {
+        const url = prompt('Вставь ссылку на заклинание (dnd.su):', 'https://dnd.su/spells/');
+        if (!url) return;
+
+        let name = url;
+        let description = '';
+        try {
+          const r = await fetch(`/api/spellmeta?url=${encodeURIComponent(url)}`);
+          if (r.ok) {
+            const j = await r.json();
+            name = cleanSpellName(j?.name || url);
+            description = (j?.description || '');
+          }
+        } catch (e) {
+          console.warn('spellmeta fetch failed', e);
         }
-      } catch (e) {
-        console.warn('spellmeta fetch failed', e);
+
+        sheet.customSpells.levels[lvl].push({ url, name: cleanSpellName(name), description, expanded: false });
+        scheduleSheetSave(player);
       }
 
-      sheet.customSpells.levels[lvl].push({ url, name, description, expanded: false });
-      scheduleSheetSave(player);
-
+      // re-render spells tab only
       const main = root.querySelector('#sheet-main');
       if (!main) return;
       const freshVm = toViewModel(sheet, player.name);
@@ -1187,6 +1199,7 @@ function bindCustomSpellsEditors(root, player, canEdit) {
   });
 
   // Toggle description
+
   root.querySelectorAll('[data-spell-desc-toggle]').forEach(btn => {
     if (!canEdit) { /* view-only still can toggle */ }
     if (btn.dataset.boundClick === '1') return;
@@ -1204,6 +1217,29 @@ function bindCustomSpellsEditors(root, player, canEdit) {
 
       const box = root.querySelector(`[data-spell-desc="${lvl}:${idx}"]`);
       if (box) box.classList.toggle('open');
+    });
+  });
+
+
+  // Edit description
+  root.querySelectorAll('[data-spell-desc-edit]').forEach(area => {
+    const key = area.getAttribute('data-spell-desc-edit') || '';
+    const [lvlS, idxS] = key.split(':');
+    const lvl = safeInt(lvlS, -1);
+    const idx = safeInt(idxS, -1);
+    if (lvl < 0 || lvl > 9) return;
+    if (!sheet.customSpells.levels[lvl]?.[idx]) return;
+
+    if (!canEdit) { area.disabled = true; return; }
+
+    let t = null;
+    area.addEventListener('input', () => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => {
+        if (!sheet.customSpells.levels[lvl]?.[idx]) return;
+        sheet.customSpells.levels[lvl][idx].description = area.value;
+        scheduleSheetSave(player);
+      }, 250);
     });
   });
 
@@ -1440,7 +1476,8 @@ function bindCustomSpellsEditors(root, player, canEdit) {
     `;
   }
 
-  function renderSpellsByLevel(vm) {
+  
+function renderSpellsByLevel(vm) {
     const levels = Array.isArray(vm?.spellsLevels) ? vm.spellsLevels : [];
     const byLevel = new Map(levels.map(x => [x.level, x]));
 
@@ -1451,42 +1488,47 @@ function bindCustomSpellsEditors(root, player, canEdit) {
       const addLabel = (lvl === 0) ? "Добавить заговор" : "Добавить заклинание";
 
       const itemsHtml = (b.items || []).map((it, idx) => {
-        const link = (it.url && /^https?:\/\//i.test(it.url))
-          ? `<a class="spell-url" href="${escapeHtml(it.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.name || it.url)}</a>`
-          : `<span class="spell-url">${escapeHtml(it.name || "(без ссылки)")}</span>`;
+        const name = cleanSpellName(it.name || it.url || "Заклинание");
+        const url = (it.url && /^https?:\/\//i.test(it.url)) ? it.url : "";
+        const desc = it.description || "";
+
+        const link = url
+          ? `<a class="spell-url" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a>`
+          : `<span class="spell-url no-link">${escapeHtml(name)}</span>`;
 
         return `
           <div class="spell-item" data-spell-lvl="${lvl}" data-spell-idx="${idx}">
             <div class="spell-item-top">
-              <input class="spell-name-input" type="text" value="${escapeHtml(it.name || "")}" placeholder="Название" data-spell-name-lvl="${lvl}" data-spell-name-idx="${idx}">
               ${link}
               <div class="spell-item-actions">
-                <button class="note-btn" data-spell-desc-toggle="${lvl}:${idx}">Описание</button>
-                <button class="note-btn danger" data-spell-del="${lvl}:${idx}">Удалить</button>
+                <button class="note-btn" type="button" data-spell-desc-toggle="${lvl}:${idx}">Описание</button>
+                <button class="note-btn danger" type="button" data-spell-del="${lvl}:${idx}">Удалить</button>
               </div>
             </div>
             <div class="spell-desc ${it.expanded ? "open" : ""}" data-spell-desc="${lvl}:${idx}">
-              <pre>${escapeHtml(it.description || "")}</pre>
+              <textarea class="spell-desc-edit" rows="7" data-spell-desc-edit="${lvl}:${idx}" placeholder="Описание заклинания...">${escapeHtml(desc)}</textarea>
             </div>
           </div>
         `;
       }).join("");
 
       blocks.push(`
-        <div class="sheet-card fullwidth">
+        <div class="sheet-card">
           <div class="spells-level-header">
             <h4>${escapeHtml(title)}</h4>
-            <button class="note-add-btn" data-spell-add-level="${lvl}">${escapeHtml(addLabel)}</button>
+            <button class="note-add-btn" type="button" data-spell-add-level="${lvl}">${escapeHtml(addLabel)}</button>
           </div>
           <div class="spells-level-body">
-            ${itemsHtml || `<div class="sheet-note">Пусто. Нажми «${escapeHtml(addLabel)}» и вставь ссылку на dnd.su.</div>`}
+            ${itemsHtml || `<div class="sheet-note">Пусто. Нажми «${escapeHtml(addLabel)}».</div>`}
           </div>
         </div>
       `);
     }
 
-    return `<div class="sheet-section">${blocks.join("")}</div>`;
+    // 2 столбца
+    return `<div class="sheet-grid-2">${blocks.join("")}</div>`;
   }
+
 
   function renderSpellsTab(vm) {
     const save = vm.spellsInfo?.save || "-";
