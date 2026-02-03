@@ -1034,9 +1034,10 @@ button:hover {
   border:1px solid #333;
   border-radius:10px;
   padding:4px 6px;
-  margin-bottom:5px;
+  margin-bottom:6px;
 }
 .lss-passive-row:last-child{ margin-bottom:0; }
+
 .lss-passive-val{
   font-weight:900;
   font-size:12px;
@@ -1050,6 +1051,7 @@ button:hover {
   text-align:center;
   flex:0 0 auto;
 }
+
 .lss-passive-label{
   color:#eef2ff;
   font-size:12px;
@@ -1058,8 +1060,21 @@ button:hover {
   overflow:hidden;
   text-overflow:ellipsis;
   flex:1 1 auto;
-  text-align:left;
+  margin-left:8px;
 }
+
+
+.lss-prof-textarea{
+  width:100%;
+  background:#1a1a1a;
+  color:#eef2ff;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:8px;
+  font-size:12px;
+  line-height:14px;
+}
+.lss-prof-textarea:disabled{ opacity:0.6; }
 .lss-prof-scroll{
   max-height:160px;
   overflow:auto;
@@ -1120,19 +1135,4 @@ button:hover {
 .sheet-main{
   overflow:auto;
   min-height:0;
-}
-
-
-/* Editable box for other proficiencies / spells */
-.lss-prof-textarea{
-  width:100%;
-  min-height:140px;
-  resize:vertical;
-  background:#0f0f0f;
-  border:1px solid #333;
-  border-radius:10px;
-  padding:8px 10px;
-  color:#ddd;
-  font-size:13px;
-  line-height:16px;
 }
