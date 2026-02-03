@@ -55,30 +55,39 @@ app.get('/api/spellmeta', async (req, res) => {
     }
     const html = await r.text();
 
-    // Name: try <h1>...</h1>
-    let name = '';
-    const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-    if (h1) name = stripHtml(h1[1]);
-    if (!name) {
-      const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      if (title) name = stripHtml(title[1]).replace(/\s*\|\s*DND\.SU.*$/i, '').trim();
-    }
+    
+// Name: <h2 class="card-title" itemprop="name">...</h2>
+let name = '';
+const h2 = html.match(/<h2[^>]*class="card-title"[^>]*itemprop="name"[^>]*>([\s\S]*?)<\/h2>/i);
+if (h2) name = stripHtml(h2[1]);
+if (!name) {
+  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (h1) name = stripHtml(h1[1]);
+}
+if (!name) {
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (title) name = stripHtml(title[1]).replace(/\s*\|\s*DND\.SU.*$/i, '').trim();
+}
 
-    // Description: content up to "Комментарии"
-    // dnd.su pages contain a main content block; we do a best-effort slice.
-    let body = html;
-    const mainStart = html.search(/<div[^>]+class="[^"]*content[^"]*"/i);
-    if (mainStart >= 0) body = html.slice(mainStart);
-    const cut = body.search(/Комментарии/i);
-    if (cut > 0) body = body.slice(0, cut);
+// remove "- заклинание" / "— заклинание" suffix if present
+name = String(name).replace(/\s*[-–—]\s*заклинани[еяё].*$/i, '').trim();
 
-    // remove scripts/styles
-    body = body.replace(/<script[\s\S]*?<\/script>/gi, '')
-               .replace(/<style[\s\S]*?<\/style>/gi, '');
+// Description slice: from <ul class="params card__article-body"> to <section class="comments-block block block_100">
+let body = html;
 
-    const description = stripHtml(body);
+const startIdx = body.search(/<ul[^>]*class="params\s+card__article-body"[^>]*>/i);
+if (startIdx >= 0) body = body.slice(startIdx);
 
-    res.json({ name: name || 'Заклинание', description });
+const endIdx = body.search(/<section[^>]*class="comments-block\s+block\s+block_100"[^>]*>/i);
+if (endIdx > 0) body = body.slice(0, endIdx);
+
+// remove scripts/styles
+body = body.replace(/<script[\s\S]*?<\/script>/gi, '')
+           .replace(/<style[\s\S]*?<\/style>/gi, '');
+
+const description = stripHtml(body);
+
+res.json({ name: name || 'Заклинание', description });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Internal error' });
