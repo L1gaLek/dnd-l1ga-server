@@ -1289,3 +1289,114 @@ button:hover {
 textarea[data-sheet-path="text.profPlain.value"]{
   border: 1px solid #666 !important;
 }
+
+
+/* ===== Notes full width ===== */
+.sheet-card.notes-fullwidth { width: 100%; }
+
+/* ===== Spells: metrics & slots ===== */
+.sheet-card.fullwidth { width: 100%; }
+
+.spells-metrics-card { padding: 10px 12px; }
+.spell-metrics {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.spell-metric {
+  flex: 1 1 220px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+.spell-metric-label {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.spell-metric-val {
+  font-size: 18px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 10px;
+  min-width: 44px;
+  text-align: center;
+  line-height: 1;
+}
+
+/* Slots grid (1..9) in 3 rows */
+.slots-frame {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 14px;
+  padding: 10px;
+}
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.slot-cell {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+.slot-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.slot-level {
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.slot-nums {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.slot-current-input {
+  width: 56px;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.slot-dots {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 14px;
+}
+.slot-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.10);
+}
+.slot-dots-empty {
+  opacity: 0.5;
+  font-size: 12px;
+}
+@media (max-width: 820px) {
+  .slots-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .slots-grid { grid-template-columns: 1fr; }
+}
