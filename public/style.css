@@ -545,11 +545,18 @@ button:hover {
 .modal-body {
   padding: 0;              /* чтобы sidebar был встык */
   overflow: hidden;        /* скролл будет внутри контента */
+
+  /* FIX: чтобы правая часть модалки скроллилась ДО КОНЦА */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .sheet-layout {
   display: flex;
-  height: min(76vh, 720px);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
 }
 
 /* левое меню */
