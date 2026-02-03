@@ -66,7 +66,26 @@
     return Number.isFinite(n) ? n : fallback;
   }
 
-  // ================== MODAL HELPERS ==================
+  
+
+  // D&D 5e: модификатор = floor((score - 10) / 2), ограничиваем 1..30
+  function scoreToModifier(score) {
+    const s = Math.max(1, Math.min(30, safeInt(score, 10)));
+    const m = Math.floor((s - 10) / 2);
+    // для надёжности ограничим диапазон -5..+10
+    return Math.max(-5, Math.min(10, m));
+  }
+
+  // принимает "+3", "-1", "3", "" -> number
+  function parseModInput(str, fallback = 0) {
+    if (str == null) return fallback;
+    const t = String(str).trim();
+    if (!t) return fallback;
+    const n = Number(t.replace(",", "."));
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+// ================== MODAL HELPERS ==================
   function openModal() {
     if (!sheetModal) return;
     sheetModal.classList.remove('hidden');
@@ -396,6 +415,7 @@
     let bonus = statMod;
     if (check === 1) bonus += prof;
     if (check === 2) bonus += prof * 2;
+    bonus += safeInt(sheet?.stats?.[statKey]?.checkBonus, 0);
     return bonus;
   }
 
@@ -562,7 +582,11 @@
       const row = dot.closest('.lss-skill-row');
       if (!row) return;
       const valEl = row.querySelector('.lss-skill-val');
-      if (valEl) valEl.textContent = formatMod(calcSkillBonus(sheet, key));
+      if (valEl) {
+        const v = formatMod(calcSkillBonus(sheet, key));
+        if (valEl.tagName === "INPUT" || valEl.tagName === "TEXTAREA") valEl.value = v;
+        else valEl.textContent = v;
+      }
     });
 
     // passives (10 + skill bonus)
@@ -656,7 +680,11 @@ function bindEditableInputs(root, player, canEdit) {
         const row = dot.closest(".lss-skill-row");
         if (row) {
           const valEl = row.querySelector(".lss-skill-val");
-          if (valEl) valEl.textContent = formatMod(calcSkillBonus(sheet, skillKey));
+          if (valEl) {
+            const v = formatMod(calcSkillBonus(sheet, skillKey));
+            if (valEl.tagName === "INPUT" || valEl.tagName === "TEXTAREA") valEl.value = v;
+            else valEl.textContent = v;
+          }
 
           const nameEl = row.querySelector(".lss-skill-name");
           if (nameEl) {
@@ -677,6 +705,133 @@ function bindEditableInputs(root, player, canEdit) {
     });
   }
 
+  // ===== editable abilities / checks / saves / skill values =====
+  function bindAbilityAndSkillEditors(root, player, canEdit) {
+    if (!root || !player?.sheet?.parsed) return;
+    const sheet = player.sheet.parsed;
+
+    // ---- ability score edits (score -> modifier -> recompute) ----
+    const scoreInputs = root.querySelectorAll('.lss-ability-score-input[data-stat-key]');
+    scoreInputs.forEach(inp => {
+      const statKey = inp.getAttribute('data-stat-key');
+      if (!statKey) return;
+
+      if (!canEdit) { inp.disabled = true; return; }
+
+      const handler = () => {
+        const score = safeInt(inp.value, 10);
+        if (!sheet.stats) sheet.stats = {};
+        if (!sheet.stats[statKey]) sheet.stats[statKey] = {};
+        sheet.stats[statKey].score = score;
+        sheet.stats[statKey].modifier = scoreToModifier(score);
+
+        // обновляем связанные значения на экране
+        updateDerivedForStat(root, sheet, statKey);
+        updateSkillsAndPassives(root, sheet);
+
+        scheduleSheetSave(player);
+      };
+
+      inp.addEventListener('input', handler);
+      inp.addEventListener('change', handler);
+    });
+
+    // ---- check/save edits (меняем bonus-часть, чтобы итог стал нужным) ----
+    const pillInputs = root.querySelectorAll('.lss-pill-val-input[data-stat-key][data-kind]');
+    pillInputs.forEach(inp => {
+      const statKey = inp.getAttribute('data-stat-key');
+      const kind = inp.getAttribute('data-kind');
+      if (!statKey || !kind) return;
+
+      if (!canEdit) { inp.disabled = true; return; }
+
+      const handler = () => {
+        const desired = parseModInput(inp.value, 0);
+        const prof = getProfBonus(sheet);
+        const statMod = safeInt(sheet?.stats?.[statKey]?.modifier, 0);
+
+        if (kind === "save") {
+          if (!sheet.saves) sheet.saves = {};
+          if (!sheet.saves[statKey]) sheet.saves[statKey] = {};
+          const isProf = !!sheet.saves[statKey].isProf;
+          const base = statMod + (isProf ? prof : 0);
+          sheet.saves[statKey].bonus = desired - base;
+        }
+
+        if (kind === "check") {
+          if (!sheet.stats) sheet.stats = {};
+          if (!sheet.stats[statKey]) sheet.stats[statKey] = {};
+          const check = safeInt(sheet.stats[statKey].check, 0); // 0/1/2
+          let base = statMod;
+          if (check === 1) base += prof;
+          if (check === 2) base += prof * 2;
+          sheet.stats[statKey].checkBonus = desired - base;
+        }
+
+        // сразу обновим вывод (на случай странного ввода)
+        updateDerivedForStat(root, sheet, statKey);
+        updateSkillsAndPassives(root, sheet);
+
+        scheduleSheetSave(player);
+      };
+
+      inp.addEventListener('input', handler);
+      inp.addEventListener('change', handler);
+    });
+
+    // ---- skill bonus edits (меняем skill.bonus так, чтобы итог стал нужным) ----
+    const skillInputs = root.querySelectorAll('.lss-skill-val-input[data-skill-key]');
+    skillInputs.forEach(inp => {
+      const skillKey = inp.getAttribute('data-skill-key');
+      if (!skillKey) return;
+
+      if (!canEdit) { inp.disabled = true; return; }
+
+      const handler = () => {
+        const desired = parseModInput(inp.value, 0);
+        if (!sheet.skills) sheet.skills = {};
+        if (!sheet.skills[skillKey]) sheet.skills[skillKey] = {};
+
+        const baseStat = sheet.skills[skillKey].baseStat;
+        const statMod = safeInt(sheet?.stats?.[baseStat]?.modifier, 0);
+        const prof = getProfBonus(sheet);
+        const boostLevel = getSkillBoostLevel(sheet, skillKey);
+        const boostAdd = boostLevelToAdd(boostLevel, prof);
+
+        // extra бонус внутри навыка
+        sheet.skills[skillKey].bonus = desired - statMod - boostAdd;
+
+        // обновляем навык и пассивки
+        updateSkillsAndPassives(root, sheet);
+
+        scheduleSheetSave(player);
+      };
+
+      inp.addEventListener('input', handler);
+      inp.addEventListener('change', handler);
+    });
+  }
+
+  function updateDerivedForStat(root, sheet, statKey) {
+    if (!root || !sheet || !statKey) return;
+
+    // check/save inputs inside this stat block
+    const checkEl = root.querySelector(`.lss-pill-val-input[data-stat-key="${statKey}"][data-kind="check"]`);
+    if (checkEl) checkEl.value = formatMod(calcCheckBonus(sheet, statKey));
+
+    const saveEl = root.querySelector(`.lss-pill-val-input[data-stat-key="${statKey}"][data-kind="save"]`);
+    if (saveEl) saveEl.value = formatMod(calcSaveBonus(sheet, statKey));
+
+    // skills under this stat: just refresh all skills UI
+    const scoreEl = root.querySelector(`.lss-ability-score-input[data-stat-key="${statKey}"]`);
+    if (scoreEl && sheet?.stats?.[statKey]?.score != null) {
+      scoreEl.value = String(sheet.stats[statKey].score);
+    }
+  }
+
+
+
+  // ================== RENDER
   // ================== RENDER ==================
   function renderAbilitiesGrid(vm) {
     const blocks = vm.stats.map(s => {
@@ -691,7 +846,7 @@ function bindEditableInputs(root, player, canEdit) {
                 <span class="lss-boost">${sk.boostStars ? ` ${escapeHtml(sk.boostStars)}` : ""}</span>
               </span>
             </div>
-            <div class="lss-skill-val">${escapeHtml(formatMod(sk.bonus))}</div>
+            <input class="lss-skill-val lss-skill-val-input" type="text" value="${escapeHtml(formatMod(sk.bonus))}" data-skill-key="${escapeHtml(sk.key)}">
           </div>
         `;
       }).join("");
@@ -700,17 +855,17 @@ function bindEditableInputs(root, player, canEdit) {
         <div class="lss-ability">
           <div class="lss-ability-head">
             <div class="lss-ability-name">${escapeHtml(s.label.toUpperCase())}</div>
-            <div class="lss-ability-score">${escapeHtml(String(s.score))}</div>
+            <input class="lss-ability-score lss-ability-score-input" type="number" min="1" max="30" value="${escapeHtml(String(s.score))}" data-stat-key="${escapeHtml(s.k)}">
           </div>
 
           <div class="lss-ability-actions">
             <div class="lss-pill">
               <span class="lss-pill-label">ПРОВЕРКА</span>
-              <span class="lss-pill-val">${escapeHtml(formatMod(s.check))}</span>
+              <input class="lss-pill-val lss-pill-val-input" type="text" value="${escapeHtml(formatMod(s.check))}" data-stat-key="${escapeHtml(s.k)}" data-kind="check">
             </div>
             <div class="lss-pill">
               <span class="lss-pill-label">СПАСБРОСОК</span>
-              <span class="lss-pill-val">${escapeHtml(formatMod(s.save))}</span>
+              <input class="lss-pill-val lss-pill-val-input" type="text" value="${escapeHtml(formatMod(s.save))}" data-stat-key="${escapeHtml(s.k)}" data-kind="save">
             </div>
           </div>
 
@@ -1066,6 +1221,7 @@ function bindEditableInputs(root, player, canEdit) {
 
     bindEditableInputs(sheetContent, player, canEdit);
     bindSkillBoostDots(sheetContent, player, canEdit);
+    bindAbilityAndSkillEditors(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -1088,6 +1244,7 @@ function bindEditableInputs(root, player, canEdit) {
 
           bindEditableInputs(sheetContent, player, canEdit);
           bindSkillBoostDots(sheetContent, player, canEdit);
+    bindAbilityAndSkillEditors(sheetContent, player, canEdit);
         }
       });
     });
