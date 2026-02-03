@@ -66,7 +66,26 @@
     return Number.isFinite(n) ? n : fallback;
   }
 
-  // ================== MODAL HELPERS ==================
+  
+
+  // D&D 5e: модификатор = floor((score - 10) / 2), ограничиваем 1..30
+  function scoreToModifier(score) {
+    const s = Math.max(1, Math.min(30, safeInt(score, 10)));
+    const m = Math.floor((s - 10) / 2);
+    // для надёжности ограничим диапазон -5..+10
+    return Math.max(-5, Math.min(10, m));
+  }
+
+  // принимает "+3", "-1", "3", "" -> number
+  function parseModInput(str, fallback = 0) {
+    if (str == null) return fallback;
+    const t = String(str).trim();
+    if (!t) return fallback;
+    const n = Number(t.replace(",", "."));
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+// ================== MODAL HELPERS ==================
   function openModal() {
     if (!sheetModal) return;
     sheetModal.classList.remove('hidden');
@@ -301,15 +320,13 @@
         mod: { customModifier: "" }
       },
       spells: {},
-      text: {},
-
       personality: {
-        backstory: { value: "" }, // предыстория персонажа
-        allies: { value: "" }, // союзники и организации
-        traits: { value: "" }, // черты характера
-        ideals: { value: "" }, // идеалы
-        bonds: { value: "" }, // привязанности
-        flaws: { value: "" } // слабости
+        backstory: { value: "" },
+        allies: { value: "" },
+        traits: { value: "" },
+        ideals: { value: "" },
+        bonds: { value: "" },
+        flaws: { value: "" }
       },
       notes: {
         details: {
@@ -322,6 +339,7 @@
         },
         entries: []
       },
+      text: {},
       weaponsList: [],
       coins: { cp: { value: 0 }, sp: { value: 0 }, ep: { value: 0 }, gp: { value: 0 }, pp: { value: 0 } }
     };
@@ -335,34 +353,6 @@
     if (!player.sheet.parsed || typeof player.sheet.parsed !== "object") {
       player.sheet.parsed = createEmptySheet(player.name);
     }
-    ensureExtraSections(player.sheet.parsed);
-  }
-
-
-  function ensureExtraSections(sheet) {
-    if (!sheet || typeof sheet !== "object") return;
-
-    if (!sheet.personality || typeof sheet.personality !== "object") sheet.personality = {};
-    const p = sheet.personality;
-    if (!p.backstory) p.backstory = { value: "" };
-    if (!p.allies) p.allies = { value: "" };
-    if (!p.traits) p.traits = { value: "" };
-    if (!p.ideals) p.ideals = { value: "" };
-    if (!p.bonds) p.bonds = { value: "" };
-    if (!p.flaws) p.flaws = { value: "" };
-
-    if (!sheet.notes || typeof sheet.notes !== "object") sheet.notes = {};
-    const n = sheet.notes;
-    if (!n.details || typeof n.details !== "object") n.details = {};
-    const d = n.details;
-    if (!d.height) d.height = { value: "" };
-    if (!d.weight) d.weight = { value: "" };
-    if (!d.age) d.age = { value: "" };
-    if (!d.eyes) d.eyes = { value: "" };
-    if (!d.skin) d.skin = { value: "" };
-    if (!d.hair) d.hair = { value: "" };
-
-    if (!Array.isArray(n.entries)) n.entries = [];
   }
 
   // ================== CALC MODIFIERS ==================
@@ -444,6 +434,7 @@
     let bonus = statMod;
     if (check === 1) bonus += prof;
     if (check === 2) bonus += prof * 2;
+    bonus += safeInt(sheet?.stats?.[statKey]?.checkBonus, 0);
     return bonus;
   }
 
@@ -513,6 +504,27 @@
       ? profPlain
       : (profLines && profLines.length ? profLines.join("\n") : "");
 
+    // personality (редактируемые поля)
+    const personality = {
+      backstory: get(sheet, "personality.backstory.value", get(sheet, "info.background.value", "")),
+      allies: get(sheet, "personality.allies.value", ""),
+      traits: get(sheet, "personality.traits.value", ""),
+      ideals: get(sheet, "personality.ideals.value", ""),
+      bonds: get(sheet, "personality.bonds.value", ""),
+      flaws: get(sheet, "personality.flaws.value", "")
+    };
+
+    // notes (детали + список заметок)
+    const notesDetails = {
+      height: get(sheet, "notes.details.height.value", ""),
+      weight: get(sheet, "notes.details.weight.value", ""),
+      age: get(sheet, "notes.details.age.value", ""),
+      eyes: get(sheet, "notes.details.eyes.value", ""),
+      skin: get(sheet, "notes.details.skin.value", ""),
+      hair: get(sheet, "notes.details.hair.value", "")
+    };
+    const notesEntries = Array.isArray(sheet?.notes?.entries) ? sheet.notes.entries : [];
+
     // spells info + slots + lists
     const spellsInfo = {
       base: sheet?.spellsInfo?.base?.code || sheet?.spellsInfo?.base?.value || "",
@@ -544,33 +556,8 @@
 
     const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
     const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
-    // personality + notes (editable sections)
-    const personality = {
-      backstory: get(sheet, "personality.backstory.value", "") || get(sheet, "info.background.value", ""),
-      allies: get(sheet, "personality.allies.value", ""),
-      traits: get(sheet, "personality.traits.value", ""),
-      ideals: get(sheet, "personality.ideals.value", ""),
-      bonds: get(sheet, "personality.bonds.value", ""),
-      flaws: get(sheet, "personality.flaws.value", "")
-    };
 
-    const notesDetails = {
-      height: get(sheet, "notes.details.height.value", ""),
-      weight: get(sheet, "notes.details.weight.value", ""),
-      age: get(sheet, "notes.details.age.value", ""),
-      eyes: get(sheet, "notes.details.eyes.value", ""),
-      skin: get(sheet, "notes.details.skin.value", ""),
-      hair: get(sheet, "notes.details.hair.value", "")
-    };
-
-    const notesEntries = Array.isArray(sheet?.notes?.entries) ? sheet.notes.entries.map(e => ({
-      title: v(e?.title, ""),
-      text: v(e?.text, ""),
-      collapsed: !!e?.collapsed
-    })) : [];
-
-
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, spellsInfo, slots, spellsByLevel, weapons: weaponsVm, coins, personality, notesDetails, notesEntries };
+    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, weapons: weaponsVm, coins };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -635,7 +622,11 @@
       const row = dot.closest('.lss-skill-row');
       if (!row) return;
       const valEl = row.querySelector('.lss-skill-val');
-      if (valEl) valEl.textContent = formatMod(calcSkillBonus(sheet, key));
+      if (valEl) {
+        const v = formatMod(calcSkillBonus(sheet, key));
+        if (valEl.tagName === "INPUT" || valEl.tagName === "TEXTAREA") valEl.value = v;
+        else valEl.textContent = v;
+      }
     });
 
     // passives (10 + skill bonus)
@@ -729,7 +720,11 @@ function bindEditableInputs(root, player, canEdit) {
         const row = dot.closest(".lss-skill-row");
         if (row) {
           const valEl = row.querySelector(".lss-skill-val");
-          if (valEl) valEl.textContent = formatMod(calcSkillBonus(sheet, skillKey));
+          if (valEl) {
+            const v = formatMod(calcSkillBonus(sheet, skillKey));
+            if (valEl.tagName === "INPUT" || valEl.tagName === "TEXTAREA") valEl.value = v;
+            else valEl.textContent = v;
+          }
 
           const nameEl = row.querySelector(".lss-skill-name");
           if (nameEl) {
@@ -750,6 +745,247 @@ function bindEditableInputs(root, player, canEdit) {
     });
   }
 
+  // ===== editable abilities / checks / saves / skill values =====
+  function bindAbilityAndSkillEditors(root, player, canEdit) {
+    if (!root || !player?.sheet?.parsed) return;
+    const sheet = player.sheet.parsed;
+
+    // ---- ability score edits (score -> modifier -> recompute) ----
+    const scoreInputs = root.querySelectorAll('.lss-ability-score-input[data-stat-key]');
+    scoreInputs.forEach(inp => {
+      const statKey = inp.getAttribute('data-stat-key');
+      if (!statKey) return;
+
+      if (!canEdit) { inp.disabled = true; return; }
+
+      const handler = () => {
+        const score = safeInt(inp.value, 10);
+        if (!sheet.stats) sheet.stats = {};
+        if (!sheet.stats[statKey]) sheet.stats[statKey] = {};
+        sheet.stats[statKey].score = score;
+        sheet.stats[statKey].modifier = scoreToModifier(score);
+
+        // обновляем связанные значения на экране
+        updateDerivedForStat(root, sheet, statKey);
+        updateSkillsAndPassives(root, sheet);
+
+        scheduleSheetSave(player);
+      };
+
+      inp.addEventListener('input', handler);
+      inp.addEventListener('change', handler);
+    });
+
+    // ---- check/save edits (меняем bonus-часть, чтобы итог стал нужным) ----
+    const pillInputs = root.querySelectorAll('.lss-pill-val-input[data-stat-key][data-kind]');
+    pillInputs.forEach(inp => {
+      const statKey = inp.getAttribute('data-stat-key');
+      const kind = inp.getAttribute('data-kind');
+      if (!statKey || !kind) return;
+
+      if (!canEdit) { inp.disabled = true; return; }
+
+      const handler = () => {
+        const desired = parseModInput(inp.value, 0);
+        const prof = getProfBonus(sheet);
+        const statMod = safeInt(sheet?.stats?.[statKey]?.modifier, 0);
+
+        if (kind === "save") {
+          if (!sheet.saves) sheet.saves = {};
+          if (!sheet.saves[statKey]) sheet.saves[statKey] = {};
+          const isProf = !!sheet.saves[statKey].isProf;
+          const base = statMod + (isProf ? prof : 0);
+          sheet.saves[statKey].bonus = desired - base;
+        }
+
+        if (kind === "check") {
+          if (!sheet.stats) sheet.stats = {};
+          if (!sheet.stats[statKey]) sheet.stats[statKey] = {};
+          const check = safeInt(sheet.stats[statKey].check, 0); // 0/1/2
+          let base = statMod;
+          if (check === 1) base += prof;
+          if (check === 2) base += prof * 2;
+          sheet.stats[statKey].checkBonus = desired - base;
+        }
+
+        // сразу обновим вывод (на случай странного ввода)
+        updateDerivedForStat(root, sheet, statKey);
+        updateSkillsAndPassives(root, sheet);
+
+        scheduleSheetSave(player);
+      };
+
+      inp.addEventListener('input', handler);
+      inp.addEventListener('change', handler);
+    });
+
+    // ---- skill bonus edits (меняем skill.bonus так, чтобы итог стал нужным) ----
+    const skillInputs = root.querySelectorAll('.lss-skill-val-input[data-skill-key]');
+    skillInputs.forEach(inp => {
+      const skillKey = inp.getAttribute('data-skill-key');
+      if (!skillKey) return;
+
+      if (!canEdit) { inp.disabled = true; return; }
+
+      const handler = () => {
+        const desired = parseModInput(inp.value, 0);
+        if (!sheet.skills) sheet.skills = {};
+        if (!sheet.skills[skillKey]) sheet.skills[skillKey] = {};
+
+        const baseStat = sheet.skills[skillKey].baseStat;
+        const statMod = safeInt(sheet?.stats?.[baseStat]?.modifier, 0);
+        const prof = getProfBonus(sheet);
+        const boostLevel = getSkillBoostLevel(sheet, skillKey);
+        const boostAdd = boostLevelToAdd(boostLevel, prof);
+
+        // extra бонус внутри навыка
+        sheet.skills[skillKey].bonus = desired - statMod - boostAdd;
+
+        // обновляем навык и пассивки
+        updateSkillsAndPassives(root, sheet);
+
+        scheduleSheetSave(player);
+      };
+
+      inp.addEventListener('input', handler);
+      inp.addEventListener('change', handler);
+    });
+  }
+
+  // ===== Notes tab: add / rename / toggle / delete, text editing =====
+  function bindNotesEditors(root, player, canEdit) {
+    if (!root || !player?.sheet?.parsed) return;
+
+    const sheet = player.sheet.parsed;
+    if (!sheet.notes || typeof sheet.notes !== "object") sheet.notes = {};
+    if (!sheet.notes.details || typeof sheet.notes.details !== "object") sheet.notes.details = {};
+    if (!Array.isArray(sheet.notes.entries)) sheet.notes.entries = [];
+
+    const main = root.querySelector("#sheet-main");
+    if (!main) return;
+
+    // add note button
+    const addBtn = main.querySelector("[data-note-add]");
+    if (addBtn) {
+      if (!canEdit) addBtn.disabled = true;
+      addBtn.addEventListener("click", () => {
+        if (!canEdit) return;
+
+        // choose next Заметка-N
+        const titles = sheet.notes.entries.map(e => String(e?.title || "")).filter(Boolean);
+        let maxN = 0;
+        for (const t of titles) {
+          const mm = /^Заметка-(\d+)$/i.exec(t.trim());
+          if (mm) maxN = Math.max(maxN, parseInt(mm[1], 10) || 0);
+        }
+        const nextN = maxN + 1;
+
+        sheet.notes.entries.push({ title: `Заметка-${nextN}`, text: "", collapsed: false });
+        scheduleSheetSave(player);
+
+        // rerender current tab to show new note
+        const freshVm = toViewModel(sheet, player.name);
+        main.innerHTML = renderNotesTab(freshVm);
+        bindEditableInputs(root, player, canEdit);
+        bindSkillBoostDots(root, player, canEdit);
+        bindAbilityAndSkillEditors(root, player, canEdit);
+        bindNotesEditors(root, player, canEdit);
+      });
+    }
+
+    // title edit
+    const titleInputs = main.querySelectorAll("input[data-note-title]");
+    titleInputs.forEach(inp => {
+      const idx = parseInt(inp.getAttribute("data-note-title") || "", 10);
+      if (!Number.isFinite(idx)) return;
+      if (!canEdit) { inp.disabled = true; return; }
+
+      inp.addEventListener("input", () => {
+        if (!sheet.notes.entries[idx]) return;
+        sheet.notes.entries[idx].title = inp.value;
+        scheduleSheetSave(player);
+      });
+    });
+
+    // text edit
+    const textAreas = main.querySelectorAll("textarea[data-note-text]");
+    textAreas.forEach(ta => {
+      const idx = parseInt(ta.getAttribute("data-note-text") || "", 10);
+      if (!Number.isFinite(idx)) return;
+      if (!canEdit) { ta.disabled = true; return; }
+
+      ta.addEventListener("input", () => {
+        if (!sheet.notes.entries[idx]) return;
+        sheet.notes.entries[idx].text = ta.value;
+        scheduleSheetSave(player);
+      });
+    });
+
+    // toggle collapse
+    const toggleBtns = main.querySelectorAll("[data-note-toggle]");
+    toggleBtns.forEach(btn => {
+      const idx = parseInt(btn.getAttribute("data-note-toggle") || "", 10);
+      if (!Number.isFinite(idx)) return;
+      if (!canEdit) btn.disabled = true;
+
+      btn.addEventListener("click", () => {
+        if (!sheet.notes.entries[idx]) return;
+        sheet.notes.entries[idx].collapsed = !sheet.notes.entries[idx].collapsed;
+        scheduleSheetSave(player);
+
+        const freshVm = toViewModel(sheet, player.name);
+        main.innerHTML = renderNotesTab(freshVm);
+        bindEditableInputs(root, player, canEdit);
+        bindSkillBoostDots(root, player, canEdit);
+        bindAbilityAndSkillEditors(root, player, canEdit);
+        bindNotesEditors(root, player, canEdit);
+      });
+    });
+
+    // delete
+    const delBtns = main.querySelectorAll("[data-note-del]");
+    delBtns.forEach(btn => {
+      const idx = parseInt(btn.getAttribute("data-note-del") || "", 10);
+      if (!Number.isFinite(idx)) return;
+      if (!canEdit) btn.disabled = true;
+
+      btn.addEventListener("click", () => {
+        if (!canEdit) return;
+        if (!sheet.notes.entries[idx]) return;
+        sheet.notes.entries.splice(idx, 1);
+        scheduleSheetSave(player);
+
+        const freshVm = toViewModel(sheet, player.name);
+        main.innerHTML = renderNotesTab(freshVm);
+        bindEditableInputs(root, player, canEdit);
+        bindSkillBoostDots(root, player, canEdit);
+        bindAbilityAndSkillEditors(root, player, canEdit);
+        bindNotesEditors(root, player, canEdit);
+      });
+    });
+  }
+
+
+  function updateDerivedForStat(root, sheet, statKey) {
+    if (!root || !sheet || !statKey) return;
+
+    // check/save inputs inside this stat block
+    const checkEl = root.querySelector(`.lss-pill-val-input[data-stat-key="${statKey}"][data-kind="check"]`);
+    if (checkEl) checkEl.value = formatMod(calcCheckBonus(sheet, statKey));
+
+    const saveEl = root.querySelector(`.lss-pill-val-input[data-stat-key="${statKey}"][data-kind="save"]`);
+    if (saveEl) saveEl.value = formatMod(calcSaveBonus(sheet, statKey));
+
+    // skills under this stat: just refresh all skills UI
+    const scoreEl = root.querySelector(`.lss-ability-score-input[data-stat-key="${statKey}"]`);
+    if (scoreEl && sheet?.stats?.[statKey]?.score != null) {
+      scoreEl.value = String(sheet.stats[statKey].score);
+    }
+  }
+
+
+
+  // ================== RENDER
   // ================== RENDER ==================
   function renderAbilitiesGrid(vm) {
     const blocks = vm.stats.map(s => {
@@ -764,7 +1000,7 @@ function bindEditableInputs(root, player, canEdit) {
                 <span class="lss-boost">${sk.boostStars ? ` ${escapeHtml(sk.boostStars)}` : ""}</span>
               </span>
             </div>
-            <div class="lss-skill-val">${escapeHtml(formatMod(sk.bonus))}</div>
+            <input class="lss-skill-val lss-skill-val-input" type="text" value="${escapeHtml(formatMod(sk.bonus))}" data-skill-key="${escapeHtml(sk.key)}">
           </div>
         `;
       }).join("");
@@ -773,17 +1009,17 @@ function bindEditableInputs(root, player, canEdit) {
         <div class="lss-ability">
           <div class="lss-ability-head">
             <div class="lss-ability-name">${escapeHtml(s.label.toUpperCase())}</div>
-            <div class="lss-ability-score">${escapeHtml(String(s.score))}</div>
+            <input class="lss-ability-score lss-ability-score-input" type="number" min="1" max="30" value="${escapeHtml(String(s.score))}" data-stat-key="${escapeHtml(s.k)}">
           </div>
 
           <div class="lss-ability-actions">
             <div class="lss-pill">
               <span class="lss-pill-label">ПРОВЕРКА</span>
-              <span class="lss-pill-val">${escapeHtml(formatMod(s.check))}</span>
+              <input class="lss-pill-val lss-pill-val-input" type="text" value="${escapeHtml(formatMod(s.check))}" data-stat-key="${escapeHtml(s.k)}" data-kind="check">
             </div>
             <div class="lss-pill">
               <span class="lss-pill-label">СПАСБРОСОК</span>
-              <span class="lss-pill-val">${escapeHtml(formatMod(s.save))}</span>
+              <input class="lss-pill-val lss-pill-val-input" type="text" value="${escapeHtml(formatMod(s.save))}" data-stat-key="${escapeHtml(s.k)}" data-kind="save">
             </div>
           </div>
 
@@ -822,211 +1058,6 @@ function bindEditableInputs(root, player, canEdit) {
       </div>
     `;
   }
-  function renderPersonalityTab(vm) {
-    return `
-      <div class="sheet-section">
-        <div class="sheet-grid-2">
-          <div class="sheet-card">
-            <h4>Предыстория персонажа</h4>
-            <textarea rows="6" data-sheet-path="personality.backstory.value" placeholder="Кратко опиши предысторию...">${escapeHtml(vm.personality?.backstory || "")}</textarea>
-          </div>
-
-          <div class="sheet-card">
-            <h4>Союзники и организации</h4>
-            <textarea rows="6" data-sheet-path="personality.allies.value" placeholder="Контакты, организации, покровители...">${escapeHtml(vm.personality?.allies || "")}</textarea>
-          </div>
-
-          <div class="sheet-card">
-            <h4>Черты характера</h4>
-            <textarea rows="5" data-sheet-path="personality.traits.value" placeholder="1–2 строки...">${escapeHtml(vm.personality?.traits || "")}</textarea>
-          </div>
-
-          <div class="sheet-card">
-            <h4>Идеалы</h4>
-            <textarea rows="5" data-sheet-path="personality.ideals.value" placeholder="Что для героя важно...">${escapeHtml(vm.personality?.ideals || "")}</textarea>
-          </div>
-
-          <div class="sheet-card">
-            <h4>Привязанности</h4>
-            <textarea rows="5" data-sheet-path="personality.bonds.value" placeholder="К чему/к кому привязан...">${escapeHtml(vm.personality?.bonds || "")}</textarea>
-          </div>
-
-          <div class="sheet-card">
-            <h4>Слабости</h4>
-            <textarea rows="5" data-sheet-path="personality.flaws.value" placeholder="Слабые стороны, зависимости...">${escapeHtml(vm.personality?.flaws || "")}</textarea>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderNotesTab(vm) {
-    const details = vm.notesDetails || {};
-    const entries = Array.isArray(vm.notesEntries) ? vm.notesEntries : [];
-
-    const detailsCard = `
-      <div class="sheet-card">
-        <h4>Заметки</h4>
-        <div class="notes-details-grid">
-          <div class="notes-field"><span class="notes-k">рост</span><input class="notes-inp" data-sheet-path="notes.details.height.value" value="${escapeHtml(details.height || "")}" /></div>
-          <div class="notes-field"><span class="notes-k">вес</span><input class="notes-inp" data-sheet-path="notes.details.weight.value" value="${escapeHtml(details.weight || "")}" /></div>
-          <div class="notes-field"><span class="notes-k">возраст</span><input class="notes-inp" data-sheet-path="notes.details.age.value" value="${escapeHtml(details.age || "")}" /></div>
-          <div class="notes-field"><span class="notes-k">глаза</span><input class="notes-inp" data-sheet-path="notes.details.eyes.value" value="${escapeHtml(details.eyes || "")}" /></div>
-          <div class="notes-field"><span class="notes-k">кожа</span><input class="notes-inp" data-sheet-path="notes.details.skin.value" value="${escapeHtml(details.skin || "")}" /></div>
-          <div class="notes-field"><span class="notes-k">волосы</span><input class="notes-inp" data-sheet-path="notes.details.hair.value" value="${escapeHtml(details.hair || "")}" /></div>
-        </div>
-      </div>
-    `;
-
-    const notesHeader = `
-      <div class="notes-head">
-        <button class="notes-add" type="button" data-notes-add>Добавить заметку</button>
-      </div>
-    `;
-
-    const cards = entries.map((e, idx) => {
-      const collapsed = !!e.collapsed;
-      return `
-        <div class="note-card" data-note-idx="${idx}">
-          <div class="note-top">
-            <input class="note-title" type="text" value="${escapeHtml(e.title || ("Заметка-" + (idx+1)))}" data-note-title="${idx}" />
-            <div class="note-actions">
-              <button type="button" class="note-btn" data-note-toggle="${idx}">${collapsed ? "Показать" : "Скрыть"}</button>
-              <button type="button" class="note-btn danger" data-note-delete="${idx}">Удалить</button>
-            </div>
-          </div>
-          <div class="note-body ${collapsed ? "collapsed" : ""}">
-            <textarea rows="6" class="note-text" data-note-text="${idx}" placeholder="Текст заметки...">${escapeHtml(e.text || "")}</textarea>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    return `
-      <div class="sheet-section">
-        <div class="sheet-grid-2">
-          ${detailsCard}
-          <div class="sheet-card">
-            <h4>Быстрые заметки</h4>
-            <div class="sheet-note">Можно создавать сколько угодно заметок, сворачивать и удалять.</div>
-            ${notesHeader}
-            <div class="notes-list">
-              ${cards || `<div class="sheet-note">Пока нет заметок. Нажми “Добавить заметку”.</div>`}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  function bindNotesControls(root, player, canEdit) {
-    if (!root || !player?.sheet?.parsed) return;
-    const sheet = player.sheet.parsed;
-    ensureExtraSections(sheet);
-
-    const addBtn = root.querySelector("[data-notes-add]");
-    if (addBtn && canEdit) {
-      addBtn.addEventListener("click", () => {
-        const entries = Array.isArray(sheet?.notes?.entries) ? sheet.notes.entries : (sheet.notes.entries = []);
-        // вычисляем следующий номер Заметка-N
-        let maxN = 0;
-        for (const e of entries) {
-          const t = String(e?.title || "");
-          const m = t.match(/Заметка-(\d+)/i);
-          if (m) maxN = Math.max(maxN, parseInt(m[1], 10) || 0);
-        }
-        const nextN = maxN + 1;
-        entries.push({ title: `Заметка-${nextN}`, text: "", collapsed: false });
-
-        scheduleSheetSave(player);
-        // перерисуем вкладку заметок безопасно
-        const main = root.querySelector("#sheet-main");
-        if (main) {
-          const fresh = player.sheet?.parsed || createEmptySheet(player.name);
-          const freshVm = toViewModel(fresh, player.name);
-          main.innerHTML = renderNotesTab(freshVm);
-
-          bindEditableInputs(root, player, canEdit);
-          bindSkillBoostDots(root, player, canEdit);
-          bindNotesControls(root, player, canEdit);
-        }
-      });
-    }
-
-    // title edits
-    root.querySelectorAll("[data-note-title]").forEach(inp => {
-      const idx = safeInt(inp.getAttribute("data-note-title"), -1);
-      if (idx < 0) return;
-      if (!canEdit) { inp.disabled = true; return; }
-      inp.addEventListener("input", () => {
-        ensureExtraSections(sheet);
-        if (!sheet.notes.entries[idx]) return;
-        sheet.notes.entries[idx].title = inp.value;
-        scheduleSheetSave(player);
-      });
-    });
-
-    // text edits
-    root.querySelectorAll("[data-note-text]").forEach(ta => {
-      const idx = safeInt(ta.getAttribute("data-note-text"), -1);
-      if (idx < 0) return;
-      if (!canEdit) { ta.disabled = true; return; }
-      ta.addEventListener("input", () => {
-        ensureExtraSections(sheet);
-        if (!sheet.notes.entries[idx]) return;
-        sheet.notes.entries[idx].text = ta.value;
-        scheduleSheetSave(player);
-      });
-    });
-
-    // toggle collapse
-    root.querySelectorAll("[data-note-toggle]").forEach(btn => {
-      const idx = safeInt(btn.getAttribute("data-note-toggle"), -1);
-      if (idx < 0) return;
-      if (!canEdit) { btn.disabled = true; return; }
-      btn.addEventListener("click", () => {
-        ensureExtraSections(sheet);
-        const e = sheet.notes.entries[idx];
-        if (!e) return;
-        e.collapsed = !e.collapsed;
-
-        const card = root.querySelector(`.note-card[data-note-idx="${idx}"]`);
-        if (card) {
-          const body = card.querySelector(".note-body");
-          if (body) body.classList.toggle("collapsed", !!e.collapsed);
-          btn.textContent = e.collapsed ? "Показать" : "Скрыть";
-        }
-        scheduleSheetSave(player);
-      });
-    });
-
-    // delete note
-    root.querySelectorAll("[data-note-delete]").forEach(btn => {
-      const idx = safeInt(btn.getAttribute("data-note-delete"), -1);
-      if (idx < 0) return;
-      if (!canEdit) { btn.disabled = true; return; }
-      btn.addEventListener("click", () => {
-        ensureExtraSections(sheet);
-        if (!Array.isArray(sheet.notes.entries)) sheet.notes.entries = [];
-        sheet.notes.entries.splice(idx, 1);
-
-        scheduleSheetSave(player);
-        // перерисуем вкладку заметок (индексы поменялись)
-        const main = root.querySelector("#sheet-main");
-        if (main) {
-          const fresh = player.sheet?.parsed || createEmptySheet(player.name);
-          const freshVm = toViewModel(fresh, player.name);
-          main.innerHTML = renderNotesTab(freshVm);
-
-          bindEditableInputs(root, player, canEdit);
-          bindSkillBoostDots(root, player, canEdit);
-          bindNotesControls(root, player, canEdit);
-        }
-      });
-    });
-  }
-
-
 
   function renderBasicTab(vm) {
     return `
@@ -1196,13 +1227,107 @@ function bindEditableInputs(root, player, canEdit) {
     `;
   }
 
+  function renderPersonalityTab(vm) {
+    return `
+      <div class="sheet-section">
+        <h3>Личность</h3>
+
+        <div class="sheet-grid-2">
+          <div class="sheet-card">
+            <h4>Предыстория персонажа</h4>
+            <textarea class="sheet-textarea" rows="6" data-sheet-path="personality.backstory.value" placeholder="Кратко опиши предысторию..."></textarea>
+          </div>
+
+          <div class="sheet-card">
+            <h4>Союзники и организации</h4>
+            <textarea class="sheet-textarea" rows="6" data-sheet-path="personality.allies.value" placeholder="Союзники, контакты, гильдии..."></textarea>
+          </div>
+
+          <div class="sheet-card">
+            <h4>Черты характера</h4>
+            <textarea class="sheet-textarea" rows="5" data-sheet-path="personality.traits.value"></textarea>
+          </div>
+
+          <div class="sheet-card">
+            <h4>Идеалы</h4>
+            <textarea class="sheet-textarea" rows="5" data-sheet-path="personality.ideals.value"></textarea>
+          </div>
+
+          <div class="sheet-card">
+            <h4>Привязанности</h4>
+            <textarea class="sheet-textarea" rows="5" data-sheet-path="personality.bonds.value"></textarea>
+          </div>
+
+          <div class="sheet-card">
+            <h4>Слабости</h4>
+            <textarea class="sheet-textarea" rows="5" data-sheet-path="personality.flaws.value"></textarea>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderNotesTab(vm) {
+    const entries = Array.isArray(vm?.notesEntries) ? vm.notesEntries : [];
+    const renderEntry = (e, idx) => {
+      const title = (e && typeof e.title === "string" && e.title) ? e.title : `Заметка-${idx + 1}`;
+      const text = (e && typeof e.text === "string") ? e.text : "";
+      const collapsed = !!(e && e.collapsed);
+      return `
+        <div class="note-card" data-note-idx="${idx}">
+          <div class="note-header">
+            <input class="note-title" type="text" value="${escapeHtml(title)}" data-note-title="${idx}" />
+            <div class="note-actions">
+              <button class="note-btn" data-note-toggle="${idx}">${collapsed ? "Показать" : "Скрыть"}</button>
+              <button class="note-btn danger" data-note-del="${idx}">Удалить</button>
+            </div>
+          </div>
+          <div class="note-body ${collapsed ? "collapsed" : ""}">
+            <textarea class="sheet-textarea note-text" rows="6" data-note-text="${idx}" placeholder="Текст заметки...">${escapeHtml(text)}</textarea>
+          </div>
+        </div>
+      `;
+    };
+
+    return `
+      <div class="sheet-section">
+        <h3>Заметки</h3>
+
+        <div class="sheet-grid-2">
+          <div class="sheet-card">
+            <h4>Внешность</h4>
+            <div class="notes-details-grid">
+              <div class="kv"><div class="k">Рост</div><div class="v"><input type="text" data-sheet-path="notes.details.height.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Вес</div><div class="v"><input type="text" data-sheet-path="notes.details.weight.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Возраст</div><div class="v"><input type="text" data-sheet-path="notes.details.age.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Глаза</div><div class="v"><input type="text" data-sheet-path="notes.details.eyes.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Кожа</div><div class="v"><input type="text" data-sheet-path="notes.details.skin.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Волосы</div><div class="v"><input type="text" data-sheet-path="notes.details.hair.value" style="width:140px"></div></div>
+            </div>
+          </div>
+
+          <div class="sheet-card">
+            <h4>Быстрые заметки</h4>
+            <div class="notes-toolbar">
+              <button class="note-add-btn" data-note-add>Добавить заметку</button>
+            </div>
+            <div class="notes-list">
+              ${entries.length ? entries.map(renderEntry).join("") : `<div class="sheet-note">Пока нет заметок. Нажми «Добавить заметку».</div>`}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+
   function renderActiveTab(tabId, vm) {
     if (tabId === "basic") return renderBasicTab(vm);
-    if (tabId === "personality") return renderPersonalityTab(vm);
-    if (tabId === "notes") return renderNotesTab(vm);
     if (tabId === "spells") return renderSpellsTab(vm);
     if (tabId === "combat") return renderCombatTab(vm);
     if (tabId === "inventory") return renderInventoryTab(vm);
+    if (tabId === "personality") return renderPersonalityTab(vm);
+    if (tabId === "notes") return renderNotesTab(vm);
     return `<div class="sheet-note">Раздел в разработке</div>`;
   }
 
@@ -1277,11 +1402,11 @@ function bindEditableInputs(root, player, canEdit) {
 
     const tabs = [
       { id: "basic", label: "Основное" },
-      { id: "personality", label: "Личность" },
-      { id: "notes", label: "Заметки" },
       { id: "spells", label: "Заклинания" },
       { id: "combat", label: "Бой" },
-      { id: "inventory", label: "Инвентарь" }
+      { id: "inventory", label: "Инвентарь" },
+      { id: "personality", label: "Личность" },
+      { id: "notes", label: "Заметки" }
     ];
 
     // восстановление вкладки (если была)
@@ -1348,7 +1473,8 @@ function bindEditableInputs(root, player, canEdit) {
 
     bindEditableInputs(sheetContent, player, canEdit);
     bindSkillBoostDots(sheetContent, player, canEdit);
-    bindNotesControls(sheetContent, player, canEdit);
+    bindAbilityAndSkillEditors(sheetContent, player, canEdit);
+    bindNotesEditors(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -1371,7 +1497,8 @@ function bindEditableInputs(root, player, canEdit) {
 
           bindEditableInputs(sheetContent, player, canEdit);
           bindSkillBoostDots(sheetContent, player, canEdit);
-          bindNotesControls(sheetContent, player, canEdit);
+    bindAbilityAndSkillEditors(sheetContent, player, canEdit);
+    bindNotesEditors(sheetContent, player, canEdit);
         }
       });
     });
