@@ -330,8 +330,7 @@
       // если файл дал tiptap-структуру, а plainText отсутствует — заполним для редактирования
       const doc = player.sheet.parsed?.text?.prof?.value?.data;
       const lines = tiptapToPlainLines(doc);
-      player.sheet.parsed.text.prof.value.plainText = lines.join("
-");
+      player.sheet.parsed.text.prof.value.plainText = lines.join("");
     }
   }
 
@@ -1122,3 +1121,4 @@
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
