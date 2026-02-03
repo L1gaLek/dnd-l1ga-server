@@ -536,9 +536,8 @@
     const slots = [];
     for (let lvlN = 1; lvlN <= 9; lvlN++) {
       const k = `slots-${lvlN}`;
-      if (!slotsRaw[k]) continue;
-      const total = safeInt(slotsRaw[k]?.value, 0);
-      const filled = safeInt(slotsRaw[k]?.filled, 0);
+      const total = safeInt(slotsRaw?.[k]?.value, 0);
+      const filled = safeInt(slotsRaw?.[k]?.filled, 0);
       slots.push({ level: lvlN, total, filled });
     }
 
@@ -964,6 +963,52 @@ function bindEditableInputs(root, player, canEdit) {
       });
     });
   }
+  // ===== Slots (spell slots) editors =====
+function bindSlotEditors(root, player, canEdit) {
+  if (!root || !player?.sheet?.parsed) return;
+  const sheet = player.sheet.parsed;
+  if (!sheet.spells || typeof sheet.spells !== "object") sheet.spells = {};
+
+  const inputs = root.querySelectorAll(".slot-current-input[data-slot-level]");
+  inputs.forEach(inp => {
+    const lvl = safeInt(inp.getAttribute("data-slot-level"), 0);
+    if (!lvl) return;
+
+    if (!canEdit) { inp.disabled = true; return; }
+
+    const handler = () => {
+      // desired = доступные ячейки, редактируемое значение (0..12)
+      const desired = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
+
+      const key = `slots-${lvl}`;
+      if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
+        sheet.spells[key] = { value: 0, filled: 0 };
+      }
+
+      // total slots (value) keep, but ensure it is at least desired and not more than 12
+      const totalPrev = safeInt(sheet.spells[key].value, 0);
+      const total = Math.max(desired, Math.min(12, totalPrev));
+      sheet.spells[key].value = total;
+
+      // filled = total - desired
+      sheet.spells[key].filled = Math.max(0, total - desired);
+
+      // update dots in UI without full rerender
+      const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
+      if (dotsWrap) {
+        const dots = Array.from({ length: desired }).map(() => `<span class="slot-dot"></span>`).join("");
+        dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
+      }
+
+      inp.value = String(desired);
+      scheduleSheetSave(player);
+    };
+
+    inp.addEventListener("input", handler);
+    inp.addEventListener("change", handler);
+  });
+}
+
 
 
   function updateDerivedForStat(root, sheet, statKey) {
@@ -1101,21 +1146,45 @@ function bindEditableInputs(root, player, canEdit) {
 
   // ================== RENDER: SPELLS ==================
   function renderSlots(vm) {
-    if (!vm.slots || !vm.slots.length) return `<div class="sheet-note">Ячейки заклинаний не указаны в файле.</div>`;
+    const slots = Array.isArray(vm?.slots) ? vm.slots : [];
+    if (!slots.length) return `<div class="sheet-note">Ячейки заклинаний не указаны.</div>`;
 
-    const rows = vm.slots.map(s => {
-      const left = Math.max(0, s.total - (s.filled || 0));
+    const countByLevel = {};
+    (vm.spellsByLevel || []).forEach(b => {
+      const lvl = Number(b.level);
+      if (!Number.isFinite(lvl)) return;
+      countByLevel[lvl] = Array.isArray(b.items) ? b.items.length : 0;
+    });
+
+    const cells = slots.slice(0, 9).map(s => {
+      const current = Math.max(0, safeInt(s.total, 0) - safeInt(s.filled, 0));
+      const spellsCount = countByLevel[s.level] || 0;
+      const dots = Array.from({ length: Math.min(12, current) }).map(() => `<span class="slot-dot"></span>`).join("");
+
       return `
-        <div class="lss-slot">
-          <div class="lss-slot-lvl">${s.level}</div>
-          <div class="lss-slot-bar">
-            <div class="lss-slot-text">${left}/${s.total}</div>
+        <div class="slot-cell" data-slot-level="${s.level}">
+          <div class="slot-top">
+            <div class="slot-level">Ур. ${s.level}</div>
+            <div class="slot-nums">
+              <span class="slot-spells" title="Кол-во заклинаний уровня">${spellsCount}</span>
+              <span class="slot-sep">/</span>
+              <input class="slot-current slot-current-input" type="number" min="0" max="12" value="${escapeHtml(String(current))}" data-slot-level="${s.level}" title="Доступно ячеек (редактируемое)">
+            </div>
+          </div>
+          <div class="slot-dots" data-slot-dots="${s.level}">
+            ${dots || `<span class="slot-dots-empty">—</span>`}
           </div>
         </div>
       `;
     }).join("");
 
-    return `<div class="lss-slots">${rows}</div>`;
+    return `
+      <div class="slots-frame">
+        <div class="slots-grid">
+          ${cells}
+        </div>
+      </div>
+    `;
   }
 
   function renderSpellsByLevel(vm) {
@@ -1144,7 +1213,6 @@ function bindEditableInputs(root, player, canEdit) {
   }
 
   function renderSpellsTab(vm) {
-    const base = vm.spellsInfo?.base ? String(vm.spellsInfo.base).toUpperCase() : "-";
     const save = vm.spellsInfo?.save || "-";
     const mod = vm.spellsInfo?.mod || "-";
 
@@ -1152,17 +1220,24 @@ function bindEditableInputs(root, player, canEdit) {
       <div class="sheet-section">
         <h3>Заклинания</h3>
 
-        <div class="sheet-grid-2">
-          <div class="sheet-card">
-            <h4>Параметры магии</h4>
-            <div class="kv"><div class="k">База</div><div class="v">${escapeHtml(String(base))}</div></div>
-            <div class="kv"><div class="k">СЛ спасброска</div><div class="v">${escapeHtml(String(save))}</div></div>
-            <div class="kv"><div class="k">Бонус атаки</div><div class="v">${escapeHtml(String(mod))}</div></div>
+        <div class="sheet-card spells-metrics-card fullwidth">
+          <div class="spell-metrics">
+            <div class="spell-metric">
+              <div class="spell-metric-label">СЛ спасброска</div>
+              <div class="spell-metric-val">${escapeHtml(String(save))}</div>
+            </div>
+            <div class="spell-metric">
+              <div class="spell-metric-label">Бонус атаки</div>
+              <div class="spell-metric-val">${escapeHtml(String(mod))}</div>
+            </div>
           </div>
+        </div>
 
-          <div class="sheet-card">
-            <h4>Ячейки</h4>
-            ${renderSlots(vm)}
+        <div class="sheet-card fullwidth" style="margin-top:10px;">
+          <h4>Ячейки</h4>
+          ${renderSlots(vm)}
+          <div class="sheet-note" style="margin-top:6px;">
+            Формат: <b>кол-во заклинаний</b> / <b>доступно ячеек</b> (второе число редактируемое, max 12). Кружки показывают доступные ячейки.
           </div>
         </div>
 
@@ -1234,6 +1309,18 @@ function bindEditableInputs(root, player, canEdit) {
 
         <div class="sheet-grid-2">
           <div class="sheet-card">
+            <h4>Внешность</h4>
+            <div class="notes-details-grid">
+              <div class="kv"><div class="k">Рост</div><div class="v"><input type="text" data-sheet-path="notes.details.height.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Вес</div><div class="v"><input type="text" data-sheet-path="notes.details.weight.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Возраст</div><div class="v"><input type="text" data-sheet-path="notes.details.age.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Глаза</div><div class="v"><input type="text" data-sheet-path="notes.details.eyes.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Кожа</div><div class="v"><input type="text" data-sheet-path="notes.details.skin.value" style="width:140px"></div></div>
+              <div class="kv"><div class="k">Волосы</div><div class="v"><input type="text" data-sheet-path="notes.details.hair.value" style="width:140px"></div></div>
+            </div>
+          </div>
+
+          <div class="sheet-card">
             <h4>Предыстория персонажа</h4>
             <textarea class="sheet-textarea" rows="6" data-sheet-path="personality.backstory.value" placeholder="Кратко опиши предысторию..."></textarea>
           </div>
@@ -1293,27 +1380,13 @@ function bindEditableInputs(root, player, canEdit) {
       <div class="sheet-section">
         <h3>Заметки</h3>
 
-        <div class="sheet-grid-2">
-          <div class="sheet-card">
-            <h4>Внешность</h4>
-            <div class="notes-details-grid">
-              <div class="kv"><div class="k">Рост</div><div class="v"><input type="text" data-sheet-path="notes.details.height.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Вес</div><div class="v"><input type="text" data-sheet-path="notes.details.weight.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Возраст</div><div class="v"><input type="text" data-sheet-path="notes.details.age.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Глаза</div><div class="v"><input type="text" data-sheet-path="notes.details.eyes.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Кожа</div><div class="v"><input type="text" data-sheet-path="notes.details.skin.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Волосы</div><div class="v"><input type="text" data-sheet-path="notes.details.hair.value" style="width:140px"></div></div>
-            </div>
+        <div class="sheet-card notes-fullwidth">
+          <h4>Быстрые заметки</h4>
+          <div class="notes-toolbar">
+            <button class="note-add-btn" data-note-add>Добавить заметку</button>
           </div>
-
-          <div class="sheet-card">
-            <h4>Быстрые заметки</h4>
-            <div class="notes-toolbar">
-              <button class="note-add-btn" data-note-add>Добавить заметку</button>
-            </div>
-            <div class="notes-list">
-              ${entries.length ? entries.map(renderEntry).join("") : `<div class="sheet-note">Пока нет заметок. Нажми «Добавить заметку».</div>`}
-            </div>
+          <div class="notes-list">
+            ${entries.length ? entries.map(renderEntry).join("") : `<div class="sheet-note">Пока нет заметок. Нажми «Добавить заметку».</div>`}
           </div>
         </div>
       </div>
@@ -1475,6 +1548,7 @@ function bindEditableInputs(root, player, canEdit) {
     bindSkillBoostDots(sheetContent, player, canEdit);
     bindAbilityAndSkillEditors(sheetContent, player, canEdit);
     bindNotesEditors(sheetContent, player, canEdit);
+    bindSlotEditors(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -1497,8 +1571,9 @@ function bindEditableInputs(root, player, canEdit) {
 
           bindEditableInputs(sheetContent, player, canEdit);
           bindSkillBoostDots(sheetContent, player, canEdit);
-    bindAbilityAndSkillEditors(sheetContent, player, canEdit);
-    bindNotesEditors(sheetContent, player, canEdit);
+          bindAbilityAndSkillEditors(sheetContent, player, canEdit);
+          bindNotesEditors(sheetContent, player, canEdit);
+          bindSlotEditors(sheetContent, player, canEdit);
         }
       });
     });
