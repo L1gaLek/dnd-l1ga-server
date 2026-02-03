@@ -319,7 +319,18 @@
         save: { customModifier: "" },
         mod: { customModifier: "" }
       },
-      spells: {},
+      // slots-1..slots-9: value = всего ячеек (0..12), filled = сколько использовано
+      spells: {
+        "slots-1": { value: 0, filled: 0 },
+        "slots-2": { value: 0, filled: 0 },
+        "slots-3": { value: 0, filled: 0 },
+        "slots-4": { value: 0, filled: 0 },
+        "slots-5": { value: 0, filled: 0 },
+        "slots-6": { value: 0, filled: 0 },
+        "slots-7": { value: 0, filled: 0 },
+        "slots-8": { value: 0, filled: 0 },
+        "slots-9": { value: 0, filled: 0 }
+      },
       personality: {
         backstory: { value: "" },
         allies: { value: "" },
@@ -339,7 +350,20 @@
         },
         entries: []
       },
-      text: {},
+      // text.*: редактируемые поля. По умолчанию показываем уровни заклинаний 0..9.
+      text: {
+        "profPlain": { value: "" },
+        "spells-level-0": { plain: { value: "" } },
+        "spells-level-1": { plain: { value: "" } },
+        "spells-level-2": { plain: { value: "" } },
+        "spells-level-3": { plain: { value: "" } },
+        "spells-level-4": { plain: { value: "" } },
+        "spells-level-5": { plain: { value: "" } },
+        "spells-level-6": { plain: { value: "" } },
+        "spells-level-7": { plain: { value: "" } },
+        "spells-level-8": { plain: { value: "" } },
+        "spells-level-9": { plain: { value: "" } }
+      },
       weaponsList: [],
       coins: { cp: { value: 0 }, sp: { value: 0 }, ep: { value: 0 }, gp: { value: 0 }, pp: { value: 0 } }
     };
@@ -542,11 +566,29 @@
     }
 
     const text = (sheet?.text && typeof sheet.text === "object") ? sheet.text : {};
-    const spellKeys = Object.keys(text).filter(k => k.startsWith("spells-level-"));
-    const spellsByLevel = spellKeys
-      .map(k => ({ level: safeInt(k.split("-").pop(), 0), items: parseSpellsFromTiptap(text[k]?.value?.data) }))
-      .filter(x => x.items && x.items.length)
-      .sort((a,b) => a.level - b.level);
+
+    // Всегда показываем уровни заклинаний 0..9, даже если файл не загружен.
+    // Хранение: sheet.text["spells-level-N"].plain.value (редактируемый plain-text)
+    // Если в json есть tiptap-док — один раз конвертим в plain при первом открытии.
+    const spellsByLevel = [];
+    for (let lvl = 0; lvl <= 9; lvl++) {
+      const key = `spells-level-${lvl}`;
+      if (!text[key] || typeof text[key] !== "object") text[key] = {};
+      if (!text[key].plain || typeof text[key].plain !== "object") text[key].plain = { value: "" };
+
+      // миграция: если есть tiptap, но plain пустой — склеиваем в строки
+      const curPlain = typeof text[key].plain.value === "string" ? text[key].plain.value : "";
+      if (!curPlain) {
+        const tiptapDoc = text[key]?.value?.data;
+        const parsed = parseSpellsFromTiptap(tiptapDoc);
+        if (parsed && parsed.length) {
+          const lines = parsed.map(it => it.href ? `${it.text} | ${it.href}` : it.text);
+          text[key].plain.value = lines.join("\n");
+        }
+      }
+
+      spellsByLevel.push({ level: lvl, plain: String(text[key].plain.value || "") });
+    }
 
     const weapons = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
     const weaponsVm = weapons
@@ -977,36 +1019,86 @@ function bindSlotEditors(root, player, canEdit) {
     if (!canEdit) { inp.disabled = true; return; }
 
     const handler = () => {
-      // desired = доступные ячейки, редактируемое значение (0..12)
-      const desired = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
+      // Вводимое значение трактуем как: сколько ячеек доступно СЕЙЧАС.
+      // По просьбе: при изменении числа мы считаем, что "добавили/задали" ячейки,
+      // и ВСЕ кружки автоматически становятся голубыми (used = 0).
+      const desiredRemaining = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
 
       const key = `slots-${lvl}`;
       if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
         sheet.spells[key] = { value: 0, filled: 0 };
       }
 
-      // total slots (value) keep, but ensure it is at least desired and not more than 12
-      const totalPrev = safeInt(sheet.spells[key].value, 0);
-      const total = Math.max(desired, Math.min(12, totalPrev));
-      sheet.spells[key].value = total;
+      // total = desiredRemaining, used = 0
+      sheet.spells[key].value = desiredRemaining;
+      sheet.spells[key].filled = 0;
 
-      // filled = total - desired
-      sheet.spells[key].filled = Math.max(0, total - desired);
+      // обновляем кружки
+      renderSlotDotsInPlace(root, lvl, desiredRemaining, 0);
 
-      // update dots in UI without full rerender
-      const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
-      if (dotsWrap) {
-        const dots = Array.from({ length: desired }).map(() => `<span class="slot-dot"></span>`).join("");
-        dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
-      }
-
-      inp.value = String(desired);
+      inp.value = String(desiredRemaining);
       scheduleSheetSave(player);
     };
 
     inp.addEventListener("input", handler);
     inp.addEventListener("change", handler);
   });
+
+  // клики по кружкам: голубой = осталось, пустой = уже использовано
+  // Реализуем делегированием, чтобы не вешать обработчики на каждый кружок после ререндера.
+  if (!root.dataset.slotDotsBound) {
+    root.dataset.slotDotsBound = "1";
+    root.addEventListener("click", (e) => {
+      const dot = e.target?.closest?.(".slot-dot[data-slot-level]");
+      if (!dot) return;
+      if (!canEdit) return;
+      e.stopPropagation();
+
+      const lvl = safeInt(dot.getAttribute("data-slot-level"), 0);
+      if (!lvl) return;
+
+      const key = `slots-${lvl}`;
+      if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
+        sheet.spells[key] = { value: 0, filled: 0 };
+      }
+
+      const total = Math.max(0, Math.min(12, safeInt(sheet.spells[key].value, 0)));
+      let used = Math.max(0, Math.min(total, safeInt(sheet.spells[key].filled, 0)));
+      const remaining = Math.max(0, total - used);
+
+      if (dot.classList.contains("filled")) {
+        // потратить 1 ячейку
+        if (remaining > 0) used = Math.min(total, used + 1);
+      } else {
+        // вернуть 1 ячейку
+        if (used > 0) used = Math.max(0, used - 1);
+      }
+
+      sheet.spells[key].value = total;
+      sheet.spells[key].filled = used;
+
+      renderSlotDotsInPlace(root, lvl, total, used);
+
+      const inp = root.querySelector(`.slot-current-input[data-slot-level="${lvl}"]`);
+      if (inp) inp.value = String(Math.max(0, total - used));
+
+      scheduleSheetSave(player);
+    });
+  }
+}
+
+// Обновление кружков без полного ререндера
+function renderSlotDotsInPlace(root, lvl, total, used) {
+  const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
+  if (!dotsWrap) return;
+  const t = Math.max(0, Math.min(12, safeInt(total, 0)));
+  const u = Math.max(0, Math.min(t, safeInt(used, 0)));
+  const remaining = Math.max(0, t - u);
+  const dots = Array.from({ length: t }).map((_, i) => {
+    const filledCls = (i < remaining) ? "filled" : "";
+    return `<span class="slot-dot ${filledCls} clickable" data-slot-level="${lvl}" data-slot-dot="${i}"></span>`;
+  }).join("");
+  dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
 }
 
 
@@ -1153,13 +1245,22 @@ function bindSlotEditors(root, player, canEdit) {
     (vm.spellsByLevel || []).forEach(b => {
       const lvl = Number(b.level);
       if (!Number.isFinite(lvl)) return;
-      countByLevel[lvl] = Array.isArray(b.items) ? b.items.length : 0;
+      const plain = (typeof b.plain === "string") ? b.plain : "";
+      const cnt = plain.split(/\r?\n/).map(s => s.trim()).filter(Boolean).length;
+      countByLevel[lvl] = cnt;
     });
 
     const cells = slots.slice(0, 9).map(s => {
-      const current = Math.max(0, safeInt(s.total, 0) - safeInt(s.filled, 0));
+      const total = Math.max(0, Math.min(12, safeInt(s.total, 0)));
+      const used = Math.max(0, Math.min(total, safeInt(s.filled, 0)));
+      const remaining = Math.max(0, total - used);
       const spellsCount = countByLevel[s.level] || 0;
-      const dots = Array.from({ length: Math.min(12, current) }).map(() => `<span class="slot-dot"></span>`).join("");
+
+      // Всего кружков = total. Голубые = remaining (сколько ячеек осталось)
+      const dots = Array.from({ length: total }).map((_, i) => {
+        const filledCls = (i < remaining) ? "filled" : "";
+        return `<span class="slot-dot ${filledCls} clickable" data-slot-level="${s.level}" data-slot-dot="${i}"></span>`;
+      }).join("");
 
       return `
         <div class="slot-cell" data-slot-level="${s.level}">
@@ -1168,7 +1269,7 @@ function bindSlotEditors(root, player, canEdit) {
             <div class="slot-nums">
               <span class="slot-spells" title="Кол-во заклинаний уровня">${spellsCount}</span>
               <span class="slot-sep">/</span>
-              <input class="slot-current slot-current-input" type="number" min="0" max="12" value="${escapeHtml(String(current))}" data-slot-level="${s.level}" title="Доступно ячеек (редактируемое)">
+            <input class="slot-current slot-current-input" type="number" min="0" max="12" value="${escapeHtml(String(remaining))}" data-slot-level="${s.level}" title="Сколько ячеек осталось (max 12). При изменении это значение становится общим количеством ячеек, и все кружки автоматически заполняются">
             </div>
           </div>
           <div class="slot-dots" data-slot-dots="${s.level}">
@@ -1188,23 +1289,16 @@ function bindSlotEditors(root, player, canEdit) {
   }
 
   function renderSpellsByLevel(vm) {
-    if (!vm.spellsByLevel || !vm.spellsByLevel.length) {
-      return `<div class="sheet-note">Заклинания не найдены в разделе spells-level-* (в твоём .json они лежат в sheet.text).</div>`;
-    }
+    const list = Array.isArray(vm.spellsByLevel) ? vm.spellsByLevel : [];
 
-    const blocks = vm.spellsByLevel.map(b => {
-      const items = (b.items || []).map(it => {
-        if (it.href) {
-          return `<a class="sheet-pill spell-link" href="${escapeHtml(it.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.text)}</a>`;
-        }
-        return `<span class="sheet-pill">${escapeHtml(it.text)}</span>`;
-      }).join("");
-
+    const blocks = list.map(b => {
       const title = (b.level === 0) ? "Заговоры (0)" : `Уровень ${b.level}`;
+      const path = `text.spells-level-${b.level}.plain.value`;
+      const value = (typeof b.plain === "string") ? b.plain : "";
       return `
         <div class="sheet-card">
           <h4>${escapeHtml(title)}</h4>
-          <div>${items || `<div class="sheet-note">Пусто</div>`}</div>
+          <textarea class="sheet-textarea" rows="6" data-sheet-path="${escapeHtml(path)}" placeholder="По одному заклинанию в строке.\nЕсли нужна ссылка: Название | https://...">${escapeHtml(value)}</textarea>
         </div>
       `;
     }).join("");
