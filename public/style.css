@@ -1144,3 +1144,57 @@ button:hover {
   overflow:hidden;
   text-overflow:ellipsis;
 }
+
+
+/* ===== PATCH: рамка "прочие владения и заклинания" в сером контуре ===== */
+.lss-prof-text{
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #666;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  color: #ddd;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.lss-prof-text:focus{
+  border-color: #888;
+}
+
+/* ===== PATCH: инпуты для характеристик/проверок/спасбросков/навыков ===== */
+.lss-ability-score-input{
+  width: 64px;
+  text-align: right;
+  font-weight: 900;
+  font-size: 16px;
+  line-height: 18px;
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  padding: 2px 8px;
+}
+
+.lss-pill-val-input,
+.lss-skill-val-input{
+  min-width: 44px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 12px;
+  line-height: 14px;
+  color: #fff;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 1px 8px;
+}
+
+.lss-pill-val-input{
+  width: 52px;
+}
+
+.lss-skill-val-input{
+  width: 52px;
+}
+
