@@ -349,9 +349,10 @@
     sheet.skills[skillKey].isProf = lvl;
   }
 
-  function boostLevelToAdd(lvl) {
-    if (lvl === 1) return 1;
-    if (lvl === 2) return 3;
+  function boostLevelToAdd(lvl, prof) {
+    const p = safeInt(prof, 0);
+    if (lvl === 1) return p;
+    if (lvl === 2) return p * 2;
     return 0;
   }
 
@@ -371,7 +372,11 @@
     const extra = safeInt(skill?.bonus, 0); // если в файле есть отдельный бонус — учитываем
     const boostLevel = getSkillBoostLevel(sheet, skillKey);
 
-    return statMod + extra + boostLevelToAdd(boostLevel);
+    // ВАЖНО: звёзды навыков считаются от "владения" (proficiency):
+    // 1 звезда = +proficiency, 2 звезды = +proficiency*2
+    const prof = getProfBonus(sheet);
+
+    return statMod + extra + boostLevelToAdd(boostLevel, prof);
   }
 
   function calcSaveBonus(sheet, statKey) {
@@ -700,6 +705,7 @@
             <div class="kv"><div class="k">HP max</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">HP current</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">Speed</div><div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div></div>
+            <div class="kv"><div class="k">Владение</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
           </div>
         </div>
 
