@@ -9,6 +9,82 @@ const app = express();
 app.use(express.static("public"));
 const server = http.createServer(app);
 
+// ================== SIMPLE HTML PROXY (for spell pages) ==================
+// dnd.su often blocks cross-origin fetch from the browser.
+// We proxy ONLY https://dnd.su/ URLs.
+function isAllowedSpellUrl(raw) {
+  try {
+    const u = new URL(String(raw));
+    if (!['http:', 'https:'].includes(u.protocol)) return false;
+    return u.hostname === 'dnd.su';
+  } catch {
+    return false;
+  }
+}
+
+function stripHtml(html) {
+  return String(html)
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*\/p\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// Returns { name, description } extracted from dnd.su spell page
+app.get('/api/spellmeta', async (req, res) => {
+  try {
+    const url = req.query?.url;
+    if (!url || !isAllowedSpellUrl(url)) {
+      return res.status(400).json({ error: 'Bad url. Only https://dnd.su/... is allowed.' });
+    }
+
+    const r = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (proxy)'
+      }
+    });
+    if (!r.ok) {
+      return res.status(502).json({ error: `Fetch failed: ${r.status}` });
+    }
+    const html = await r.text();
+
+    // Name: try <h1>...</h1>
+    let name = '';
+    const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    if (h1) name = stripHtml(h1[1]);
+    if (!name) {
+      const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+      if (title) name = stripHtml(title[1]).replace(/\s*\|\s*DND\.SU.*$/i, '').trim();
+    }
+
+    // Description: content up to "Комментарии"
+    // dnd.su pages contain a main content block; we do a best-effort slice.
+    let body = html;
+    const mainStart = html.search(/<div[^>]+class="[^"]*content[^"]*"/i);
+    if (mainStart >= 0) body = html.slice(mainStart);
+    const cut = body.search(/Комментарии/i);
+    if (cut > 0) body = body.slice(0, cut);
+
+    // remove scripts/styles
+    body = body.replace(/<script[\s\S]*?<\/script>/gi, '')
+               .replace(/<style[\s\S]*?<\/style>/gi, '');
+
+    const description = stripHtml(body);
+
+    res.json({ name: name || 'Заклинание', description });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 // ================== WEBSOCKET ==================
 const wss = new WebSocket.Server({ server });
 
