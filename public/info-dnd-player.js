@@ -301,7 +301,7 @@
         mod: { customModifier: "" }
       },
       spells: {},
-      text: { prof: { value: { plainText: "" } } },
+      text: { profPlain: "" },
       weaponsList: [],
       coins: { cp: { value: 0 }, sp: { value: 0 }, ep: { value: 0 }, gp: { value: 0 }, pp: { value: 0 } }
     };
@@ -314,23 +314,6 @@
     }
     if (!player.sheet.parsed || typeof player.sheet.parsed !== "object") {
       player.sheet.parsed = createEmptySheet(player.name);
-    }
-
-    // ensure editable "прочие владения / заклинания" exists always
-    if (!player.sheet.parsed.text || typeof player.sheet.parsed.text !== "object") {
-      player.sheet.parsed.text = {};
-    }
-    if (!player.sheet.parsed.text.prof || typeof player.sheet.parsed.text.prof !== "object") {
-      player.sheet.parsed.text.prof = { value: { plainText: "" } };
-    }
-    if (!player.sheet.parsed.text.prof.value || typeof player.sheet.parsed.text.prof.value !== "object") {
-      player.sheet.parsed.text.prof.value = { plainText: "" };
-    }
-    if (player.sheet.parsed.text.prof.value.plainText === undefined || player.sheet.parsed.text.prof.value.plainText === null) {
-      // если файл дал tiptap-структуру, а plainText отсутствует — заполним для редактирования
-      const doc = player.sheet.parsed?.text?.prof?.value?.data;
-      const lines = tiptapToPlainLines(doc);
-      player.sheet.parsed.text.prof.value.plainText = lines.join("");
     }
   }
 
@@ -470,15 +453,14 @@
       return { key: x.key, label: x.label, value: 10 + skillBonus };
     });
 
-    // “прочие владения и заклинания” (редактируемый текст)
-    const profPlain = get(sheet, 'text.prof.value.plainText', null);
+    // “прочие владения и языки”
     const profDoc = sheet?.text?.prof?.value?.data;
-    const profLinesFromDoc = tiptapToPlainLines(profDoc);
-    const profText = (profPlain !== null && profPlain !== undefined) ? String(profPlain) : profLinesFromDoc.join("
-");
-    const profLines = profText.split(/
-?
-/).map(s => s.trim()).filter(Boolean);
+    const profLines = tiptapToPlainLines(profDoc);
+
+    const profPlainRaw = sheet?.text?.profPlain;
+    const profText = (typeof profPlainRaw === \"string\")
+      ? profPlainRaw
+      : (profLines && profLines.length ? profLines.join(\"\n\") : \"\");
 
     // spells info + slots + lists
     const spellsInfo = {
@@ -512,7 +494,7 @@
     const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
     const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
 
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profText, profLines, spellsInfo, slots, spellsByLevel, weapons: weaponsVm, coins };
+    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, spellsInfo, slots, spellsByLevel, weapons: weaponsVm, coins };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -547,7 +529,56 @@
     sheetSaveTimers.set(key, t);
   }
 
-  function bindEditableInputs(root, player, canEdit) {
+  
+  // ================== LIVE UI UPDATES (derived values) ==================
+  function updateHeroChipsFromSheet(root, sheet) {
+    if (!root || !sheet) return;
+    const ac = get(sheet, 'vitality.ac.value', '-');
+    const hp = get(sheet, 'vitality.hp-max.value', '-');
+    const hpCur = get(sheet, 'vitality.hp-current.value', '-');
+    const spd = get(sheet, 'vitality.speed.value', '-');
+
+    const acEl = root.querySelector('.sheet-chip[data-hero="ac"] .v');
+    const hpEl = root.querySelector('.sheet-chip[data-hero="hp"] .v');
+    const spdEl = root.querySelector('.sheet-chip[data-hero="speed"] .v');
+
+    if (acEl) acEl.textContent = String(ac);
+    if (hpEl) hpEl.textContent = `${hpCur}/${hp}`;
+    if (spdEl) spdEl.textContent = String(spd);
+  }
+
+  function updateSkillRowsFromSheet(root, sheet) {
+    if (!root || !sheet) return;
+    const dots = root.querySelectorAll('.lss-dot[data-skill-key]');
+    dots.forEach(dot => {
+      const skillKey = dot.getAttribute('data-skill-key');
+      if (!skillKey) return;
+      const row = dot.closest('.lss-skill-row');
+      const valEl = row?.querySelector?.('.lss-skill-val');
+      if (valEl) valEl.textContent = formatMod(calcSkillBonus(sheet, skillKey));
+    });
+  }
+
+  function updatePassivesFromSheet(root, sheet) {
+    if (!root || !sheet) return;
+    const rows = root.querySelectorAll('.lss-passive-row[data-passive-skill]');
+    rows.forEach(r => {
+      const sk = r.getAttribute('data-passive-skill');
+      const valEl = r.querySelector('.lss-passive-val');
+      if (!valEl) return;
+      const bonus = (sk && sheet?.skills?.[sk]) ? calcSkillBonus(sheet, sk) : 0;
+      valEl.textContent = String(10 + bonus);
+    });
+  }
+
+  function updateDerivedUi(root, sheet, reason) {
+    // reason unused for now, but удобно расширять
+    updateSkillRowsFromSheet(root, sheet);
+    updatePassivesFromSheet(root, sheet);
+    updateHeroChipsFromSheet(root, sheet);
+  }
+
+function bindEditableInputs(root, player, canEdit) {
     if (!root || !player?.sheet?.parsed) return;
 
     const inputs = root.querySelectorAll("[data-sheet-path]");
@@ -557,7 +588,11 @@
 
       const raw = getByPath(player.sheet.parsed, path);
       if (inp.type === "checkbox") inp.checked = !!raw;
-      else inp.value = (raw ?? "");
+      else {
+        const def = inp.getAttribute('data-default-value');
+        if ((raw === undefined || raw === null || raw === "") && def !== null) inp.value = def;
+        else inp.value = (raw ?? "");
+      }
 
       if (!canEdit) {
         inp.disabled = true;
@@ -574,62 +609,23 @@
 
         if (path === "name.value") player.name = val || player.name;
 
-        // live UI updates (без перерендера)
-        if (path === "proficiency" || path === "proficiencyCustom") {
-          refreshSkillsAndPassives(root, player.sheet.parsed);
-        }
-        if (path.startsWith("vitality.")) {
-          updateHeroChips(root, player.sheet.parsed);
-        }
-
         scheduleSheetSave(player);
+
+
+        // Live updates
+        if (path === 'proficiency') {
+          updateSkillRowsFromSheet(root, player.sheet.parsed);
+          updatePassivesFromSheet(root, player.sheet.parsed);
+        }
+        if (path === 'vitality.ac.value' || path === 'vitality.hp-max.value' || path === 'vitality.hp-current.value' || path === 'vitality.speed.value') {
+          updateHeroChipsFromSheet(root, player.sheet.parsed);
+        }
       };
 
       inp.addEventListener("input", handler);
       inp.addEventListener("change", handler);
     });
   }
-
-  // ===== live recalculation helpers =====
-  function updateHeroChips(root, sheet) {
-    if (!root || !sheet) return;
-    const acEl = root.querySelector('[data-hero-chip="ac"]');
-    const hpEl = root.querySelector('[data-hero-chip="hp"]');
-    const spdEl = root.querySelector('[data-hero-chip="speed"]');
-    if (acEl) acEl.textContent = String(get(sheet, 'vitality.ac.value', 0));
-    if (hpEl) {
-      const cur = get(sheet, 'vitality.hp-current.value', 0);
-      const max = get(sheet, 'vitality.hp-max.value', 0);
-      hpEl.textContent = `${cur}/${max}`;
-    }
-    if (spdEl) spdEl.textContent = String(get(sheet, 'vitality.speed.value', 0));
-  }
-
-  function refreshSkillsAndPassives(root, sheet) {
-    if (!root || !sheet) return;
-
-    // skills (пересчитываем все, потому что владение влияет на "звезды")
-    const dots = root.querySelectorAll('.lss-dot[data-skill-key]');
-    dots.forEach(dot => {
-      const skillKey = dot.getAttribute('data-skill-key');
-      if (!skillKey) return;
-      const row = dot.closest('.lss-skill-row');
-      if (!row) return;
-      const valEl = row.querySelector('.lss-skill-val');
-      if (valEl) valEl.textContent = formatMod(calcSkillBonus(sheet, skillKey));
-    });
-
-    // passive senses: 10 + бонус навыка (который тоже может включать владение)
-    const passiveRows = root.querySelectorAll('.lss-passive-row[data-passive-key]');
-    passiveRows.forEach(r => {
-      const key = r.getAttribute('data-passive-key');
-      const valEl = r.querySelector('.lss-passive-val');
-      if (!key || !valEl) return;
-      const bonus = (sheet?.skills?.[key]) ? calcSkillBonus(sheet, key) : 0;
-      valEl.textContent = String(10 + bonus);
-    });
-  }
-
 
   // ===== clickable dots binding (skills boost) =====
   function bindSkillBoostDots(root, player, canEdit) {
@@ -674,6 +670,8 @@
             boostSpan.textContent = stars ? ` ${stars}` : "";
           }
         }
+
+        updatePassivesFromSheet(root, sheet);
 
         scheduleSheetSave(player);
       });
@@ -729,7 +727,7 @@
 
   function renderPassives(vm) {
     const rows = vm.passive.map(p => `
-      <div class="lss-passive-row" data-passive-key="${escapeHtml(String(p.key || ''))}">
+      <div class=\"lss-passive-row\" data-passive-skill=\"${escapeHtml(String(p.key||\"\"))}\">
         <div class="lss-passive-val">${escapeHtml(String(p.value))}</div>
         <div class="lss-passive-label">${escapeHtml(p.label)}</div>
       </div>
@@ -744,13 +742,19 @@
   }
 
   function renderProfBox(vm) {
-    const text = (vm.profText !== undefined && vm.profText !== null) ? String(vm.profText) : "";
+    // Всегда показываем и даём редактировать, даже если файл не загружен.
+    const defVal = escapeHtml(String(vm.profText || ""));
     return `
       <div class="lss-profbox">
         <div class="lss-passives-title">ПРОЧИЕ ВЛАДЕНИЯ И ЗАКЛИНАНИЯ</div>
-        <textarea class="lss-prof-textarea" rows="7" placeholder="Напиши сюда прочие владения / языки / заметки по заклинаниям (каждая строка отдельно)"
-          data-sheet-path="text.prof.value.plainText"></textarea>
-        <div class="sheet-note" style="margin-top:6px;">Каждая строка — отдельный пункт. Это поле редактируется даже без загрузки файла.</div>
+        <textarea
+          class="lss-prof-textarea"
+          rows="8"
+          placeholder="Напиши сюда прочие владения, языки, особенности, заклинания и т.п."
+          data-sheet-path="text.profPlain"
+          data-default-value="${defVal}"
+          style="width:100%; resize:vertical;"
+        ></textarea>
       </div>
     `;
   }
@@ -1022,9 +1026,9 @@
             </div>
           </div>
           <div class="sheet-chips">
-            <div class="sheet-chip"><div class="k">AC</div><div class="v" data-hero-chip="ac">${escapeHtml(String(vm.ac))}</div></div>
-            <div class="sheet-chip"><div class="k">HP</div><div class="v" data-hero-chip="hp">${escapeHtml(String(vm.hpCur))}/${escapeHtml(String(vm.hp))}</div></div>
-            <div class="sheet-chip"><div class="k">Speed</div><div class="v" data-hero-chip="speed">${escapeHtml(String(vm.spd))}</div></div>
+            <div class="sheet-chip" data-hero="ac"><div class="k">AC</div><div class="v">${escapeHtml(String(vm.ac))}</div></div>
+            <div class="sheet-chip" data-hero="hp"><div class="k">HP</div><div class="v">${escapeHtml(String(vm.hpCur))}/${escapeHtml(String(vm.hp))}</div></div>
+            <div class="sheet-chip" data-hero="speed"><div class="k">Speed</div><div class="v">${escapeHtml(String(vm.spd))}</div></div>
           </div>
         </div>
       </div>
@@ -1121,4 +1125,3 @@
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
-
