@@ -1028,30 +1028,37 @@ button:hover {
 .lss-passive-row{
   display:flex;
   align-items:center;
-  gap:10px;
-  border:1px solid rgba(255,255,255,0.10);
-  background:rgba(255,255,255,0.04);
+  justify-content:space-between;
+  gap:8px;
+  background:#1a1a1a;
+  border:1px solid #333;
   border-radius:10px;
-  padding:6px 8px;
-  margin-bottom:6px;
+  padding:4px 6px;
+  margin-bottom:5px;
 }
 .lss-passive-row:last-child{ margin-bottom:0; }
 .lss-passive-val{
   font-weight:900;
+  font-size:12px;
+  line-height:14px;
   color:#fff;
   background:rgba(255,255,255,0.10);
   border:1px solid rgba(255,255,255,0.12);
   border-radius:8px;
-  padding:2px 10px;
-  min-width:44px;
+  padding:1px 8px;
+  min-width:40px;
   text-align:center;
+  flex:0 0 auto;
 }
 .lss-passive-label{
-  color:#d8dde8;
-  font-size:13px;
+  color:#eef2ff;
+  font-size:12px;
+  line-height:14px;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+  flex:1 1 auto;
+  text-align:left;
 }
 .lss-prof-scroll{
   max-height:160px;
@@ -1113,4 +1120,19 @@ button:hover {
 .sheet-main{
   overflow:auto;
   min-height:0;
+}
+
+
+/* Editable box for other proficiencies / spells */
+.lss-prof-textarea{
+  width:100%;
+  min-height:140px;
+  resize:vertical;
+  background:#0f0f0f;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:8px 10px;
+  color:#ddd;
+  font-size:13px;
+  line-height:16px;
 }
