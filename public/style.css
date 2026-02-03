@@ -1116,30 +1116,14 @@ button:hover {
 }
 
 
-/* ===== PATCH: пассивные чувства как навыки + textarea для прочих владений ===== */
+/* ===== PATCH: Пассивные чувства как навыки (рамки/текст/числа) ===== */
 .lss-passive-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
+  gap: 8px;
   background:#1a1a1a;
   border:1px solid #333;
   border-radius:10px;
   padding:4px 6px;
-  margin-bottom:5px;
 }
-.lss-passive-row:last-child{ margin-bottom:0; }
-
-.lss-passive-label{
-  font-size:12px;
-  line-height:14px;
-  color:#eef2ff;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  flex:1 1 auto;
-}
-
 .lss-passive-val{
   font-weight:900;
   font-size:12px;
@@ -1151,19 +1135,12 @@ button:hover {
   padding:1px 8px;
   min-width:40px;
   text-align:center;
-  flex:0 0 auto;
 }
-
-.lss-prof-text{
-  width:100%;
-  min-height:140px;
-  resize:vertical;
-  padding:8px 10px;
-  border-radius:10px;
-  border:1px solid #333;
-  background:#111;
-  color:#ddd;
-  font-size:13px;
-  line-height:16px;
+.lss-passive-label{
+  font-size:12px;
+  line-height:14px;
+  color:#eef2ff;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
-.lss-prof-text:disabled{ opacity:0.7; }
