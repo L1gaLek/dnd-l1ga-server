@@ -459,14 +459,11 @@
     let profLines = tiptapToPlainLines(profDoc);
     // если нет tiptap-данных — используем редактируемый plain-text
     if ((!profLines || !profLines.length) && typeof profPlain === "string") {
-      profLines = profPlain.split(/
-?
-/).map(s => s.trim()).filter(Boolean);
+      profLines = profPlain.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     }
     const profText = (typeof profPlain === "string" && profPlain.length)
       ? profPlain
-      : (profLines && profLines.length ? profLines.join("
-") : "");
+      : (profLines && profLines.length ? profLines.join("\n") : "");
 
     // spells info + slots + lists
     const spellsInfo = {
@@ -591,8 +588,7 @@ function bindEditableInputs(root, player, canEdit) {
           const profDoc = player.sheet.parsed?.text?.prof?.value?.data;
           const lines = tiptapToPlainLines(profDoc);
           if (lines && lines.length) {
-            setByPath(player.sheet.parsed, "text.profPlain.value", lines.join("
-"));
+            setByPath(player.sheet.parsed, "text.profPlain.value", lines.join("\n"));
           }
         }
       }
