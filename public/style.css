@@ -1328,81 +1328,6 @@ textarea[data-sheet-path="text.profPlain.value"]{
   line-height: 1;
 }
 
-/* ===== Spells list (one column levels) ===== */
-.spells-levels-col{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
-.spells-level-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-}
-
-.spells-level-body{ margin-top:8px; display:flex; flex-direction:column; gap:8px; }
-
-.spell-item{
-  border:1px solid rgba(255,255,255,0.12);
-  border-radius:12px;
-  padding:8px 10px;
-}
-
-.spell-item-top{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-}
-
-.spell-url{
-  display:inline-block;
-  padding:4px 8px;
-  border:1px solid rgba(255,255,255,0.18);
-  border-radius:10px;
-  text-decoration:none;
-}
-
-.spell-url:hover{
-  border-color:#4aa3ff;
-  box-shadow:0 0 0 2px rgba(74,163,255,0.15);
-}
-
-.spell-desc{ display:none; margin-top:8px; }
-.spell-desc.open{ display:block; }
-
-.spell-edit-grid{ display:grid; grid-template-columns: 1fr; gap:6px; }
-.spell-edit-label{ font-size:12px; opacity:0.8; }
-
-/* Серое поле описания (в стиле тёмной темы) */
-.spell-edit-desc{
-  border:1px solid rgba(255,255,255,0.18);
-  border-radius:12px;
-  background: rgba(255,255,255,0.06);
-}
-
-.spell-add-panel{
-  margin-top:8px;
-  border:1px dashed rgba(255,255,255,0.16);
-  border-radius:12px;
-  padding:8px;
-}
-
-.spell-add-tabs{ display:flex; gap:6px; margin-bottom:8px; }
-.spell-add-tab{ padding:3px 8px; font-size:12px; }
-.spell-add-tab.active{ border-color:#4aa3ff; box-shadow:0 0 0 2px rgba(74,163,255,0.15); }
-
-.spell-add-input, .spell-add-text{
-  width:100%;
-  border-radius:12px;
-  border:1px solid rgba(255,255,255,0.18);
-  background: rgba(0,0,0,0.25);
-}
-
-.spell-add-actions{ display:flex; gap:6px; margin-top:8px; }
-
 /* Slots grid (1..9) in 3 rows */
 .slots-frame {
   width: 100%;
@@ -1462,24 +1387,16 @@ textarea[data-sheet-path="text.profPlain.value"]{
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  border: 2px solid rgba(255,255,255,0.35);
-  background: rgba(255,255,255,0.06);
-  box-shadow: 0 0 0 2px rgba(0,0,0,0.22) inset;
-  cursor: pointer;
+  border: 1px solid rgba(80, 180, 255, 0.95);
+  background: transparent;
+  transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
 }
-
-/* голубой = ячейка доступна */
-.slot-dot.on {
-  background: rgba(74, 163, 255, 0.85);
-  border-color: rgba(74, 163, 255, 0.95);
-  box-shadow:
-    0 0 0 2px rgba(74, 163, 255, 0.35),
-    0 0 0 2px rgba(0,0,0,0.20) inset;
+.slot-dot.filled {
+  background: rgba(80, 180, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(80, 180, 255, 0.16);
 }
-
-.slot-dot:hover {
-  border-color: rgba(74, 163, 255, 0.75);
-}
+.slot-dot.clickable { cursor: pointer; }
+.slot-dot.clickable:hover { transform: scale(1.12); }
 .slot-dots-empty {
   opacity: 0.5;
   font-size: 12px;
