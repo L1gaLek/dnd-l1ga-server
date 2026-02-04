@@ -1387,16 +1387,9 @@ textarea[data-sheet-path="text.profPlain.value"]{
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  border: 1px solid rgba(80, 180, 255, 0.95);
-  background: transparent;
-  transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.10);
 }
-.slot-dot.filled {
-  background: rgba(80, 180, 255, 0.95);
-  box-shadow: 0 0 0 2px rgba(80, 180, 255, 0.16);
-}
-.slot-dot.clickable { cursor: pointer; }
-.slot-dot.clickable:hover { transform: scale(1.12); }
 .slot-dots-empty {
   opacity: 0.5;
   font-size: 12px;
