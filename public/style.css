@@ -1419,21 +1419,31 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 .weapon-add-btn:disabled{opacity:.5; cursor:not-allowed;}
 
-.weapons-list{ display:flex; flex-direction:column; gap:10px; }
+.weapons-list{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 1000px){
+  .weapons-list{
+    grid-template-columns: 1fr;
+  }
+}
 
 .weapon-card{ padding:12px; }
 .weapon-card.legacy{ opacity:.9; }
 
 .weapon-head{
   display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
+  flex-direction:column;          /* ⬅ вертикально */
+  gap:8px;
   margin-bottom:10px;
 }
+
 .weapon-title-input{
   width:100%;
-  max-width: 360px;
+  min-width:0;                    /* ⬅ важно, чтобы не ломало grid */
   padding:8px 10px;
   border-radius:10px;
   border:1px solid rgba(255,255,255,.14);
@@ -1441,6 +1451,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   color:#fff;
   font-weight:600;
 }
+
 .weapon-title{
   font-weight:700;
 }
@@ -1538,3 +1549,33 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-desc.collapsed{ display:none; }
 .weapon-desc-text{ width:100%; resize:vertical; }
 
+.weapon-summary{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.weapon-chip{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  padding:6px 10px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  min-width:90px;
+}
+
+.weapon-chip .label{
+  font-size:11px;
+  opacity:.75;
+}
+
+.weapon-chip .value{
+  font-size:15px;
+  font-weight:800;
+}
+
+.weapon-card.is-collapsed .weapon-body{
+  display:none;
+}
