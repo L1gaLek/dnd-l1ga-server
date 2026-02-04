@@ -1613,8 +1613,6 @@ function bindSlotEditors(root, player, canEdit) {
     </div>
   </div>
 `;
-      }).join("")
-    : `<div class="sheet-note">Оружие пока не добавлено. Нажми «Добавить оружие».</div>`;
 
   return `
     <div class="sheet-section" data-combat-root>
@@ -1960,6 +1958,7 @@ function bindSlotEditors(root, player, canEdit) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
 
 
 
