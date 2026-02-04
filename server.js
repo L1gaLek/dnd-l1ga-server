@@ -4,9 +4,55 @@ const http = require("http");
 const WebSocket = require("ws");
 const { v4: uuidv4 } = require("uuid"); // уникальные id
 
+const https = require("https");
+const httpMod = require("http");
+
+function fetchText(url) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const lib = (u.protocol === "https:") ? https : httpMod;
+
+    const req = lib.get(u, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/html,application/xhtml+xml"
+      }
+    }, (res) => {
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => data += chunk);
+      res.on("end", () => resolve({ status: res.statusCode || 200, text: data }));
+    });
+
+    req.on("error", reject);
+  });
+}
+
 // ================== EXPRESS ==================
 const app = express();
 app.use(express.static("public"));
+
+// ===== Proxy fetch for spells (dnd.su) =====
+app.get("/api/spell", async (req, res) => {
+  try {
+    const rawUrl = String(req.query.url || "").trim();
+    if (!rawUrl) return res.status(400).json({ error: "url required" });
+
+    let u;
+    try { u = new URL(rawUrl); } catch { return res.status(400).json({ error: "bad url" }); }
+
+    // Разрешаем только dnd.su (чтобы не превращать сервер в открытый прокси)
+    if (u.hostname !== "dnd.su") return res.status(403).json({ error: "forbidden host" });
+
+    const { status, text } = await fetchText(u.toString());
+    if (status >= 400) return res.status(status).json({ error: "fetch failed" });
+
+    res.json({ html: text });
+  } catch (e) {
+    res.status(500).json({ error: "server error" });
+  }
+});
+
 const server = http.createServer(app);
 
 // ================== WEBSOCKET ==================
@@ -441,3 +487,4 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
