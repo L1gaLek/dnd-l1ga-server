@@ -31,7 +31,8 @@ const playerSizeInput = document.getElementById('player-size');
 const isBaseCheckbox = document.getElementById('is-base');
 
 const dice = document.getElementById('dice');
-const rollResult = document.getElementById('roll-result');
+const diceCountInput = document.getElementById('dice-count');
+const diceRolls = document.getElementById('dice-rolls');
 
 const editEnvBtn = document.getElementById('edit-environment');
 const addWallBtn = document.getElementById('add-wall');
@@ -473,7 +474,7 @@ board.addEventListener('click', e => {
   selectedPlayer = null;
 });
 
-// ===== Dice Viz (canvas animation) =====
+// ===== Dice Viz (panel + canvas animation) =====
 const diceVizKind = document.getElementById("dice-viz-kind");
 const diceVizValue = document.getElementById("dice-viz-value");
 const diceCanvas = document.getElementById("dice-canvas");
@@ -482,12 +483,35 @@ const diceCtx = diceCanvas?.getContext?.("2d");
 let diceAnimFrame = null;
 let diceAnimBusy = false;
 
+function clampInt(v, min, max, fallback) {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+function rollDie(sides) {
+  return Math.floor(Math.random() * sides) + 1;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
 function drawDieFace(ctx, w, h, sides, value, t) {
   ctx.clearRect(0, 0, w, h);
 
-  // лёгкое “качание”
-  const cx = w / 2, cy = h / 2;
-  const ang = Math.sin(t * 0.02) * 0.25;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  // лёгкая тряска/вращение
+  const ang = Math.sin(t * 0.02) * 0.22;
   const scale = 1 + Math.sin(t * 0.015) * 0.02;
 
   ctx.save();
@@ -496,7 +520,6 @@ function drawDieFace(ctx, w, h, sides, value, t) {
   ctx.scale(scale, scale);
   ctx.translate(-cx, -cy);
 
-  // “кубик” как карточка (универсально для dN)
   const pad = 14;
   const rw = w - pad * 2;
   const rh = h - pad * 2;
@@ -531,77 +554,95 @@ function drawDieFace(ctx, w, h, sides, value, t) {
   ctx.restore();
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  const rr = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-  ctx.closePath();
+function renderRollChips(values, activeIndex) {
+  if (!diceRolls) return;
+  diceRolls.innerHTML = "";
+  values.forEach((v, i) => {
+    const chip = document.createElement("span");
+    chip.className = "dice-chip" + (i === activeIndex ? " active" : "");
+    chip.textContent = (v === null ? "…" : String(v));
+    diceRolls.appendChild(chip);
+  });
 }
 
-function animateDiceRoll(sides, finalValue) {
-  if (!diceCtx || !diceCanvas) {
-    // если canvas не загрузился — просто показываем результат
-    rollResult.textContent = `Результат: ${finalValue}`;
-    return;
-  }
+function animateSingleRoll(sides, finalValue) {
+  // Возвращает Promise, чтобы можно было кидать несколько кубов по очереди
+  return new Promise((resolve) => {
+    if (!diceCtx || !diceCanvas) {
+      resolve();
+      return;
+    }
 
-  // блокируем повторные клики, чтобы анимации не накладывались
+    const start = performance.now();
+    const dur = 420; // ms на один кубик
+    let lastShown = rollDie(sides);
+
+    function frame(now) {
+      const t = now - start;
+      const p = Math.min(1, t / dur);
+
+      const changeProb = 0.92 - 0.86 * p; // 0.92 -> 0.06
+      if (Math.random() < changeProb) lastShown = rollDie(sides);
+
+      drawDieFace(diceCtx, diceCanvas.width, diceCanvas.height, sides, lastShown, t);
+
+      if (p < 1) {
+        diceAnimFrame = requestAnimationFrame(frame);
+      } else {
+        drawDieFace(diceCtx, diceCanvas.width, diceCanvas.height, sides, finalValue, t + 999);
+        resolve();
+      }
+    }
+
+    if (diceAnimFrame) cancelAnimationFrame(diceAnimFrame);
+    diceAnimFrame = requestAnimationFrame(frame);
+  });
+}
+
+// ================== DICE (from the bottom-left panel) ==================
+rollBtn?.addEventListener('click', async () => {
   if (diceAnimBusy) return;
   diceAnimBusy = true;
+  rollBtn.disabled = true;
 
-  diceVizKind.textContent = `d${sides}`;
-  diceVizValue.textContent = "…";
+  const sides = clampInt(dice?.value, 2, 100, 20);
+  const count = clampInt(diceCountInput?.value, 1, 20, 1);
 
-  const start = performance.now();
-  const dur = 1000; // ms
-  let lastShown = finalValue;
+  // Итоговые значения заранее
+  const finals = Array.from({ length: count }, () => rollDie(sides));
+  const shown = Array.from({ length: count }, () => null);
 
-  function frame(now) {
-    const t = now - start;
-    const p = Math.min(1, t / dur);
+  renderRollChips(shown, 0);
 
-    // чем ближе к концу — тем реже меняем число (ощущение “затухания”)
-    const changeProb = 0.85 - 0.75 * p; // 0.85 -> 0.10
-    if (Math.random() < changeProb) {
-      lastShown = Math.floor(Math.random() * sides) + 1;
-    }
+  if (diceVizKind) diceVizKind.textContent = `d${sides} × ${count}`;
+  if (diceVizValue) diceVizValue.textContent = "…";
 
-    drawDieFace(diceCtx, diceCanvas.width, diceCanvas.height, sides, lastShown, t);
-
-    if (p < 1) {
-      diceAnimFrame = requestAnimationFrame(frame);
-    } else {
-      // финальный кадр
-      drawDieFace(diceCtx, diceCanvas.width, diceCanvas.height, sides, finalValue, t + 999);
-      diceVizValue.textContent = String(finalValue);
-      rollResult.textContent = `Результат: ${finalValue}`;
-      diceAnimBusy = false;
-    }
+  // Анимация: по одному кубику (видно процесс)
+  for (let i = 0; i < count; i++) {
+    renderRollChips(shown, i);
+    await animateSingleRoll(sides, finals[i]);
+    shown[i] = finals[i];
+    renderRollChips(shown, Math.min(i + 1, count - 1));
   }
 
-  // на старте рисуем первый кадр
-  if (diceAnimFrame) cancelAnimationFrame(diceAnimFrame);
-  diceAnimFrame = requestAnimationFrame(frame);
-}
+  const sum = finals.reduce((a, b) => a + b, 0);
 
-// ================== DICE ==================
-rollBtn.addEventListener('click', () => {
-  if (diceAnimBusy) return;
+  // без "Результат:" — только число
+  if (diceVizValue) diceVizValue.textContent = String(sum);
 
-  const sides = parseInt(dice.value, 10);
-  const result = Math.floor(Math.random() * sides) + 1;
+  renderRollChips(shown, -1);
 
-  // запускаем визуализацию, а лог пишем сразу (или можно после завершения)
-  animateDiceRoll(sides, result);
-  sendMessage({ type: 'log', text: `Бросок d${sides}: ${result}` });
+  sendMessage({
+    type: 'log',
+    text: `Бросок d${sides} × ${count}: ${finals.join(' + ')} = ${sum}`
+  });
+
+  diceAnimBusy = false;
+  rollBtn.disabled = false;
 });
 
 // ================== END TURN ==================
-endTurnBtn.addEventListener('click', () => sendMessage({ type: 'endTurn' }));
+endTurnBtn?.addEventListener('click', () => sendMessage({ type: 'endTurn' }));
 
 // ================== INITIATIVE ==================
 rollInitiativeBtn.addEventListener('click', () => sendMessage({ type: 'rollInitiative' }));
@@ -708,3 +749,4 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
