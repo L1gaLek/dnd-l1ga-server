@@ -1419,7 +1419,15 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 .weapon-add-btn:disabled{opacity:.5; cursor:not-allowed;}
 
-.weapons-list{ display:flex; flex-direction:column; gap:10px; }
+.weapons-list{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+@media (max-width: 860px){
+  .weapons-list{ grid-template-columns: 1fr; }
+}
 
 .weapon-card{ padding:12px; }
 .weapon-card.legacy{ opacity:.9; }
@@ -1538,3 +1546,38 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-desc.collapsed{ display:none; }
 .weapon-desc-text{ width:100%; resize:vertical; }
 
+
+.weapon-head-right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-left:auto;
+}
+
+.weapon-chip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.18);
+  background: rgba(0,0,0,.16);
+}
+
+.weapon-chip .label{
+  font-size:11px;
+  opacity:.8;
+  white-space:nowrap;
+}
+
+.weapon-chip .value{
+  font-weight:800;
+  letter-spacing:.3px;
+  white-space:nowrap;
+}
+
+/* сворачивание карточки: скрываем всё, кроме шапки */
+.weapon-card.is-collapsed .weapon-body,
+.weapon-card.is-collapsed .weapon-desc{
+  display:none;
+}
