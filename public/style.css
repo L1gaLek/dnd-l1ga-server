@@ -1588,3 +1588,82 @@ textarea[data-sheet-path="text.profPlain.value"]{
 #dice-viz-value{
   font-size: 18px;
 }
+
+
+/* ===== Dice Panel (bottom-left) ===== */
+.dice-panel{
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  width: 270px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #444;
+  background: rgba(20,20,20,0.92);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  z-index: 9998;
+  user-select: none;
+}
+
+.dice-panel__title{
+  font-weight: 900;
+  font-size: 13px;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.dice-panel__row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dice-panel__label{
+  width: 54px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.dice-panel__select,
+.dice-panel__count{
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.dice-panel__count{
+  flex: 0 0 70px;
+}
+
+.dice-panel__btn{
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  padding: 7px 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+#dice-canvas{
+  width: 250px;
+  height: 170px;
+  display: block;
+  margin: 4px auto 0;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.dice-panel__meta{
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  font-weight: 900;
+}
