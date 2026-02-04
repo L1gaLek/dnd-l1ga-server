@@ -1419,40 +1419,33 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 .weapon-add-btn:disabled{opacity:.5; cursor:not-allowed;}
 
-.weapons-list{
-  display:grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
-}
-
-@media (max-width: 980px){
-  .weapons-list{ grid-template-columns: 1fr; }
-}
+.weapons-list{ display:flex; flex-direction:column; gap:10px; }
 
 .weapon-card{ padding:12px; }
 .weapon-card.legacy{ opacity:.9; }
 
 .weapon-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.weapon-title-input{
+  width:100%;
+  max-width: 360px;
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  color:#fff;
+  font-weight:600;
+}
 .weapon-title{
   font-weight:700;
 }
 
-/* Действия (кнопки) */
-.weapon-actions{
-  display:flex;
-  flex: 0 0 auto;
-  align-items:center;
-  gap:8px;
-  flex-wrap:wrap;              /* ✅ кнопки не вылезают */
-  margin-left:auto;            /* ✅ при наличии места уезжают вправо */
-}
-
-/* На очень узких — разнесём по строкам красиво */
-@media (max-width: 540px){
-  .weapon-actions{ width:100%; justify-content:flex-end; margin-left:0; }
-  .weapon-head-right{ width:100%; justify-content:flex-start; }
-}
-  
+.weapon-actions{ display:flex; align-items:center; gap:8px; }
 .weapon-btn{
   padding:6px 10px;
   border-radius:10px;
@@ -1544,44 +1537,4 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-desc{ margin-top:10px; }
 .weapon-desc.collapsed{ display:none; }
 .weapon-desc-text{ width:100%; resize:vertical; }
-
-
-/* Правая часть (чипы) */
-.weapon-head-right{
-  display:flex;
-  flex: 0 0 auto;
-  align-items:center;
-  gap:8px;
-  flex-wrap:wrap;              /* ✅ если мало места — переносится */
-}
-
-  
-.weapon-chip{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding:6px 10px;
-  border-radius:12px;
-  border:1px solid rgba(255,255,255,.16);
-  background: rgba(255,255,255,.06);
-  backdrop-filter: blur(2px);
-}
-
-.weapon-chip .label{
-  font-size:11px;
-  opacity:.8;
-  white-space:nowrap;
-}
-
-.weapon-chip .value{
-  font-weight:800;
-  letter-spacing:.2px;
-  white-space:nowrap;
-}
-
-/* сворачивание карточки: скрываем всё, кроме шапки */
-.weapon-card.is-collapsed .weapon-body,
-.weapon-card.is-collapsed .weapon-desc{
-  display:none;
-}
 
