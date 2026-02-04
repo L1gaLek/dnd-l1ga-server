@@ -41,7 +41,7 @@ app.get("/api/spell", async (req, res) => {
     let u;
     try { u = new URL(rawUrl); } catch { return res.status(400).json({ error: "bad url" }); }
 
-    // Разрешаем только dnd.su (чтобы не превращать сервер в открытый прокси)
+    // только dnd.su (чтобы не было открытого прокси)
     if (u.hostname !== "dnd.su") return res.status(403).json({ error: "forbidden host" });
 
     const { status, text } = await fetchText(u.toString());
@@ -487,4 +487,3 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
