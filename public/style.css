@@ -667,6 +667,12 @@ button:hover {
   gap: 10px;
 }
 
+.sheet-grid-1 {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr);
+  gap: 10px;
+}
+
 .sheet-grid-3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -1408,13 +1414,14 @@ textarea[data-sheet-path="text.profPlain.value"]{
   .slots-grid { grid-template-columns: 1fr; }
 }
 
-/* ===== Spell add UI ===== */
+
+/* ===== Spells (cards + add/edit modal) ===== */
 .spell-add-row{
   display:flex;
   gap:8px;
   align-items:center;
   flex-wrap:wrap;
-  margin: 8px 0 8px 0;
+  margin: 8px 0 10px 0;
 }
 
 .spell-url-input{
@@ -1457,6 +1464,11 @@ textarea[data-sheet-path="text.profPlain.value"]{
   margin-bottom: 8px;
 }
 
+.spell-card-actions{
+  display:flex;
+  gap: 6px;
+}
+
 .spell-card-title{
   display:block;
   color: #fff;
@@ -1473,7 +1485,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   opacity: 0.95;
 }
 
-/* СЕРАЯ рамка описания (как ты просил) */
+/* Серый блок описания (по задаче) */
 .spell-desc{
   border: 1px solid #666;
   border-radius: 10px;
@@ -1483,61 +1495,59 @@ textarea[data-sheet-path="text.profPlain.value"]{
   line-height: 1.35;
 }
 
-.spell-del-btn{
-  width: 28px;
-  height: 28px;
+.spell-mini-btn{
+  width: 30px;
+  height: 30px;
   border-radius: 10px;
-  border: 1px solid rgba(255,0,0,0.35);
-  background: rgba(120,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.06);
   color: #fff;
   font-weight: 800;
+  cursor: pointer;
+}
+.spell-mini-btn:hover{ filter: brightness(1.1); }
+.spell-mini-btn.danger{
+  border-color: rgba(255,0,0,0.35);
+  background: rgba(120,0,0,0.25);
 }
 
-/* ===== Manual modal ===== */
-.spell-manual-modal.hidden{ display:none; }
-
-.spell-manual-modal{
+/* modal */
+.spell-modal.hidden{ display:none; }
+.spell-modal{
   position: fixed;
   inset: 0;
   z-index: 9999;
 }
-
-.spell-manual-backdrop{
+.spell-modal-backdrop{
   position:absolute;
   inset:0;
   background: rgba(0,0,0,0.6);
 }
-
-.spell-manual-panel{
+.spell-modal-panel{
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(720px, calc(100vw - 24px));
+  width: min(760px, calc(100vw - 24px));
   background: #171717;
   border: 1px solid #333;
   border-radius: 14px;
-  padding: 14px;
+  overflow: hidden;
 }
-
-.spell-manual-title{
-  font-size: 16px;
-  font-weight: 800;
-  margin-bottom: 10px;
+.spell-modal-head{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
-
-.spell-manual-row{
-  margin-bottom: 10px;
-}
-
-.spell-manual-label{
-  font-size: 12px;
-  opacity: 0.85;
-  margin-bottom: 6px;
-}
-
-#spell-manual-name,
-#spell-manual-desc{
+.spell-modal-title{ font-weight: 900; }
+.spell-modal-body{ padding: 12px; }
+.spell-modal-row{ margin-bottom: 10px; }
+.spell-modal-label{ font-size: 12px; opacity: 0.85; margin-bottom: 6px; }
+#spell-modal-name,
+#spell-modal-url,
+#spell-modal-desc{
   width: 100%;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.16);
@@ -1545,8 +1555,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   color: inherit;
   padding: 8px 10px;
 }
-
-.spell-manual-actions{
+.spell-modal-actions{
   display:flex;
   gap: 8px;
   justify-content: flex-end;
