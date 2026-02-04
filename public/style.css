@@ -1538,3 +1538,53 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-desc.collapsed{ display:none; }
 .weapon-desc-text{ width:100%; resize:vertical; }
 
+/* ===== Dice Visualizer (bottom-left) ===== */
+.dice-viz{
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  width: 160px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #444;
+  background: rgba(20,20,20,0.92);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  z-index: 9998;
+  user-select: none;
+}
+
+.dice-viz-title{
+  font-weight: 800;
+  font-size: 12px;
+  color: #fff;
+  margin-bottom: 8px;
+  opacity: 0.95;
+}
+
+#dice-canvas{
+  width: 140px;
+  height: 140px;
+  display: block;
+  margin: 0 auto;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.dice-viz-meta{
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 800;
+}
+
+#dice-viz-kind{
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+#dice-viz-value{
+  font-size: 18px;
+}
