@@ -1957,7 +1957,7 @@ function bindSlotEditors(root, player, canEdit) {
   }
 
   window.InfoModal = { init, open, refresh, close: closeModal };
-})();
+
 
 
 
