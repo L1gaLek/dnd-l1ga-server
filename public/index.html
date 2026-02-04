@@ -146,9 +146,36 @@
 <!-- Dice Visualizer (bottom-left) -->
 <div id="dice-viz" class="dice-viz">
   <div class="dice-viz-title">Бросок</div>
-  <canvas id="dice-canvas" width="130" height="130"></canvas>
+
+  <div class="dice-viz-controls">
+    <select id="dice" class="dice-viz-select" title="Выбор кубика">
+      <option value="2">d2</option>
+      <option value="4">d4</option>
+      <option value="6">d6</option>
+      <option value="8">d8</option>
+      <option value="10">d10</option>
+      <option value="12">d12</option>
+      <option value="20" selected>d20</option>
+      <option value="100">d100</option>
+    </select>
+
+    <input id="dice-count"
+           class="dice-viz-count"
+           type="number"
+           min="1"
+           max="20"
+           value="1"
+           title="Количество кубиков">
+
+    <button id="roll" class="dice-viz-btn" type="button">Бросить</button>
+  </div>
+
+  <canvas id="dice-canvas" width="220" height="140"></canvas>
+
+  <div id="dice-rolls" class="dice-viz-rolls" aria-label="Результаты броска"></div>
+
   <div class="dice-viz-meta">
-    <span id="dice-viz-kind">d20</span>
+    <span id="dice-viz-kind">d20 × 1</span>
     <span id="dice-viz-value">—</span>
   </div>
 </div>
@@ -156,6 +183,7 @@
 
 </body>
 </html>
+
 
 
 
