@@ -1407,3 +1407,148 @@ textarea[data-sheet-path="text.profPlain.value"]{
 @media (max-width: 520px) {
   .slots-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== Spell add UI ===== */
+.spell-add-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+  margin: 8px 0 8px 0;
+}
+
+.spell-url-input{
+  flex: 1 1 260px;
+  min-width: 220px;
+  height: 30px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  padding: 0 10px;
+}
+
+.spell-btn{
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.spell-cards{
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.spell-card{
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.18);
+  padding: 10px;
+}
+
+.spell-card-head{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.spell-card-title{
+  display:block;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,0.18);
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.25);
+}
+
+.spell-card-title.nolink{
+  cursor: default;
+  opacity: 0.95;
+}
+
+/* СЕРАЯ рамка описания (как ты просил) */
+.spell-desc{
+  border: 1px solid #666;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.22);
+  white-space: pre-wrap;
+  line-height: 1.35;
+}
+
+.spell-del-btn{
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,0,0,0.35);
+  background: rgba(120,0,0,0.25);
+  color: #fff;
+  font-weight: 800;
+}
+
+/* ===== Manual modal ===== */
+.spell-manual-modal.hidden{ display:none; }
+
+.spell-manual-modal{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.spell-manual-backdrop{
+  position:absolute;
+  inset:0;
+  background: rgba(0,0,0,0.6);
+}
+
+.spell-manual-panel{
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(720px, calc(100vw - 24px));
+  background: #171717;
+  border: 1px solid #333;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.spell-manual-title{
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.spell-manual-row{
+  margin-bottom: 10px;
+}
+
+.spell-manual-label{
+  font-size: 12px;
+  opacity: 0.85;
+  margin-bottom: 6px;
+}
+
+#spell-manual-name,
+#spell-manual-desc{
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  padding: 8px 10px;
+}
+
+.spell-manual-actions{
+  display:flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
