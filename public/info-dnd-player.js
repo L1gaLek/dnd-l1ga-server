@@ -689,7 +689,7 @@ function updateWeaponsBonuses(root, sheet) {
   const list = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
 
   const cards = root.querySelectorAll('.weapon-card[data-weapon-idx]');
-  card.classList.toggle('is-collapsed', !!w.collapsed);
+  
    cards.forEach(card => {
     const idx = safeInt(card.getAttribute('data-weapon-idx'), -1);
     if (idx < 0) return;
@@ -1960,5 +1960,6 @@ function bindSlotEditors(root, player, canEdit) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
 
 
