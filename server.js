@@ -7,92 +7,98 @@ const { v4: uuidv4 } = require("uuid"); // уникальные id
 // ================== EXPRESS ==================
 const app = express();
 app.use(express.static("public"));
-const server = http.createServer(app);
 
-// ================== SIMPLE HTML PROXY (for spell pages) ==================
-// dnd.su often blocks cross-origin fetch from the browser.
-// We proxy ONLY https://dnd.su/ URLs.
-function isAllowedSpellUrl(raw) {
-  try {
-    const u = new URL(String(raw));
-    if (!['http:', 'https:'].includes(u.protocol)) return false;
-    return u.hostname === 'dnd.su';
-  } catch {
-    return false;
-  }
-}
+// ================== SPELL META PROXY (dnd.su) ==================
+// Нужен для получения названия/описания по ссылке без CORS в браузере.
+// Парсинг:
+//  - title: <h2 class="card-title" itemprop="name"> ... </h2>
+//  - description: от <ul class="params card__article-body"> до <section class="comments-block block block_100">
 
-function stripHtml(html) {
-  return String(html)
-    .replace(/<\s*br\s*\/?>/gi, "\n")
-    .replace(/<\s*\/p\s*>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+function stripTagsToText(html) {
+  if (!html) return "";
+  let s = String(html);
+  // убрать скрипты/стили
+  s = s.replace(/<script[\s\S]*?<\/script>/gi, "");
+  s = s.replace(/<style[\s\S]*?<\/style>/gi, "");
+
+  // переводы строк для блоков
+  s = s.replace(/<br\s*\/?>/gi, "\n");
+  s = s.replace(/<\/(p|div|h\d|ul|ol|li|section|article)>/gi, "\n");
+  s = s.replace(/<li[^>]*>/gi, "• ");
+
+  // удалить теги
+  s = s.replace(/<[^>]+>/g, "");
+
+  // decode basic entities
+  s = s
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
     .replace(/&#039;/g, "'")
     .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/&gt;/g, ">");
+
+  // trim excessive blank lines
+  s = s.replace(/\r/g, "");
+  s = s.replace(/\n{3,}/g, "\n\n");
+  return s.trim();
 }
 
-// Returns { name, description } extracted from dnd.su spell page
+function extractBetween(html, startNeedle, endNeedle) {
+  const a = html.indexOf(startNeedle);
+  if (a < 0) return "";
+  const b = html.indexOf(endNeedle, a + startNeedle.length);
+  if (b < 0) return html.slice(a);
+  return html.slice(a, b);
+}
+
 app.get('/api/spellmeta', async (req, res) => {
   try {
-    const url = req.query?.url;
-    if (!url || !isAllowedSpellUrl(url)) {
-      return res.status(400).json({ error: 'Bad url. Only https://dnd.su/... is allowed.' });
+    const url = String(req.query.url || '').trim();
+    if (!url) return res.status(400).json({ error: 'url_required' });
+
+    let parsed;
+    try { parsed = new URL(url); } catch { return res.status(400).json({ error: 'bad_url' }); }
+    // разрешаем только dnd.su
+    if (parsed.hostname !== 'dnd.su') {
+      return res.status(400).json({ error: 'only_dnd_su_allowed' });
     }
 
     const r = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (proxy)'
+        'user-agent': 'Mozilla/5.0 (DND-GAME spellmeta)'
       }
     });
-    if (!r.ok) {
-      return res.status(502).json({ error: `Fetch failed: ${r.status}` });
-    }
+    if (!r.ok) return res.status(502).json({ error: 'fetch_failed' });
     const html = await r.text();
 
-    
-// Name: <h2 class="card-title" itemprop="name">...</h2>
-let name = '';
-const h2 = html.match(/<h2[^>]*class="card-title"[^>]*itemprop="name"[^>]*>([\s\S]*?)<\/h2>/i);
-if (h2) name = stripHtml(h2[1]);
-if (!name) {
-  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-  if (h1) name = stripHtml(h1[1]);
-}
-if (!name) {
-  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (title) name = stripHtml(title[1]).replace(/\s*\|\s*DND\.SU.*$/i, '').trim();
-}
+    // title
+    const titleNeedle = '<h2 class="card-title" itemprop="name">';
+    let titlePart = extractBetween(html, titleNeedle, '</h2>');
+    titlePart = titlePart ? titlePart.replace(titleNeedle, '') : '';
+    let title = stripTagsToText(titlePart);
+    // убрать хвосты типа "— заклинание"/"- заговор"
+    title = title.replace(/\s*[-—–]\s*(заклинание|заговор)\b.*$/i, '').trim();
 
-// remove "- заклинание" / "— заклинание" suffix if present
-name = String(name).replace(/\s*[-–—]\s*заклинани[еяё].*$/i, '').trim();
+    // description
+    const descStart = '<ul class="params card__article-body">';
+    const descEnd = '<section class="comments-block block block_100">';
+    const descSlice = extractBetween(html, descStart, descEnd);
+    let description = '';
+    if (descSlice) {
+      // срезаем стартовую метку, чтобы не дублировать
+      const body = descSlice.replace(descStart, '');
+      description = stripTagsToText(body);
+    }
 
-// Description slice: from <ul class="params card__article-body"> to <section class="comments-block block block_100">
-let body = html;
-
-const startIdx = body.search(/<ul[^>]*class="params\s+card__article-body"[^>]*>/i);
-if (startIdx >= 0) body = body.slice(startIdx);
-
-const endIdx = body.search(/<section[^>]*class="comments-block\s+block\s+block_100"[^>]*>/i);
-if (endIdx > 0) body = body.slice(0, endIdx);
-
-// remove scripts/styles
-body = body.replace(/<script[\s\S]*?<\/script>/gi, '')
-           .replace(/<style[\s\S]*?<\/style>/gi, '');
-
-const description = stripHtml(body);
-
-res.json({ name: name || 'Заклинание', description });
+    return res.json({ name: title, description });
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Internal error' });
+    console.error('spellmeta error', e);
+    return res.status(500).json({ error: 'internal' });
   }
 });
+
+const server = http.createServer(app);
 
 // ================== WEBSOCKET ==================
 const wss = new WebSocket.Server({ server });
