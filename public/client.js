@@ -475,11 +475,130 @@ board.addEventListener('click', e => {
 
 // ================== DICE ==================
 rollBtn.addEventListener('click', () => {
+  if (diceAnimBusy) return;
+
   const sides = parseInt(dice.value, 10);
   const result = Math.floor(Math.random() * sides) + 1;
-  rollResult.textContent = `Результат: ${result}`;
+
+  // запускаем визуализацию, а лог пишем сразу (или можно после завершения)
+  animateDiceRoll(sides, result);
   sendMessage({ type: 'log', text: `Бросок d${sides}: ${result}` });
 });
+
+// ===== Dice Viz (canvas animation) =====
+const diceVizKind = document.getElementById("dice-viz-kind");
+const diceVizValue = document.getElementById("dice-viz-value");
+const diceCanvas = document.getElementById("dice-canvas");
+const diceCtx = diceCanvas?.getContext?.("2d");
+
+let diceAnimFrame = null;
+let diceAnimBusy = false;
+
+function drawDieFace(ctx, w, h, sides, value, t) {
+  ctx.clearRect(0, 0, w, h);
+
+  // лёгкое “качание”
+  const cx = w / 2, cy = h / 2;
+  const ang = Math.sin(t * 0.02) * 0.25;
+  const scale = 1 + Math.sin(t * 0.015) * 0.02;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
+  ctx.scale(scale, scale);
+  ctx.translate(-cx, -cy);
+
+  // “кубик” как карточка (универсально для dN)
+  const pad = 14;
+  const rw = w - pad * 2;
+  const rh = h - pad * 2;
+  const r = 18;
+
+  // тень
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "#000";
+  roundRect(ctx, pad + 3, pad + 6, rw, rh, r);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // тело
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  ctx.strokeStyle = "rgba(255,255,255,0.20)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, pad, pad, rw, rh, r);
+  ctx.fill();
+  ctx.stroke();
+
+  // подпись dN
+  ctx.fillStyle = "rgba(255,255,255,0.70)";
+  ctx.font = "bold 14px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(`d${sides}`, cx, pad + 26);
+
+  // значение
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.font = "900 46px sans-serif";
+  ctx.fillText(String(value), cx, cy + 18);
+
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+function animateDiceRoll(sides, finalValue) {
+  if (!diceCtx || !diceCanvas) {
+    // если canvas не загрузился — просто показываем результат
+    rollResult.textContent = `Результат: ${finalValue}`;
+    return;
+  }
+
+  // блокируем повторные клики, чтобы анимации не накладывались
+  if (diceAnimBusy) return;
+  diceAnimBusy = true;
+
+  diceVizKind.textContent = `d${sides}`;
+  diceVizValue.textContent = "…";
+
+  const start = performance.now();
+  const dur = 1000; // ms
+  let lastShown = finalValue;
+
+  function frame(now) {
+    const t = now - start;
+    const p = Math.min(1, t / dur);
+
+    // чем ближе к концу — тем реже меняем число (ощущение “затухания”)
+    const changeProb = 0.85 - 0.75 * p; // 0.85 -> 0.10
+    if (Math.random() < changeProb) {
+      lastShown = Math.floor(Math.random() * sides) + 1;
+    }
+
+    drawDieFace(diceCtx, diceCanvas.width, diceCanvas.height, sides, lastShown, t);
+
+    if (p < 1) {
+      diceAnimFrame = requestAnimationFrame(frame);
+    } else {
+      // финальный кадр
+      drawDieFace(diceCtx, diceCanvas.width, diceCanvas.height, sides, finalValue, t + 999);
+      diceVizValue.textContent = String(finalValue);
+      rollResult.textContent = `Результат: ${finalValue}`;
+      diceAnimBusy = false;
+    }
+  }
+
+  // на старте рисуем первый кадр
+  if (diceAnimFrame) cancelAnimationFrame(diceAnimFrame);
+  diceAnimFrame = requestAnimationFrame(frame);
+}
 
 // ================== END TURN ==================
 endTurnBtn.addEventListener('click', () => sendMessage({ type: 'endTurn' }));
@@ -589,3 +708,4 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
