@@ -494,54 +494,194 @@ const diceCtx = diceCanvas?.getContext?.("2d");
 let diceAnimFrame = null;
 let diceAnimBusy = false;
 
+// ======== БРОСКИ КУБИКА =========
+
 function drawDieFace(ctx, w, h, sides, value, t) {
   ctx.clearRect(0, 0, w, h);
 
-  // лёгкое “качание”
   const cx = w / 2, cy = h / 2;
-  const ang = Math.sin(t * 0.02) * 0.25;
-  const scale = 1 + Math.sin(t * 0.015) * 0.02;
+  const ang = (t * 0.002) + Math.sin(t * 0.01) * 0.12; // вращение
+  const wob = Math.sin(t * 0.012) * 2.0; // лёгкая тряска
 
   ctx.save();
-  ctx.translate(cx, cy);
+  ctx.translate(cx + wob, cy);
   ctx.rotate(ang);
-  ctx.scale(scale, scale);
-  ctx.translate(-cx, -cy);
 
-  // “кубик” как карточка (универсально для dN)
-  const pad = 14;
-  const rw = w - pad * 2;
-  const rh = h - pad * 2;
-  const r = 18;
+  // немного “объёма” через градиент
+  const g = ctx.createLinearGradient(-60, -60, 60, 60);
+  g.addColorStop(0, "rgba(255,255,255,0.14)");
+  g.addColorStop(1, "rgba(255,255,255,0.04)");
 
-  // тень
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle = "#000";
-  roundRect(ctx, pad + 3, pad + 6, rw, rh, r);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-
-  // тело
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.strokeStyle = "rgba(255,255,255,0.20)";
   ctx.lineWidth = 2;
-  roundRect(ctx, pad, pad, rw, rh, r);
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.fillStyle = g;
+
+  // рисуем соответствующую форму
+  if (sides === 6) {
+    drawD6(ctx);
+    // для d6 можно рисовать “точки”, но у нас есть число — оставим число (или могу сделать режим: точки вместо числа)
+  } else if (sides === 4) {
+    drawPolygon(ctx, 3, 56);          // треугольник
+    drawHintEdges(ctx, 3, 56);
+  } else if (sides === 8) {
+    // “октаэдр”: ромб (квадрат под 45°) + диагональ
+    drawDiamond(ctx, 56, 68);
+    drawOctaHint(ctx, 56, 68);
+  } else if (sides === 10) {
+    // “d10”: вытянутый ромб + центральный “пояс”
+    drawDiamond(ctx, 52, 74);
+    drawD10Hint(ctx, 52, 74);
+  } else if (sides === 12) {
+    // “d12”: силуэт многоугольника
+    drawPolygon(ctx, 7, 58);          // выглядит ближе к “додекаэдр-профилю”, чем просто круг
+    drawHintEdges(ctx, 7, 58);
+  } else if (sides === 20) {
+    // “d20”: более круглый многоугольник
+    drawPolygon(ctx, 9, 60);
+    drawHintEdges(ctx, 9, 60);
+  } else if (sides === 100) {
+    // d100 часто как d10: рисуем как d10, но подписываем иначе
+    drawDiamond(ctx, 52, 74);
+    drawD10Hint(ctx, 52, 74);
+  } else {
+    // запасной вариант: многоугольник по количеству граней (но ограничим, чтобы не было 100-гранника как “круг”)
+    const n = Math.max(3, Math.min(12, Math.round(Math.sqrt(sides) * 3)));
+    drawPolygon(ctx, n, 58);
+    drawHintEdges(ctx, n, 58);
+  }
+
+  // подпись dN (маленькая)
+  ctx.save();
+  ctx.resetTransform?.(); // если поддерживается
+  // если resetTransform нет — дорисуем без него ниже через restore + отдельный save
+  ctx.restore();
+
+  ctx.restore();
+
+  // Рисуем текст уже без вращения (чтобы читался)
+  ctx.save();
+  ctx.font = "900 42px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.fillText(String(value), cx, cy + 8);
+
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,0.70)";
+  ctx.fillText(`d${sides}`, cx, cy - 44);
+  ctx.restore();
+}
+
+function drawPolygon(ctx, n, r) {
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    const x = Math.cos(a) * r;
+    const y = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawHintEdges(ctx, n, r) {
+  // тонкие “рёбра”, чтобы не было плоско
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.10)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDiamond(ctx, rx, ry) {
+  ctx.beginPath();
+  ctx.moveTo(0, -ry);
+  ctx.lineTo(rx, 0);
+  ctx.lineTo(0, ry);
+  ctx.lineTo(-rx, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawOctaHint(ctx, rx, ry) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, -ry);
+  ctx.lineTo(0, ry);
+  ctx.moveTo(-rx, 0);
+  ctx.lineTo(rx, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawD10Hint(ctx, rx, ry) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  // “пояс” (полоса) + диагонали
+  ctx.moveTo(-rx * 0.6, -ry * 0.15);
+  ctx.lineTo(rx * 0.6, -ry * 0.15);
+  ctx.moveTo(-rx * 0.6, ry * 0.15);
+  ctx.lineTo(rx * 0.6, ry * 0.15);
+
+  ctx.moveTo(0, -ry);
+  ctx.lineTo(rx, 0);
+  ctx.moveTo(0, -ry);
+  ctx.lineTo(-rx, 0);
+  ctx.moveTo(0, ry);
+  ctx.lineTo(rx, 0);
+  ctx.moveTo(0, ry);
+  ctx.lineTo(-rx, 0);
+
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawD6(ctx) {
+  const s = 92; // размер квадрата
+  const r = 14;
+  // квадрат со скруглением (кубик “фейс”)
+  roundRectLocal(ctx, -s/2, -s/2, s, s, r);
   ctx.fill();
   ctx.stroke();
 
-  // подпись dN
-  ctx.fillStyle = "rgba(255,255,255,0.70)";
-  ctx.font = "bold 14px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(`d${sides}`, cx, pad + 26);
-
-  // значение
-  ctx.fillStyle = "rgba(255,255,255,0.95)";
-  ctx.font = "900 46px sans-serif";
-  ctx.fillText(String(value), cx, cy + 18);
-
+  // лёгкие “рёбра”
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-s/2 + 10, -s/2 + 20);
+  ctx.lineTo(s/2 - 10, -s/2 + 20);
+  ctx.moveTo(-s/2 + 20, -s/2 + 10);
+  ctx.lineTo(-s/2 + 20, s/2 - 10);
+  ctx.stroke();
   ctx.restore();
 }
+
+function roundRectLocal(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+// ====== КОНЕЦ БРОСКОВ КУБИКА ======
 
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.min(r, w / 2, h / 2);
@@ -708,4 +848,5 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
