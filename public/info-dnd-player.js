@@ -66,22 +66,6 @@
     return Number.isFinite(n) ? n : fallback;
   }
 
-  // Fallback: если cleanSpellName определён в другом файле, используем его.
-  // Иначе — базовая очистка: убрать хвосты типа "— заклинание"/"- заговор".
-  if (typeof window.cleanSpellName !== 'function') {
-    window.cleanSpellName = function (name) {
-      let s = String(name ?? '').trim();
-      if (!s) return '';
-
-      // Удаляем типичные хвосты: "— заклинание", "- заговор", "— spell" и т.п.
-      s = s.replace(/\s*[-—–]\s*(заклинание|заговор|spell|cantrip)\b.*$/i, '').trim();
-
-      // Чистим лишние пробелы
-      s = s.replace(/\s{2,}/g, ' ').trim();
-      return s;
-    };
-  }
-
   
 
   // D&D 5e: модификатор = floor((score - 10) / 2), ограничиваем 1..30
@@ -335,7 +319,18 @@
         save: { customModifier: "" },
         mod: { customModifier: "" }
       },
-      spells: {},
+      // slots-1..slots-9: value = всего ячеек (0..12), filled = сколько использовано
+      spells: {
+        "slots-1": { value: 0, filled: 0 },
+        "slots-2": { value: 0, filled: 0 },
+        "slots-3": { value: 0, filled: 0 },
+        "slots-4": { value: 0, filled: 0 },
+        "slots-5": { value: 0, filled: 0 },
+        "slots-6": { value: 0, filled: 0 },
+        "slots-7": { value: 0, filled: 0 },
+        "slots-8": { value: 0, filled: 0 },
+        "slots-9": { value: 0, filled: 0 }
+      },
       personality: {
         backstory: { value: "" },
         allies: { value: "" },
@@ -355,7 +350,20 @@
         },
         entries: []
       },
-      text: {},
+      // text.*: редактируемые поля. По умолчанию показываем уровни заклинаний 0..9.
+      text: {
+        "profPlain": { value: "" },
+        "spells-level-0": { plain: { value: "" } },
+        "spells-level-1": { plain: { value: "" } },
+        "spells-level-2": { plain: { value: "" } },
+        "spells-level-3": { plain: { value: "" } },
+        "spells-level-4": { plain: { value: "" } },
+        "spells-level-5": { plain: { value: "" } },
+        "spells-level-6": { plain: { value: "" } },
+        "spells-level-7": { plain: { value: "" } },
+        "spells-level-8": { plain: { value: "" } },
+        "spells-level-9": { plain: { value: "" } }
+      },
       weaponsList: [],
       coins: { cp: { value: 0 }, sp: { value: 0 }, ep: { value: 0 }, gp: { value: 0 }, pp: { value: 0 } }
     };
@@ -552,27 +560,23 @@
     const slots = [];
     for (let lvlN = 1; lvlN <= 9; lvlN++) {
       const k = `slots-${lvlN}`;
-      const total = safeNum(slotsRaw?.[k]?.value, 0);
-      const filled = safeNum(slotsRaw?.[k]?.filled, 0);
+      const total = safeInt(slotsRaw?.[k]?.value, 0);
+      const filled = safeInt(slotsRaw?.[k]?.filled, 0);
       slots.push({ level: lvlN, total, filled });
     }
 
     const text = (sheet?.text && typeof sheet.text === "object") ? sheet.text : {};
 
-    // ===== Custom spells storage (editable, with descriptions) =====
-    // sheet.customSpells.levels[level] = [{ name, url, description, expanded }]
-    if (!sheet.customSpells || typeof sheet.customSpells !== "object") sheet.customSpells = {};
-    if (!Array.isArray(sheet.customSpells.levels)) sheet.customSpells.levels = Array.from({ length: 10 }, () => []);
-
-    // Migration: ensure text container exists, and if custom list for a level is empty,
-    // try to import from existing tiptap/plain spells-level-N.
+    // Всегда показываем уровни заклинаний 0..9, даже если файл не загружен.
+    // Хранение: sheet.text["spells-level-N"].plain.value (редактируемый plain-text)
+    // Если в json есть tiptap-док — один раз конвертим в plain при первом открытии.
     const spellsByLevel = [];
     for (let lvl = 0; lvl <= 9; lvl++) {
       const key = `spells-level-${lvl}`;
       if (!text[key] || typeof text[key] !== "object") text[key] = {};
       if (!text[key].plain || typeof text[key].plain !== "object") text[key].plain = { value: "" };
 
-      // one-time migration from tiptap -> plain
+      // миграция: если есть tiptap, но plain пустой — склеиваем в строки
       const curPlain = typeof text[key].plain.value === "string" ? text[key].plain.value : "";
       if (!curPlain) {
         const tiptapDoc = text[key]?.value?.data;
@@ -583,20 +587,7 @@
         }
       }
 
-      // one-time migration from plain -> custom spells (name + url only)
-      if (!Array.isArray(sheet.customSpells.levels[lvl])) sheet.customSpells.levels[lvl] = [];
-      if (sheet.customSpells.levels[lvl].length === 0) {
-        const plainLines = String(text[key].plain.value || "").split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-        const imported = plainLines.map(line => {
-          const parts = line.split("|").map(s => s.trim()).filter(Boolean);
-          const name = cleanSpellName(parts[0] || "");
-          const url = (parts[1] && /^https?:\/\//i.test(parts[1])) ? parts[1] : "";
-          return { name, url, description: "", expanded: false };
-        }).filter(x => x.name || x.url);
-        if (imported.length) sheet.customSpells.levels[lvl] = imported;
-      }
-
-      spellsByLevel.push({ level: lvl, items: sheet.customSpells.levels[lvl] });
+      spellsByLevel.push({ level: lvl, plain: String(text[key].plain.value || "") });
     }
 
     const weapons = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
@@ -1020,63 +1011,6 @@ function bindSlotEditors(root, player, canEdit) {
   const sheet = player.sheet.parsed;
   if (!sheet.spells || typeof sheet.spells !== "object") sheet.spells = {};
 
-  function ensureKey(lvl) {
-    const key = `slots-${lvl}`;
-    if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
-      sheet.spells[key] = { value: 0, filled: 0 };
-    }
-    // normalize nested LSS objects
-    const total = Math.max(0, Math.min(12, safeNum(sheet.spells[key].value, 0)));
-    const filled = Math.max(0, Math.min(12, safeNum(sheet.spells[key].filled, 0)));
-    sheet.spells[key].value = total;
-    sheet.spells[key].filled = filled;
-    return { key, total, filled };
-  }
-
-  function paintDots(lvl) {
-    const st = ensureKey(lvl);
-    const remaining = Math.max(0, st.total - st.filled);
-
-    const wrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
-    if (!wrap) return;
-
-    const dots = Array.from({ length: st.total }).map((_, idx) => {
-      const on = idx < remaining;
-      return `<span class="slot-dot ${on ? 'on' : ''}" data-slot-level="${lvl}" data-slot-idx="${idx}"></span>`;
-    }).join('');
-
-    wrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
-
-    // bind dots clicks after rerender
-    const newDots = wrap.querySelectorAll('.slot-dot[data-slot-level][data-slot-idx]');
-    newDots.forEach(dot => {
-      dot.classList.add('clickable');
-      if (!canEdit) return;
-      if (dot.dataset.boundClick === "1") return;
-      dot.dataset.boundClick = "1";
-      dot.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const lvl2 = safeInt(dot.getAttribute('data-slot-level'), 0);
-        if (!lvl2) return;
-        const st2 = ensureKey(lvl2);
-        const remaining2 = Math.max(0, st2.total - st2.filled);
-        const isOn2 = dot.classList.contains('on');
-        if (isOn2) {
-          if (remaining2 <= 0) return;
-          sheet.spells[st2.key].filled = Math.min(12, safeNum(sheet.spells[st2.key].filled, 0) + 1);
-        } else {
-          sheet.spells[st2.key].filled = Math.max(0, safeNum(sheet.spells[st2.key].filled, 0) - 1);
-        }
-        paintDots(lvl2);
-        scheduleSheetSave(player);
-      });
-    });
-
-    const inp = root.querySelector(`.slot-current-input[data-slot-level="${lvl}"]`);
-    if (inp) inp.value = String(remaining);
-  }
-
-  // editable remaining inputs
   const inputs = root.querySelectorAll(".slot-current-input[data-slot-level]");
   inputs.forEach(inp => {
     const lvl = safeInt(inp.getAttribute("data-slot-level"), 0);
@@ -1085,16 +1019,24 @@ function bindSlotEditors(root, player, canEdit) {
     if (!canEdit) { inp.disabled = true; return; }
 
     const handler = () => {
-      const desired = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
-      const st = ensureKey(lvl);
+      // Вводимое значение трактуем как: сколько ячеек доступно СЕЙЧАС.
+      // По просьбе: при изменении числа мы считаем, что "добавили/задали" ячейки,
+      // и ВСЕ кружки автоматически становятся голубыми (used = 0).
+      const desiredRemaining = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
 
-      // UX: when user sets remaining manually, treat it as new total and reset usage
-      st.total = desired;
-      st.filled = 0;
-      sheet.spells[st.key].value = desired;
-      sheet.spells[st.key].filled = 0;
+      const key = `slots-${lvl}`;
+      if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
+        sheet.spells[key] = { value: 0, filled: 0 };
+      }
 
-      paintDots(lvl);
+      // total = desiredRemaining, used = 0
+      sheet.spells[key].value = desiredRemaining;
+      sheet.spells[key].filled = 0;
+
+      // обновляем кружки
+      renderSlotDotsInPlace(root, lvl, desiredRemaining, 0);
+
+      inp.value = String(desiredRemaining);
       scheduleSheetSave(player);
     };
 
@@ -1102,232 +1044,66 @@ function bindSlotEditors(root, player, canEdit) {
     inp.addEventListener("change", handler);
   });
 
-  // clickable dots (use/restore a slot)
-  const dots = root.querySelectorAll('.slot-dot[data-slot-level][data-slot-idx]');
-  dots.forEach(dot => {
-    dot.classList.add('clickable');
-    if (!canEdit) return;
-    if (dot.dataset.boundClick === '1') return;
-    dot.dataset.boundClick = '1';
-
-    dot.addEventListener('click', (e) => {
+  // клики по кружкам: голубой = осталось, пустой = уже использовано
+  // Реализуем делегированием, чтобы не вешать обработчики на каждый кружок после ререндера.
+  if (!root.dataset.slotDotsBound) {
+    root.dataset.slotDotsBound = "1";
+    root.addEventListener("click", (e) => {
+      const dot = e.target?.closest?.(".slot-dot[data-slot-level]");
+      if (!dot) return;
+      if (!canEdit) return;
       e.stopPropagation();
-      const lvl = safeInt(dot.getAttribute('data-slot-level'), 0);
+
+      const lvl = safeInt(dot.getAttribute("data-slot-level"), 0);
       if (!lvl) return;
-      const st = ensureKey(lvl);
-      const remaining = Math.max(0, st.total - st.filled);
-      const isOn = dot.classList.contains('on');
 
-      // toggle behavior: on -> spend (filled++), off -> restore (filled--)
-      if (isOn) {
-        if (remaining <= 0) return;
-        sheet.spells[st.key].filled = Math.min(12, safeNum(sheet.spells[st.key].filled, 0) + 1);
+      const key = `slots-${lvl}`;
+      if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
+        sheet.spells[key] = { value: 0, filled: 0 };
+      }
+
+      const total = Math.max(0, Math.min(12, safeInt(sheet.spells[key].value, 0)));
+      let used = Math.max(0, Math.min(total, safeInt(sheet.spells[key].filled, 0)));
+      const remaining = Math.max(0, total - used);
+
+      if (dot.classList.contains("filled")) {
+        // потратить 1 ячейку
+        if (remaining > 0) used = Math.min(total, used + 1);
       } else {
-        sheet.spells[st.key].filled = Math.max(0, safeNum(sheet.spells[st.key].filled, 0) - 1);
+        // вернуть 1 ячейку
+        if (used > 0) used = Math.max(0, used - 1);
       }
 
-      paintDots(lvl);
+      sheet.spells[key].value = total;
+      sheet.spells[key].filled = used;
+
+      renderSlotDotsInPlace(root, lvl, total, used);
+
+      const inp = root.querySelector(`.slot-current-input[data-slot-level="${lvl}"]`);
+      if (inp) inp.value = String(Math.max(0, total - used));
+
       scheduleSheetSave(player);
     });
-  });
+  }
+}
+
+// Обновление кружков без полного ререндера
+function renderSlotDotsInPlace(root, lvl, total, used) {
+  const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
+  if (!dotsWrap) return;
+  const t = Math.max(0, Math.min(12, safeInt(total, 0)));
+  const u = Math.max(0, Math.min(t, safeInt(used, 0)));
+  const remaining = Math.max(0, t - u);
+  const dots = Array.from({ length: t }).map((_, i) => {
+    const filledCls = (i < remaining) ? "filled" : "";
+    return `<span class="slot-dot ${filledCls} clickable" data-slot-level="${lvl}" data-slot-dot="${i}"></span>`;
+  }).join("");
+  dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
 }
 
 
 
-// ===== Custom Spells (list + add panel) editors =====
-function bindCustomSpellsEditors(root, player, canEdit) {
-  if (!root || !player?.sheet?.parsed) return;
-  const sheet = player.sheet.parsed;
-  if (!sheet.customSpells || typeof sheet.customSpells !== 'object') sheet.customSpells = {};
-  if (!Array.isArray(sheet.customSpells.levels)) sheet.customSpells.levels = Array.from({ length: 10 }, () => []);
-
-  const main = root.querySelector('#sheet-main');
-
-  const rerenderSpells = () => {
-    if (!main) return;
-    const freshVm = toViewModel(sheet, player.name);
-    main.innerHTML = renderSpellsTab(freshVm);
-    bindEditableInputs(root, player, canEdit);
-    bindSkillBoostDots(root, player, canEdit);
-    bindAbilityAndSkillEditors(root, player, canEdit);
-    bindNotesEditors(root, player, canEdit);
-    bindSlotEditors(root, player, canEdit);
-    bindCustomSpellsEditors(root, player, canEdit);
-  };
-
-  // open add panel
-  root.querySelectorAll('[data-spell-add-level]').forEach(btn => {
-    const lvl = safeInt(btn.getAttribute('data-spell-add-level'), -1);
-    if (lvl < 0 || lvl > 9) return;
-    if (!canEdit) { btn.disabled = true; return; }
-    if (btn.dataset.boundClick === '1') return;
-    btn.dataset.boundClick = '1';
-
-    btn.addEventListener('click', () => {
-      const panel = root.querySelector(`.spell-add-panel[data-add-panel="${lvl}"]`);
-      if (panel) panel.classList.toggle('hidden');
-    });
-  });
-
-  // cancel
-  root.querySelectorAll('[data-add-cancel]').forEach(btn => {
-    const lvl = safeInt(btn.getAttribute('data-add-cancel'), -1);
-    if (lvl < 0 || lvl > 9) return;
-    if (!canEdit) { btn.disabled = true; return; }
-    if (btn.dataset.boundClick === '1') return;
-    btn.dataset.boundClick = '1';
-
-    btn.addEventListener('click', () => {
-      const panel = root.querySelector(`.spell-add-panel[data-add-panel="${lvl}"]`);
-      if (panel) panel.classList.add('hidden');
-    });
-  });
-
-  // tabs
-  root.querySelectorAll('.spell-add-tab[data-add-tab][data-add-level]').forEach(tab => {
-    const lvl = safeInt(tab.getAttribute('data-add-level'), -1);
-    const mode = tab.getAttribute('data-add-tab');
-    if (lvl < 0 || lvl > 9 || !mode) return;
-
-    if (tab.dataset.boundClick === '1') return;
-    tab.dataset.boundClick = '1';
-
-    tab.addEventListener('click', () => {
-      const panel = root.querySelector(`.spell-add-panel[data-add-panel="${lvl}"]`);
-      if (!panel) return;
-      panel.querySelectorAll('.spell-add-tab').forEach(x => x.classList.remove('active'));
-      tab.classList.add('active');
-      panel.querySelectorAll(`.spell-add-mode[data-add-level="${lvl}"]`).forEach(box => {
-        const m = box.getAttribute('data-add-mode');
-        if (m === mode) box.classList.remove('hidden');
-        else box.classList.add('hidden');
-      });
-    });
-  });
-
-  // add via link
-  root.querySelectorAll('[data-add-confirm-link]').forEach(btn => {
-    const lvl = safeInt(btn.getAttribute('data-add-confirm-link'), -1);
-    if (lvl < 0 || lvl > 9) return;
-    if (!canEdit) { btn.disabled = true; return; }
-    if (btn.dataset.boundClick === '1') return;
-    btn.dataset.boundClick = '1';
-
-    btn.addEventListener('click', async () => {
-      const urlEl = root.querySelector(`input[data-add-url="${lvl}"]`);
-      const url = (urlEl?.value || '').trim();
-      if (!/^https?:\/\//i.test(url)) {
-        alert('Вставь корректную ссылку (http/https).');
-        return;
-      }
-
-      try {
-        btn.disabled = true;
-        const resp = await fetch(`/api/spellmeta?url=${encodeURIComponent(url)}`);
-        if (!resp.ok) throw new Error('bad response');
-        const data = await resp.json();
-        const name = cleanSpellName(data?.name || '');
-        const desc = String(data?.description || '').trim();
-
-        if (!Array.isArray(sheet.customSpells.levels[lvl])) sheet.customSpells.levels[lvl] = [];
-        sheet.customSpells.levels[lvl].push({
-          name: name || url,
-          url,
-          description: desc,
-          expanded: false
-        });
-        scheduleSheetSave(player);
-        rerenderSpells();
-      } catch (e) {
-        console.error(e);
-        alert('Не удалось получить описание с dnd.su. Проверь ссылку.');
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  });
-
-  // add manual
-  root.querySelectorAll('[data-add-confirm-manual]').forEach(btn => {
-    const lvl = safeInt(btn.getAttribute('data-add-confirm-manual'), -1);
-    if (lvl < 0 || lvl > 9) return;
-    if (!canEdit) { btn.disabled = true; return; }
-    if (btn.dataset.boundClick === '1') return;
-    btn.dataset.boundClick = '1';
-
-    btn.addEventListener('click', () => {
-      const nameEl = root.querySelector(`input[data-add-name="${lvl}"]`);
-      const descEl = root.querySelector(`textarea[data-add-desc="${lvl}"]`);
-      const name = cleanSpellName((nameEl?.value || '').trim());
-      const description = (descEl?.value || '').trim();
-      if (!name) {
-        alert('Укажи название заклинания.');
-        return;
-      }
-
-      if (!Array.isArray(sheet.customSpells.levels[lvl])) sheet.customSpells.levels[lvl] = [];
-      sheet.customSpells.levels[lvl].push({ name, url: '', description, expanded: true });
-      scheduleSheetSave(player);
-      rerenderSpells();
-    });
-  });
-
-  // toggle description
-  root.querySelectorAll('[data-spell-desc-toggle]').forEach(btn => {
-    if (btn.dataset.boundClick === '1') return;
-    btn.dataset.boundClick = '1';
-
-    btn.addEventListener('click', () => {
-      const key = btn.getAttribute('data-spell-desc-toggle') || '';
-      const [lvlS, idxS] = key.split(':');
-      const lvl = safeInt(lvlS, -1);
-      const idx = safeInt(idxS, -1);
-      if (lvl < 0 || lvl > 9) return;
-      if (!sheet.customSpells.levels[lvl]?.[idx]) return;
-      sheet.customSpells.levels[lvl][idx].expanded = !sheet.customSpells.levels[lvl][idx].expanded;
-      scheduleSheetSave(player);
-      const box = root.querySelector(`[data-spell-desc="${lvl}:${idx}"]`);
-      if (box) box.classList.toggle('open');
-    });
-  });
-
-  // delete
-  root.querySelectorAll('[data-spell-del]').forEach(btn => {
-    if (!canEdit) { btn.disabled = true; return; }
-    if (btn.dataset.boundClick === '1') return;
-    btn.dataset.boundClick = '1';
-
-    btn.addEventListener('click', () => {
-      const key = btn.getAttribute('data-spell-del') || '';
-      const [lvlS, idxS] = key.split(':');
-      const lvl = safeInt(lvlS, -1);
-      const idx = safeInt(idxS, -1);
-      if (lvl < 0 || lvl > 9) return;
-      if (!Array.isArray(sheet.customSpells.levels[lvl])) return;
-      sheet.customSpells.levels[lvl].splice(idx, 1);
-      scheduleSheetSave(player);
-      rerenderSpells();
-    });
-  });
-
-  // description edit
-  root.querySelectorAll('textarea[data-spell-desc-lvl][data-spell-desc-idx]').forEach(ta => {
-    const lvl = safeInt(ta.getAttribute('data-spell-desc-lvl'), -1);
-    const idx = safeInt(ta.getAttribute('data-spell-desc-idx'), -1);
-    if (lvl < 0 || lvl > 9 || idx < 0) return;
-    if (!canEdit) { ta.disabled = true; return; }
-    if (ta.dataset.boundInput === '1') return;
-    ta.dataset.boundInput = '1';
-
-    ta.addEventListener('input', () => {
-      if (!sheet.customSpells.levels[lvl]?.[idx]) return;
-      sheet.customSpells.levels[lvl][idx].description = ta.value;
-      scheduleSheetSave(player);
-    });
-  });
-}
-
-function updateDerivedForStat(root, sheet, statKey) {
+  function updateDerivedForStat(root, sheet, statKey) {
     if (!root || !sheet || !statKey) return;
 
     // check/save inputs inside this stat block
@@ -1469,19 +1245,22 @@ function updateDerivedForStat(root, sheet, statKey) {
     (vm.spellsByLevel || []).forEach(b => {
       const lvl = Number(b.level);
       if (!Number.isFinite(lvl)) return;
-      countByLevel[lvl] = Array.isArray(b.items) ? b.items.length : 0;
+      const plain = (typeof b.plain === "string") ? b.plain : "";
+      const cnt = plain.split(/\r?\n/).map(s => s.trim()).filter(Boolean).length;
+      countByLevel[lvl] = cnt;
     });
 
     const cells = slots.slice(0, 9).map(s => {
-      const total = Math.max(0, Math.min(12, safeNum(s.total, 0)));
-      const used = Math.max(0, Math.min(12, safeNum(s.filled, 0)));
+      const total = Math.max(0, Math.min(12, safeInt(s.total, 0)));
+      const used = Math.max(0, Math.min(total, safeInt(s.filled, 0)));
       const remaining = Math.max(0, total - used);
       const spellsCount = countByLevel[s.level] || 0;
 
-      const dots = Array.from({ length: total }).map((_, idx) => {
-        const on = idx < remaining;
-        return `<span class="slot-dot ${on ? 'on' : ''}" data-slot-level="${s.level}" data-slot-idx="${idx}"></span>`;
-      }).join('');
+      // Всего кружков = total. Голубые = remaining (сколько ячеек осталось)
+      const dots = Array.from({ length: total }).map((_, i) => {
+        const filledCls = (i < remaining) ? "filled" : "";
+        return `<span class="slot-dot ${filledCls} clickable" data-slot-level="${s.level}" data-slot-dot="${i}"></span>`;
+      }).join("");
 
       return `
         <div class="slot-cell" data-slot-level="${s.level}">
@@ -1490,7 +1269,7 @@ function updateDerivedForStat(root, sheet, statKey) {
             <div class="slot-nums">
               <span class="slot-spells" title="Кол-во заклинаний уровня">${spellsCount}</span>
               <span class="slot-sep">/</span>
-              <input class="slot-current slot-current-input" type="number" min="0" max="12" value="${escapeHtml(String(remaining))}" data-slot-level="${s.level}" title="Доступно ячеек (редактируемое)">
+            <input class="slot-current slot-current-input" type="number" min="0" max="12" value="${escapeHtml(String(remaining))}" data-slot-level="${s.level}" title="Сколько ячеек осталось (max 12). При изменении это значение становится общим количеством ячеек, и все кружки автоматически заполняются">
             </div>
           </div>
           <div class="slot-dots" data-slot-dots="${s.level}">
@@ -1498,95 +1277,33 @@ function updateDerivedForStat(root, sheet, statKey) {
           </div>
         </div>
       `;
-    }).join('');
+    }).join("");
 
     return `
       <div class="slots-frame">
-        <div class="slots-grid">${cells}</div>
+        <div class="slots-grid">
+          ${cells}
+        </div>
       </div>
     `;
   }
 
   function renderSpellsByLevel(vm) {
-    const blocks = [];
-    const levels = Array.isArray(vm?.spellsByLevel) ? vm.spellsByLevel : [];
-    const byLevel = new Map(levels.map(x => [Number(x.level), x]));
+    const list = Array.isArray(vm.spellsByLevel) ? vm.spellsByLevel : [];
 
-    for (let lvl = 0; lvl <= 9; lvl++) {
-      const b = byLevel.get(lvl) || { level: lvl, items: [] };
-      const title = (lvl === 0) ? 'Заговоры (0)' : `Уровень ${lvl}`;
-      const addLabel = (lvl === 0) ? 'Добавить заговор' : 'Добавить заклинание';
-
-      const itemsHtml = (b.items || []).map((it, idx) => {
-        const name = cleanSpellName(it?.name || (it?.url || ''));
-        const url = (it?.url && /^https?:\/\//i.test(it.url)) ? it.url : '';
-
-        const titleEl = url
-          ? `<a class="spell-url" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name || url)}</a>`
-          : `<span class="spell-url">${escapeHtml(name || '(без ссылки)')}</span>`;
-
-        return `
-          <div class="spell-item" data-spell-lvl="${lvl}" data-spell-idx="${idx}">
-            <div class="spell-item-top">
-              ${titleEl}
-              <div class="spell-item-actions">
-                <button class="note-btn" data-spell-desc-toggle="${lvl}:${idx}">Описание</button>
-                <button class="note-btn danger" data-spell-del="${lvl}:${idx}">Удалить</button>
-              </div>
-            </div>
-
-            <div class="spell-desc ${it?.expanded ? 'open' : ''}" data-spell-desc="${lvl}:${idx}">
-              <div class="spell-edit-grid onecol">
-                <label class="spell-edit-label">Описание</label>
-                <textarea class="spell-edit-desc" rows="10" data-spell-desc-lvl="${lvl}" data-spell-desc-idx="${idx}" placeholder="Описание...">${escapeHtml(it?.description || '')}</textarea>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      blocks.push(`
-        <div class="sheet-card fullwidth">
-          <div class="spells-level-header">
-            <h4>${escapeHtml(title)}</h4>
-            <button class="note-add-btn" data-spell-add-level="${lvl}">${escapeHtml(addLabel)}</button>
-          </div>
-
-          <div class="spell-add-panel hidden" data-add-panel="${lvl}">
-            <div class="spell-add-tabs">
-              <button class="spell-add-tab active" data-add-tab="link" data-add-level="${lvl}">Ссылка</button>
-              <button class="spell-add-tab" data-add-tab="manual" data-add-level="${lvl}">Вручную</button>
-            </div>
-
-            <div class="spell-add-body">
-              <div class="spell-add-mode" data-add-mode="link" data-add-level="${lvl}">
-                <input class="spell-add-input" type="url" placeholder="https://dnd.su/spells/..." data-add-url="${lvl}">
-                <div class="spell-add-actions">
-                  <button class="note-btn" data-add-confirm-link="${lvl}">Добавить</button>
-                  <button class="note-btn" data-add-cancel="${lvl}">Отмена</button>
-                </div>
-                <div class="sheet-note">Название и описание подтянутся с dnd.su автоматически.</div>
-              </div>
-
-              <div class="spell-add-mode hidden" data-add-mode="manual" data-add-level="${lvl}">
-                <input class="spell-add-input" type="text" placeholder="Название заклинания" data-add-name="${lvl}">
-                <textarea class="spell-add-text" rows="8" placeholder="Описание заклинания" data-add-desc="${lvl}"></textarea>
-                <div class="spell-add-actions">
-                  <button class="note-btn" data-add-confirm-manual="${lvl}">Добавить</button>
-                  <button class="note-btn" data-add-cancel="${lvl}">Отмена</button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="spells-level-body">
-            ${itemsHtml || `<div class="sheet-note">Пусто. Нажми «${escapeHtml(addLabel)}».</div>`}
-          </div>
+    const blocks = list.map(b => {
+      const title = (b.level === 0) ? "Заговоры (0)" : `Уровень ${b.level}`;
+      const path = `text.spells-level-${b.level}.plain.value`;
+      const value = (typeof b.plain === "string") ? b.plain : "";
+      return `
+        <div class="sheet-card">
+          <h4>${escapeHtml(title)}</h4>
+          <textarea class="sheet-textarea" rows="6" data-sheet-path="${escapeHtml(path)}" placeholder="По одному заклинанию в строке.\nЕсли нужна ссылка: Название | https://...">${escapeHtml(value)}</textarea>
         </div>
-      `);
-    }
+      `;
+    }).join("");
 
-    return `<div class="spells-levels-col">${blocks.join('')}</div>`;
+    return `<div class="sheet-grid-2">${blocks}</div>`;
   }
 
   function renderSpellsTab(vm) {
@@ -1926,7 +1643,7 @@ function updateDerivedForStat(root, sheet, statKey) {
     bindAbilityAndSkillEditors(sheetContent, player, canEdit);
     bindNotesEditors(sheetContent, player, canEdit);
     bindSlotEditors(sheetContent, player, canEdit);
-    bindCustomSpellsEditors(sheetContent, player, canEdit);
+
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
 
@@ -1951,7 +1668,6 @@ function updateDerivedForStat(root, sheet, statKey) {
           bindAbilityAndSkillEditors(sheetContent, player, canEdit);
           bindNotesEditors(sheetContent, player, canEdit);
           bindSlotEditors(sheetContent, player, canEdit);
-          bindCustomSpellsEditors(sheetContent, player, canEdit);
         }
       });
     });
