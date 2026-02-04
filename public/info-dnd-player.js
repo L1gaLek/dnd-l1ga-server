@@ -548,15 +548,45 @@
       .filter(x => x.items && x.items.length)
       .sort((a,b) => a.level - b.level);
 
-    const weapons = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
-    const weaponsVm = weapons
-      .map(w => ({ name: v(w?.name, "-"), atk: v(w?.mod, "-"), dmg: v(w?.dmg, "-") }))
-      .filter(w => w.name && w.name !== "-");
+const weaponsRaw = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
+const weapons = weaponsRaw
+  .map((w, idx) => {
+    // Новый формат оружия (создаётся в UI вкладки "Бой")
+    const isNew = !!(w && typeof w === "object" && (
+      "ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w
+    ));
+
+    if (isNew) {
+      return {
+        kind: "new",
+        idx,
+        name: v(w?.name, "-"),
+        ability: v(w?.ability, "str"),
+        prof: !!w?.prof,
+        extraAtk: safeInt(w?.extraAtk, 0),
+        dmgNum: safeInt(w?.dmgNum, 1),
+        dmgDice: v(w?.dmgDice, "к6"),
+        dmgType: v(w?.dmgType, ""),
+        desc: v(w?.desc, ""),
+        collapsed: !!w?.collapsed
+      };
+    }
+
+    // Legacy формат из некоторых json (name + mod + dmg)
+    return {
+      kind: "legacy",
+      idx,
+      name: v(w?.name, "-"),
+      atk: v(w?.mod, "-"),
+      dmg: v(w?.dmg, "-")
+    };
+  })
+  .filter(w => w.name && w.name !== "-");
 
     const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
     const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
 
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, weapons: weaponsVm, coins };
+    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, profBonus: getProfBonus(sheet), weapons, coins };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -636,6 +666,197 @@
       if (el) el.textContent = String(val);
     });
   }
+
+function calcWeaponAttackBonus(sheet, weapon) {
+  if (!sheet || !weapon) return 0;
+  const ability = String(weapon.ability || "str");
+  const statMod = safeInt(sheet?.stats?.[ability]?.modifier, 0);
+  const prof = weapon.prof ? getProfBonus(sheet) : 0;
+  const extra = safeInt(weapon.extraAtk, 0);
+  return statMod + prof + extra;
+}
+
+function weaponDamageText(weapon) {
+  const n = Math.max(0, safeInt(weapon?.dmgNum, 1));
+  const dice = String(weapon?.dmgDice || "к6");
+  const type = String(weapon?.dmgType || "").trim();
+  return `${n}${dice}${type ? ` ${type}` : ""}`.trim();
+}
+
+// Обновляем "Бонус атаки" и превью урона без полного ререндера
+function updateWeaponsBonuses(root, sheet) {
+  if (!root || !sheet) return;
+  const list = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
+
+  const cards = root.querySelectorAll('.weapon-card[data-weapon-idx]');
+  cards.forEach(card => {
+    const idx = safeInt(card.getAttribute('data-weapon-idx'), -1);
+    if (idx < 0) return;
+
+    const w = list[idx];
+    if (!w || typeof w !== "object") return;
+
+    // Legacy оружие просто пропускаем
+    const isNew = ("ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w);
+    if (!isNew) return;
+
+    const atkEl = card.querySelector('[data-weapon-atk]');
+    if (atkEl) atkEl.textContent = formatMod(calcWeaponAttackBonus(sheet, w));
+
+    const dmgEl = card.querySelector('[data-weapon-dmg]');
+    if (dmgEl) dmgEl.textContent = weaponDamageText(w);
+
+    const profDot = card.querySelector('[data-weapon-prof]');
+    if (profDot) {
+      profDot.classList.toggle('active', !!w.prof);
+      profDot.title = `Владение: +${getProfBonus(sheet)} к бонусу атаки`;
+    }
+
+    const descWrap = card.querySelector('.weapon-desc');
+    if (descWrap) descWrap.classList.toggle('collapsed', !!w.collapsed);
+
+    const toggleBtn = card.querySelector('[data-weapon-toggle-desc]');
+    if (toggleBtn) toggleBtn.textContent = w.collapsed ? "Показать" : "Скрыть";
+  });
+}
+
+
+function rerenderCombatTabInPlace(root, player, canEdit) {
+  const main = root?.querySelector('#sheet-main');
+  if (!main || player?._activeSheetTab !== "combat") return;
+
+  const freshSheet = player.sheet?.parsed || createEmptySheet(player.name);
+  const freshVm = toViewModel(freshSheet, player.name);
+  main.innerHTML = renderActiveTab("combat", freshVm);
+
+  bindEditableInputs(root, player, canEdit);
+  bindSkillBoostDots(root, player, canEdit);
+  bindAbilityAndSkillEditors(root, player, canEdit);
+  bindNotesEditors(root, player, canEdit);
+  bindSlotEditors(root, player, canEdit);
+  bindCombatEditors(root, player, canEdit);
+
+  updateWeaponsBonuses(root, player.sheet?.parsed);
+}
+
+function bindCombatEditors(root, player, canEdit) {
+  if (!root || !player?.sheet?.parsed) return;
+  const sheet = player.sheet.parsed;
+
+  // кнопка "Добавить оружие"
+  const addBtn = root.querySelector('[data-weapon-add]');
+  if (addBtn) {
+    if (!canEdit) addBtn.disabled = true;
+    addBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!canEdit) return;
+
+      if (!Array.isArray(sheet.weaponsList)) sheet.weaponsList = [];
+
+      sheet.weaponsList.push({
+        name: "Новое оружие",
+        ability: "str",
+        prof: false,
+        extraAtk: 0,
+        dmgNum: 1,
+        dmgDice: "к6",
+        dmgType: "",
+        desc: "",
+        collapsed: false
+      });
+
+      scheduleSheetSave(player);
+      rerenderCombatTabInPlace(root, player, canEdit);
+    });
+  }
+
+  const weaponCards = root.querySelectorAll('.weapon-card[data-weapon-idx]');
+  weaponCards.forEach(card => {
+    const idx = safeInt(card.getAttribute('data-weapon-idx'), -1);
+    if (idx < 0) return;
+
+    if (!Array.isArray(sheet.weaponsList)) sheet.weaponsList = [];
+    const w = sheet.weaponsList[idx];
+    if (!w || typeof w !== "object") return;
+
+    // Legacy карточки не редактируем
+    const isNew = ("ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w);
+    if (!isNew) return;
+
+    // редактирование полей
+    const fields = card.querySelectorAll('[data-weapon-field]');
+    fields.forEach(el => {
+      const field = el.getAttribute('data-weapon-field');
+      if (!field) return;
+
+      if (!canEdit) {
+        el.disabled = true;
+        return;
+      }
+
+      const handler = () => {
+        let val;
+        if (el.tagName === "SELECT") val = el.value;
+        else if (el.type === "number") val = el.value === "" ? 0 : Number(el.value);
+        else val = el.value;
+
+        if (field === "extraAtk" || field === "dmgNum") val = safeInt(val, 0);
+
+        w[field] = val;
+
+        updateWeaponsBonuses(root, sheet);
+        scheduleSheetSave(player);
+      };
+
+      el.addEventListener('input', handler);
+      el.addEventListener('change', handler);
+    });
+
+    // владение (кружок)
+    const profBtn = card.querySelector('[data-weapon-prof]');
+    if (profBtn) {
+      if (!canEdit) profBtn.disabled = true;
+      profBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!canEdit) return;
+        w.prof = !w.prof;
+        updateWeaponsBonuses(root, sheet);
+        scheduleSheetSave(player);
+      });
+    }
+
+    // свернуть/развернуть описание
+    const toggleDescBtn = card.querySelector('[data-weapon-toggle-desc]');
+    if (toggleDescBtn) {
+      if (!canEdit) toggleDescBtn.disabled = true;
+      toggleDescBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!canEdit) return;
+        w.collapsed = !w.collapsed;
+        updateWeaponsBonuses(root, sheet);
+        scheduleSheetSave(player);
+      });
+    }
+
+    // удалить
+    const delBtn = card.querySelector('[data-weapon-del]');
+    if (delBtn) {
+      if (!canEdit) delBtn.disabled = true;
+      delBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!canEdit) return;
+
+        sheet.weaponsList.splice(idx, 1);
+        scheduleSheetSave(player);
+        rerenderCombatTabInPlace(root, player, canEdit);
+      });
+    }
+  });
+
+  updateWeaponsBonuses(root, sheet);
+}
+
+   
 function bindEditableInputs(root, player, canEdit) {
     if (!root || !player?.sheet?.parsed) return;
 
@@ -676,9 +897,10 @@ function bindEditableInputs(root, player, canEdit) {
         if (path === "name.value") player.name = val || player.name;
 
         // live updates
-        if (path === "proficiency") {
-          updateSkillsAndPassives(root, player.sheet.parsed);
-        }
+if (path === "proficiency") {
+  updateSkillsAndPassives(root, player.sheet.parsed);
+  updateWeaponsBonuses(root, player.sheet.parsed);
+}
         if (path === "vitality.ac.value" || path === "vitality.hp-max.value" || path === "vitality.hp-current.value" || path === "vitality.speed.value") {
           updateHeroChips(root, player.sheet.parsed);
         }
@@ -767,6 +989,7 @@ function bindEditableInputs(root, player, canEdit) {
         // обновляем связанные значения на экране
         updateDerivedForStat(root, sheet, statKey);
         updateSkillsAndPassives(root, sheet);
+         updateWeaponsBonuses(root, sheet);
 
         scheduleSheetSave(player);
       };
@@ -1254,26 +1477,132 @@ function bindSlotEditors(root, player, canEdit) {
 
   // ================== OTHER TABS ==================
   function renderCombatTab(vm) {
-    const weapons = vm.weapons.length
-      ? vm.weapons.map(w => `
-        <div class="sheet-card">
-          <h4>${escapeHtml(w.name)}</h4>
-          <div class="kv"><div class="k">Atk</div><div class="v">${escapeHtml(String(w.atk))}</div></div>
-          <div class="kv"><div class="k">Dmg</div><div class="v">${escapeHtml(String(w.dmg))}</div></div>
-        </div>
-      `).join("")
-      : `<div class="sheet-note">Оружие не указано (из файла).</div>`;
+  const statModByKey = {};
+  (vm?.stats || []).forEach(s => { statModByKey[s.k] = safeInt(s.mod, 0); });
 
-    return `
-      <div class="sheet-section">
+  const profBonus = safeInt(vm?.profBonus, 2);
+
+  const abilityOptions = [
+    { k: "str", label: "Сила" },
+    { k: "dex", label: "Ловкость" },
+    { k: "con", label: "Телосложение" },
+    { k: "int", label: "Интеллект" },
+    { k: "wis", label: "Мудрость" },
+    { k: "cha", label: "Харизма" }
+  ];
+
+  const diceOptions = ["к4","к6","к8","к10","к12","к20"];
+
+  const calcAtk = (w) => {
+    const statMod = safeInt(statModByKey[w.ability] ?? 0, 0);
+    const prof = w.prof ? profBonus : 0;
+    const extra = safeInt(w.extraAtk, 0);
+    return statMod + prof + extra;
+  };
+
+  const dmgText = (w) => {
+    const n = Math.max(0, safeInt(w.dmgNum, 1));
+    const dice = String(w.dmgDice || "к6");
+    const type = String(w.dmgType || "").trim();
+    return `${n}${dice}${type ? ` ${type}` : ""}`.trim();
+  };
+
+  const weapons = Array.isArray(vm?.weapons) ? vm.weapons : [];
+
+  const listHtml = weapons.length
+    ? weapons.map(w => {
+        if (w.kind === "legacy") {
+          return `
+            <div class="sheet-card weapon-card legacy" data-weapon-idx="${w.idx}">
+              <div class="weapon-head">
+                <div class="weapon-title">${escapeHtml(w.name)}</div>
+                <div class="weapon-actions">
+                  <span class="weapon-badge">legacy</span>
+                </div>
+              </div>
+              <div class="weapon-grid">
+                <div class="kv"><div class="k">Бонус атаки</div><div class="v">${escapeHtml(String(w.atk))}</div></div>
+                <div class="kv"><div class="k">Урон/вид</div><div class="v">${escapeHtml(String(w.dmg))}</div></div>
+              </div>
+              <div class="sheet-note">Это оружие из файла старого формата. Добавь новое через кнопку выше — оно будет редактируемым.</div>
+            </div>
+          `;
+        }
+
+        const atk = calcAtk(w);
+        const collapsed = !!w.collapsed;
+
+        return `
+          <div class="sheet-card weapon-card" data-weapon-idx="${w.idx}">
+            <div class="weapon-head">
+              <input class="weapon-title-input" type="text" value="${escapeHtml(String(w.name || ""))}" placeholder="Название" data-weapon-field="name">
+              <div class="weapon-actions">
+                <button class="weapon-btn" type="button" data-weapon-toggle-desc>${collapsed ? "Показать" : "Скрыть"}</button>
+                <button class="weapon-btn danger" type="button" data-weapon-del>Удалить</button>
+              </div>
+            </div>
+
+            <div class="weapon-grid">
+              <div class="weapon-row">
+                <div class="weapon-label">Характеристика</div>
+                <select class="weapon-select" data-weapon-field="ability">
+                  ${abilityOptions.map(o => `<option value="${o.k}" ${o.k === w.ability ? "selected" : ""}>${escapeHtml(o.label)}</option>`).join("")}
+                </select>
+              </div>
+
+              <div class="weapon-row">
+                <div class="weapon-label">Бонус владения</div>
+                <button class="weapon-prof-dot ${w.prof ? "active" : ""}" type="button" data-weapon-prof title="Владение: +${profBonus} к бонусу атаки"></button>
+              </div>
+
+              <div class="weapon-row">
+                <div class="weapon-label">Доп.модификатор</div>
+                <input class="weapon-num" type="number" step="1" value="${escapeHtml(String(safeInt(w.extraAtk, 0)))}" data-weapon-field="extraAtk">
+              </div>
+
+              <div class="weapon-row">
+                <div class="weapon-label">Бонус атаки</div>
+                <div class="weapon-atk" data-weapon-atk>${escapeHtml(formatMod(atk))}</div>
+              </div>
+
+              <div class="weapon-row weapon-dmg-row">
+                <div class="weapon-label">Урон/вид</div>
+                <div class="weapon-dmg-controls">
+                  <input class="weapon-num weapon-dmg-num" type="number" min="0" step="1" value="${escapeHtml(String(Math.max(0, safeInt(w.dmgNum, 1))))}" data-weapon-field="dmgNum">
+                  <select class="weapon-select weapon-dice" data-weapon-field="dmgDice">
+                    ${diceOptions.map(d => `<option value="${d}" ${d === w.dmgDice ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
+                  </select>
+                  <input class="weapon-text weapon-dmg-type" type="text" value="${escapeHtml(String(w.dmgType || ""))}" placeholder="вид (колющий/рубящий/...)" data-weapon-field="dmgType">
+                </div>
+              </div>
+
+              <div class="weapon-row">
+                <div class="weapon-label">Итог</div>
+                <div class="weapon-dmg-preview" data-weapon-dmg>${escapeHtml(dmgText(w))}</div>
+              </div>
+            </div>
+
+            <div class="weapon-desc ${collapsed ? "collapsed" : ""}">
+              <textarea class="sheet-textarea weapon-desc-text" rows="4" placeholder="Описание оружия..." data-weapon-field="desc">${escapeHtml(String(w.desc || ""))}</textarea>
+            </div>
+          </div>
+        `;
+      }).join("")
+    : `<div class="sheet-note">Оружие пока не добавлено. Нажми «Добавить оружие».</div>`;
+
+  return `
+    <div class="sheet-section" data-combat-root>
+      <div class="combat-toolbar">
         <h3>Бой</h3>
-        <div class="sheet-grid-2">
-          ${weapons}
-        </div>
+        <button class="weapon-add-btn" type="button" data-weapon-add>Добавить оружие</button>
       </div>
-    `;
-  }
 
+      <div class="weapons-list">
+        ${listHtml}
+      </div>
+    </div>
+  `;
+}
   function renderInventoryTab(vm) {
     const coins = vm.coins
       ? `
@@ -1549,6 +1878,7 @@ function bindSlotEditors(root, player, canEdit) {
     bindAbilityAndSkillEditors(sheetContent, player, canEdit);
     bindNotesEditors(sheetContent, player, canEdit);
     bindSlotEditors(sheetContent, player, canEdit);
+   bindCombatEditors(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -1574,6 +1904,7 @@ function bindSlotEditors(root, player, canEdit) {
           bindAbilityAndSkillEditors(sheetContent, player, canEdit);
           bindNotesEditors(sheetContent, player, canEdit);
           bindSlotEditors(sheetContent, player, canEdit);
+           bindCombatEditors(sheetContent, player, canEdit);
         }
       });
     });
@@ -1603,3 +1934,4 @@ function bindSlotEditors(root, player, canEdit) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
