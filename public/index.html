@@ -104,21 +104,6 @@
         <div id="game-board"></div>
       </div>
 
-      <div id="controls">
-        <select id="dice">
-          <option value="4">d4</option>
-          <option value="6">d6</option>
-          <option value="8">d8</option>
-          <option value="10">d10</option>
-          <option value="12">d12</option>
-          <option value="20">d20</option>
-          <option value="100">d100</option>
-        </select>
-        <button id="roll">Бросить кубик</button>
-        <button id="end-turn">Конец хода</button>
-        <span id="roll-result">Результат: -</span>
-      </div>
-
       <div id="initiative-warning" style="display:none; color: orange; font-weight: bold;">
         Бросьте инициативу за своих персонажей!
       </div>
@@ -168,7 +153,40 @@
   </div>
 </div>
   
+<!-- Dice Panel (bottom-left) -->
+<div id="dice-panel" class="dice-panel">
+  <div class="dice-panel__title">Кубики</div>
+
+  <div class="dice-panel__row">
+    <label class="dice-panel__label" for="dice-select">Кубик</label>
+    <select id="dice-select" class="dice-panel__select">
+      <option value="2">d2</option>
+      <option value="4">d4</option>
+      <option value="6">d6</option>
+      <option value="8">d8</option>
+      <option value="10">d10</option>
+      <option value="12">d12</option>
+      <option value="20" selected>d20</option>
+      <option value="100">d100</option>
+    </select>
+  </div>
+
+  <div class="dice-panel__row">
+    <label class="dice-panel__label" for="dice-count">Кол-во</label>
+    <input id="dice-count" class="dice-panel__count" type="number" min="1" max="20" value="1" />
+    <button id="dice-roll" class="dice-panel__btn">Бросить</button>
+  </div>
+
+  <canvas id="dice-canvas" width="240" height="170"></canvas>
+
+  <div class="dice-panel__meta">
+    <span id="dice-meta">d20 × 1</span>
+    <span id="dice-total">Σ —</span>
+  </div>
+</div>
+
 </body>
 </html>
+
 
 
