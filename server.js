@@ -7,6 +7,36 @@ const { v4: uuidv4 } = require("uuid"); // уникальные id
 // ================== EXPRESS ==================
 const app = express();
 app.use(express.static("public"));
+
+// ===== Proxy fetch for dnd.su (to bypass browser CORS) =====
+// Используется в модалке "Инфа" -> "Заклинания" для добавления описаний по ссылке.
+app.get("/api/fetch", async (req, res) => {
+  try {
+    const url = String(req.query.url || "").trim();
+    if (!url) return res.status(400).send("Missing url");
+
+    let parsed;
+    try { parsed = new URL(url); } catch { return res.status(400).send("Bad url"); }
+    if (!(parsed.protocol === "http:" || parsed.protocol === "https:")) return res.status(400).send("Bad protocol");
+    if (!parsed.hostname.endsWith("dnd.su")) return res.status(403).send("Forbidden domain");
+
+    const r = await fetch(parsed.href, {
+      headers: {
+        "user-agent": "Mozilla/5.0 (DnD-L1GA)",
+        "accept": "text/html,application/xhtml+xml"
+      }
+    });
+    if (!r.ok) return res.status(r.status).send(`HTTP ${r.status}`);
+    const text = await r.text();
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    // same-origin for the app, but safe to allow
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.send(text);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Proxy error");
+  }
+});
 const server = http.createServer(app);
 
 // ================== WEBSOCKET ==================
