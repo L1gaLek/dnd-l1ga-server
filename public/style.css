@@ -1761,11 +1761,12 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 
 .weapon-sum-item{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;               /* расстояние между текстом и кубиком */
+  padding: 4px 6px;       /* внутренний отступ, чтобы ничего не липло */
+  box-sizing: border-box;
 }
 
 .weapon-sum-label{
@@ -1798,6 +1799,14 @@ textarea[data-sheet-path="text.profPlain.value"]{
   transform: translateY(1px);
 }
 
+.weapon-roll-btn{
+  width: 18px;
+  height: 18px;
+
+  flex-shrink: 0;         /* ⬅️ важно: не сжимается и не залезает */
+  margin-left: 6px;       /* ⬅️ отступ от текста */
+}
+
 .weapon-sum-val{
   font-size: 14px;
   font-weight: 800;
@@ -1805,7 +1814,10 @@ textarea[data-sheet-path="text.profPlain.value"]{
   background: rgba(0,0,0,.18);
   border-radius: 10px;
   padding: 4px 10px;
-  min-width: 56px;
+    min-width: 64px;        /* чуть шире */
+  padding-right: 6px;     /* запас под кубик */
+  box-sizing: border-box;
+}
   text-align: center;
 }
 
@@ -1862,4 +1874,5 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 .combat-skills-card{ margin-top: 10px; }
 .combat-skills-text{ width: 100%; resize: vertical; }
+
 
