@@ -916,6 +916,7 @@ function updatePhaseUI(state) {
 
   if (state.phase === "initiative") {
     rollInitiativeBtn.style.display = "inline-block";
+    rollInitiativeBtn.classList.add("is-active");
 
     startInitiativeBtn.classList.remove('active', 'ready', 'pending');
     startInitiativeBtn.classList.add(allRolled ? 'ready' : 'active');
@@ -926,6 +927,7 @@ function updatePhaseUI(state) {
     }
   } else {
     rollInitiativeBtn.style.display = "none";
+    rollInitiativeBtn.classList.remove("is-active");
     startInitiativeBtn.classList.remove('active', 'ready', 'pending');
     finishInitiativeSent = false;
   }
@@ -944,6 +946,7 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
 
 
