@@ -1763,8 +1763,13 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-sum-item{
   display:flex;
   align-items:center;
-  justify-content:space-between;
-  gap:10px;
+
+  /* ✅ гарантированный зазор между лейблом и значением */
+  gap: 10px;
+
+  /* чтобы ничего не прилипало к краям */
+  padding: 2px 0;
+
   min-width: 0;
 }
 
@@ -1781,25 +1786,25 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-dice-btn{
   width: 22px;
   height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
   border-radius: 8px;
-  border: 1px solid rgba(255,165,0,38);
-  background: rgba(255,165,0,12);
-  color: rgba(255,165,0,95);
+  border: 1px solid rgba(255,165,0,.38);
+  background: rgba(255,165,0,.12);
+  color: rgba(255,165,0,.95);
   cursor: pointer;
   padding: 0;
 
-  /* ✅ фикс: чтобы SVG не вылезал за рамки */
+  /* ✅ ключевое: SVG не вылезает и кнопка не сжимается */
   overflow: hidden;
   flex: 0 0 auto;
   line-height: 0;
 }
 
 .weapon-dice-btn svg{
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: block;
 }
 
@@ -1819,6 +1824,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 4px 10px;
   min-width: 56px;
   text-align: center;
+  margin-left: auto; /* ✅ отталкиваем значение вправо, сохраняем gap */
 }
 
 .weapon-details.collapsed{ display:none; }
@@ -1874,5 +1880,6 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 .combat-skills-card{ margin-top: 10px; }
 .combat-skills-text{ width: 100%; resize: vertical; }
+
 
 
