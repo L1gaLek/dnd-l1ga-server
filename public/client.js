@@ -106,6 +106,10 @@ joinBtn.addEventListener('click', () => {
       updatePlayerList();
     }
 
+    if (msg.type === "diceEvent" && msg.event) {
+  pushOtherDiceEvent(msg.event);
+}
+
     if (msg.type === "init" || msg.type === "state") {
       boardWidth = msg.state.boardWidth;
       boardHeight = msg.state.boardHeight;
@@ -483,6 +487,62 @@ const diceCtx = diceCanvas?.getContext?.("2d");
 let diceAnimFrame = null;
 let diceAnimBusy = false;
 
+// ===== Other players dice feed (right of dice panel) =====
+let othersDiceWrap = null;
+
+function ensureOthersDiceUI() {
+  if (othersDiceWrap) return othersDiceWrap;
+
+  othersDiceWrap = document.createElement("div");
+  othersDiceWrap.className = "dice-others";
+  othersDiceWrap.innerHTML = `<div class="dice-others__title">Броски других</div>`;
+  document.body.appendChild(othersDiceWrap);
+  return othersDiceWrap;
+}
+
+function pushOtherDiceEvent(ev) {
+  ensureOthersDiceUI();
+
+  // не показываем свои же броски
+  if (ev.fromId && typeof myId !== "undefined" && ev.fromId === myId) return;
+
+  const item = document.createElement("div");
+  item.className = "dice-others__item";
+  item.dataset.crit = ev.crit || "";
+
+  const rollsText = (ev.rolls && ev.rolls.length)
+    ? ev.rolls.join(" + ")
+    : "-";
+
+  const head = `${ev.fromName || "Игрок"}: ${ev.kindText || `d${ev.sides} × ${ev.count}`}`;
+  const tail = `${rollsText} = ${ev.total}`;
+
+  item.innerHTML = `
+    <div class="dice-others__head">${escapeHtmlLocal(head)}</div>
+    <div class="dice-others__body">${escapeHtmlLocal(tail)}</div>
+  `;
+
+  // крит подсветка (если прилетело)
+  if (ev.crit === "crit-fail") item.classList.add("crit-fail");
+  if (ev.crit === "crit-success") item.classList.add("crit-success");
+
+  othersDiceWrap.appendChild(item);
+
+  // через 5с — плавное исчезновение
+  setTimeout(() => item.classList.add("fade"), 4200);
+  setTimeout(() => item.remove(), 5200);
+}
+
+// маленький экранировщик
+function escapeHtmlLocal(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function clearCritUI() {
   if (diceVizValue) {
     diceVizValue.classList.remove("crit-fail", "crit-success");
@@ -687,6 +747,22 @@ if (S === 20 && C === 1 && B === 0) {
   type: 'log',
   text: `${kindText || `Бросок d${S} × ${C}`}: ${finals.join(' + ')} = ${sum}${bonusTxt} => ${total}${critNote}`
 });
+
+      sendMessage({
+  type: "diceEvent",
+  event: {
+    kindText: kindText ? String(kindText) : `d${S} × ${C}`,
+    sides: S,
+    count: C,
+    bonus: B,
+    rolls: finals,
+    total: total,
+    crit: (S === 20 && C === 1 && B === 0)
+      ? (finals[0] === 1 ? "crit-fail" : finals[0] === 20 ? "crit-success" : "")
+      : ""
+  }
+});
+      
     }
   } catch {}
 
@@ -739,6 +815,21 @@ if (sides === 20 && count === 1) {
 sendMessage({
   type: 'log',
   text: `Бросок d${sides} × ${count}: ${finals.join(' + ')} = ${sum}${critNote}`
+});
+
+  sendMessage({
+  type: "diceEvent",
+  event: {
+    kindText: `d${sides} × ${count}`,
+    sides,
+    count,
+    bonus: 0,
+    rolls: finals,
+    total: sum,
+    crit: (sides === 20 && count === 1)
+      ? (finals[0] === 1 ? "crit-fail" : finals[0] === 20 ? "crit-success" : "")
+      : ""
+  }
 });
 
   diceAnimBusy = false;
@@ -853,5 +944,6 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
 
