@@ -548,65 +548,75 @@
       .filter(x => x.items && x.items.length)
       .sort((a,b) => a.level - b.level);
 
-// --- WEAPONS: legacy -> new (editable) ---
-function parseLegacyDamage(dmgRaw) {
-  const s = String(dmgRaw || "").trim();
-  // ожидаем что-то вроде "1к6" / "2к8 колющий" / "к6".
-  const m = s.match(/^(\d+)?\s*(к\d{1,2})\s*(.*)$/i);
-  if (!m) return { dmgNum: 1, dmgDice: "к6", dmgType: s };
-  const dmgNum = Math.max(0, safeInt(m[1] || 1, 1));
-  const dmgDice = String(m[2] || "к6");
-  const dmgType = String(m[3] || "").trim();
-  return { dmgNum, dmgDice, dmgType };
-}
+    const weaponsRaw = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
 
-function convertLegacyWeaponToNew(sheet, w) {
-  const name = v(w?.name, "Новое оружие");
-  const ability = "str";
-  const statMod = safeInt(sheet?.stats?.[ability]?.modifier, 0);
-  const legacyAtk = parseModInput(w?.mod, 0);
-  const extraAtk = safeInt(legacyAtk - statMod, 0);
-  const { dmgNum, dmgDice, dmgType } = parseLegacyDamage(w?.dmg);
-  return {
-    name,
-    ability,
-    prof: false,
-    extraAtk,
-    dmgNum,
-    dmgDice,
-    dmgType,
-    desc: "",
-    collapsed: true
-  };
-}
+    // нормализация строковых полей (чтобы не ловить "[object Object]")
+    const normText = (x, fallback = "") => {
+      if (x == null) return fallback;
+      if (typeof x === "string") return x;
+      if (typeof x === "number" || typeof x === "boolean") return String(x);
+      if (typeof x === "object") {
+        if ("value" in x) return normText(x.value, fallback);
+        if ("name" in x && x.name && typeof x.name === "object" && "value" in x.name) return normText(x.name.value, fallback);
+      }
+      return fallback;
+    };
 
-const weaponsRaw = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
-// Мутируем legacy оружие в новом формате, чтобы всё было редактируемым
-for (let i = 0; i < weaponsRaw.length; i++) {
-  const w = weaponsRaw[i];
-  const isNew = !!(w && typeof w === "object" && (
-    "ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w
-  ));
-  if (!isNew && w && typeof w === "object") {
-    weaponsRaw[i] = convertLegacyWeaponToNew(sheet, w);
-  }
-}
+    const parseLegacyDamage = (dmgStr) => {
+      const s = normText(dmgStr, "").trim();
+      // примеры: "1к6", "2к8 рубящий", "1к6+2 колющий" ("+2" игнорируем как тип/мод — оставим в type)
+      const m = s.match(/(\d+)\s*(к\d+)\s*(.*)$/i);
+      if (!m) return { dmgNum: 1, dmgDice: "к6", dmgType: s };
+      const dmgNum = safeInt(m[1], 1);
+      const dmgDice = m[2] ? String(m[2]).toLowerCase() : "к6";
+      const dmgType = (m[3] || "").trim();
+      return { dmgNum, dmgDice, dmgType };
+    };
 
-const weapons = weaponsRaw
-  .map((w, idx) => ({
-    kind: "new",
-    idx,
-    name: v(w?.name, "-"),
-    ability: v(w?.ability, "str"),
-    prof: !!w?.prof,
-    extraAtk: safeInt(w?.extraAtk, 0),
-    dmgNum: safeInt(w?.dmgNum, 1),
-    dmgDice: v(w?.dmgDice, "к6"),
-    dmgType: v(w?.dmgType, ""),
-    desc: v(w?.desc, ""),
-    collapsed: !!w?.collapsed
-  }))
-  .filter(w => w.name && w.name !== "-");
+    const weapons = weaponsRaw
+      .map((w, idx) => {
+        // Новый формат оружия (создаётся в UI вкладки "Бой")
+        const isNew = !!(w && typeof w === "object" && (
+          "ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w
+        ));
+
+        if (isNew) {
+          return {
+            kind: "new",
+            idx,
+            name: normText(w?.name, "-"),
+            ability: normText(w?.ability, "str"),
+            prof: !!w?.prof,
+            extraAtk: safeInt(w?.extraAtk, 0),
+            dmgNum: safeInt(w?.dmgNum, 1),
+            dmgDice: normText(w?.dmgDice, "к6"),
+            // FIX: dmgType из json иногда приезжает объектом -> приводим к строке
+            dmgType: normText(w?.dmgType, ""),
+            desc: normText(w?.desc, ""),
+            collapsed: !!w?.collapsed
+          };
+        }
+
+        // Legacy формат из некоторых json (name + mod + dmg) -> конвертируем в новый, чтобы редактировалось
+        const legacyName = normText(w?.name, "-");
+        const legacyAtk = normText(w?.mod, "0");
+        const legacyDesc = "";
+        const parsed = parseLegacyDamage(w?.dmg);
+        return {
+          kind: "new",
+          idx,
+          name: legacyName,
+          ability: "str",
+          prof: false,
+          extraAtk: parseModInput(legacyAtk, 0),
+          dmgNum: parsed.dmgNum,
+          dmgDice: parsed.dmgDice,
+          dmgType: parsed.dmgType,
+          desc: legacyDesc,
+          collapsed: true
+        };
+      })
+      .filter(w => w.name && w.name !== "-");
 
     const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
     const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
@@ -721,6 +731,10 @@ function updateWeaponsBonuses(root, sheet) {
     const w = list[idx];
     if (!w || typeof w !== "object") return;
 
+    // Legacy оружие просто пропускаем
+    const isNew = ("ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w);
+    if (!isNew) return;
+
     const atkEl = card.querySelector('[data-weapon-atk]');
     if (atkEl) atkEl.textContent = formatMod(calcWeaponAttackBonus(sheet, w));
 
@@ -733,10 +747,8 @@ function updateWeaponsBonuses(root, sheet) {
       profDot.title = `Владение: +${getProfBonus(sheet)} к бонусу атаки`;
     }
 
-    const detailsWrap = card.querySelector('.weapon-details');
-    if (detailsWrap) detailsWrap.classList.toggle('collapsed', !!w.collapsed);
-
-    card.classList.toggle('weapon-expanded', !w.collapsed);
+    const descWrap = card.querySelector('.weapon-desc');
+    if (descWrap) descWrap.classList.toggle('collapsed', !!w.collapsed);
 
     const toggleBtn = card.querySelector('[data-weapon-toggle-desc]');
     if (toggleBtn) toggleBtn.textContent = w.collapsed ? "Показать" : "Скрыть";
@@ -802,6 +814,10 @@ function bindCombatEditors(root, player, canEdit) {
     const w = sheet.weaponsList[idx];
     if (!w || typeof w !== "object") return;
 
+    // Legacy карточки не редактируем
+    const isNew = ("ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w);
+    if (!isNew) return;
+
     // редактирование полей
     const fields = card.querySelectorAll('[data-weapon-field]');
     fields.forEach(el => {
@@ -821,17 +837,7 @@ function bindCombatEditors(root, player, canEdit) {
 
         if (field === "extraAtk" || field === "dmgNum") val = safeInt(val, 0);
 
-        // Tooltip для длинных названий
-        if (field === "name") {
-          el.title = String(val || "");
-        }
-
         w[field] = val;
-
-        // tooltip с полным названием
-        if (field === "name") {
-          el.setAttribute('title', String(val || ""));
-        }
 
         updateWeaponsBonuses(root, sheet);
         scheduleSheetSave(player);
@@ -1540,27 +1546,39 @@ function bindSlotEditors(root, player, canEdit) {
 
   const listHtml = weapons.length
     ? weapons.map(w => {
+        // На всякий случай поддержим старое отображение, но в нашем VM legacy уже конвертируется в new
+        if (w.kind === "legacy") {
+          return `
+            <div class="sheet-card weapon-card legacy" data-weapon-idx="${w.idx}">
+              <div class="weapon-head">
+                <div class="weapon-title">${escapeHtml(w.name)}</div>
+              </div>
+              <div class="sheet-note">Оружие в старом формате (legacy). Перезагрузи json или добавь оружие через кнопку «Добавить оружие».</div>
+            </div>
+          `;
+        }
+
         const atk = calcAtk(w);
         const collapsed = !!w.collapsed;
         const title = String(w.name || "");
 
         return `
-          <div class="sheet-card weapon-card ${collapsed ? "" : "weapon-expanded"}" data-weapon-idx="${w.idx}">
-            <div class="weapon-head">
-              <div class="weapon-actions">
-                <button class="weapon-btn" type="button" data-weapon-toggle-desc>${collapsed ? "Показать" : "Скрыть"}</button>
-                <button class="weapon-btn danger" type="button" data-weapon-del>Удалить</button>
-              </div>
-
+          <div class="sheet-card weapon-card" data-weapon-idx="${w.idx}">
+            <div class="weapon-head ${collapsed ? "is-collapsed" : "is-expanded"}">
               <input class="weapon-title-input"
                      type="text"
                      value="${escapeHtml(title)}"
                      title="${escapeHtml(title)}"
                      placeholder="Название"
                      data-weapon-field="name">
+
+              <div class="weapon-actions">
+                <button class="weapon-btn" type="button" data-weapon-toggle-desc>${collapsed ? "Показать" : "Скрыть"}</button>
+                <button class="weapon-btn danger" type="button" data-weapon-del>Удалить</button>
+              </div>
             </div>
 
-            <!-- Всегда видимая компактная рамка: Бонус атаки + Урон -->
+            <!-- рамка под названием: Бонус атаки + Урон (всегда видима) -->
             <div class="weapon-summary">
               <div class="weapon-sum-item">
                 <div class="weapon-sum-label">Бонус атаки</div>
@@ -1572,37 +1590,38 @@ function bindSlotEditors(root, player, canEdit) {
               </div>
             </div>
 
-            <!-- Всё остальное скрывается кнопкой -->
+            <!-- всё ниже скрывается кнопкой Скрыть -->
             <div class="weapon-details ${collapsed ? "collapsed" : ""}">
-              <div class="weapon-grid">
-                <div class="weapon-row weapon-row-stack">
-                  <div class="weapon-label-top">Характеристика</div>
+              <div class="weapon-details-grid">
+                <!-- Характеристика: лейбл над селектом, всё в одной рамке -->
+                <div class="weapon-fieldbox">
+                  <div class="weapon-fieldlabel">Характеристика</div>
                   <select class="weapon-select" data-weapon-field="ability">
                     ${abilityOptions.map(o => `<option value="${o.k}" ${o.k === w.ability ? "selected" : ""}>${escapeHtml(o.label)}</option>`).join("")}
                   </select>
                 </div>
 
-                <div class="weapon-row">
-                  <div class="weapon-label">Бонус владения</div>
+                <div class="weapon-fieldbox weapon-fieldbox-inline">
+                  <div class="weapon-fieldlabel">Бонус владения</div>
                   <button class="weapon-prof-dot ${w.prof ? "active" : ""}" type="button" data-weapon-prof title="Владение: +${profBonus} к бонусу атаки"></button>
                 </div>
 
-                <div class="weapon-row">
-                  <div class="weapon-label">Доп.модификатор</div>
-                  <input class="weapon-num weapon-num-sm" type="number" step="1" value="${escapeHtml(String(safeInt(w.extraAtk, 0)))}" data-weapon-field="extraAtk">
+                <!-- Доп.мод. (чуть шире) -->
+                <div class="weapon-fieldbox">
+                  <div class="weapon-fieldlabel">Доп.мод.</div>
+                  <input class="weapon-num weapon-extra" type="number" step="1" value="${escapeHtml(String(safeInt(w.extraAtk, 0)))}" data-weapon-field="extraAtk">
                 </div>
 
-                <div class="weapon-row weapon-dmg-row">
-                  <div class="weapon-label-top">Урон (редакт.)</div>
-                  <div class="weapon-dmg-controls">
-                    <div class="weapon-dmg-line">
-                      <input class="weapon-num weapon-dmg-num" type="number" min="0" step="1" value="${escapeHtml(String(Math.max(0, safeInt(w.dmgNum, 1))))}" data-weapon-field="dmgNum">
-                      <select class="weapon-select weapon-dice" data-weapon-field="dmgDice">
-                        ${diceOptions.map(d => `<option value="${d}" ${d === w.dmgDice ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
-                      </select>
-                    </div>
-                    <input class="weapon-text weapon-dmg-type weapon-full" type="text" value="${escapeHtml(String(w.dmgType || ""))}" placeholder="вид урона (колющий/рубящий/...)" data-weapon-field="dmgType">
+                <!-- Урон (редакт.): общий бокс, внутри 2 маленьких поля в 2 раза меньше -->
+                <div class="weapon-fieldbox weapon-dmg-edit">
+                  <div class="weapon-fieldlabel">Урон (редакт.)</div>
+                  <div class="weapon-dmg-mini">
+                    <input class="weapon-num weapon-dmg-num" type="number" min="0" step="1" value="${escapeHtml(String(Math.max(0, safeInt(w.dmgNum, 1))))}" data-weapon-field="dmgNum">
+                    <select class="weapon-select weapon-dice" data-weapon-field="dmgDice">
+                      ${diceOptions.map(d => `<option value="${d}" ${d === w.dmgDice ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
+                    </select>
                   </div>
+                  <input class="weapon-text weapon-dmg-type weapon-dmg-type-full" type="text" value="${escapeHtml(String(w.dmgType || ""))}" placeholder="вид урона (колющий/рубящий/...)" data-weapon-field="dmgType">
                 </div>
               </div>
 
