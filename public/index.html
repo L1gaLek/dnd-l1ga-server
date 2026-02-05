@@ -70,7 +70,6 @@
         </div>
 
         <button id="add-player">Добавить игрока</button>
-        <button id="roll-initiative">Бросить инициативу</button>
       </div>
     </div>
 
@@ -167,7 +166,10 @@
            value="1"
            title="Количество кубиков">
 
-    <button id="roll" class="dice-viz-btn" type="button">Бросить</button>
+    <div class="dice-viz-actions">
+  <button id="roll-initiative" class="dice-viz-btn dice-viz-btn--initiative" type="button">Инициатива</button>
+  <button id="roll" class="dice-viz-btn" type="button">Бросить</button>
+</div>
   </div>
 
   <canvas id="dice-canvas" width="220" height="140"></canvas>
@@ -183,6 +185,7 @@
 
 </body>
 </html>
+
 
 
 
