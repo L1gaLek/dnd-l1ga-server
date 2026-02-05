@@ -1626,7 +1626,7 @@ function renderCombatTab(vm) {
             <div class="weapon-summary">
               <div class="weapon-sum-item">
                 <div class="weapon-sum-label">
-                  <span>Бонус атаки</span>
+                  <span>Атака</span>
                   <button class="weapon-dice-btn" type="button" data-weapon-roll-atk title="Бросок атаки">${d20Svg}</button>
                 </div>
                 <div class="weapon-sum-val" data-weapon-atk>${escapeHtml(formatMod(atk))}</div>
@@ -2043,4 +2043,5 @@ function renderCombatTab(vm) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
 
