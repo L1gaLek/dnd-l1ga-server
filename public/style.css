@@ -1981,3 +1981,17 @@ textarea[data-sheet-path="text.profPlain.value"]{
 @media (max-width: 700px){
   .dice-others{ display:none; }
 }
+
+/* ===== Dice panel: actions column ===== */
+.dice-viz-actions{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Initiative button: same as roll button, but can glow when active */
+.dice-viz-btn--initiative.is-active{
+  border-color: rgba(80, 200, 120, .55);
+  background: rgba(80, 200, 120, .18);
+  box-shadow: 0 0 0 2px rgba(80, 200, 120, .10) inset;
+}
