@@ -271,6 +271,35 @@ wss.on("connection", ws => {
         break;
       }
 
+case "diceEvent": {
+  const user = getUserByWS(ws);
+  if (!user) return;
+
+  const event = data.event && typeof data.event === "object" ? data.event : null;
+  if (!event) return;
+
+  // минимальная валидация
+  const safe = {
+    fromId: user.id,
+    fromName: user.name,
+    kindText: typeof event.kindText === "string" ? event.kindText : "",
+    sides: Number(event.sides) || 20,
+    count: Number(event.count) || 1,
+    bonus: Number(event.bonus) || 0,
+    rolls: Array.isArray(event.rolls) ? event.rolls.map(n => Number(n) || 0) : [],
+    total: Number(event.total) || 0,
+    crit: (event.crit === "crit-fail" || event.crit === "crit-success") ? event.crit : ""
+  };
+
+  // рассылаем всем как "живое" событие (не в state)
+  const msg = JSON.stringify({ type: "diceEvent", event: safe });
+  wss.clients.forEach(c => {
+    if (c.readyState === WebSocket.OPEN) c.send(msg);
+  });
+
+  break;
+}
+        
       case "removePlayerCompletely": {
         const p = gameState.players.find(p => p.id === data.id);
         if (!p) return;
@@ -441,3 +470,4 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
