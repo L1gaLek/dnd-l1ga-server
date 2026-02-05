@@ -2196,3 +2196,106 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 
 
+
+/* ===== Spells: header + popups ===== */
+.spells-list-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.popup-overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.55);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  z-index:9999;
+}
+.popup-card{
+  width:min(920px, 100%);
+  max-height:min(80vh, 760px);
+  overflow:auto;
+  background:rgba(20,20,24,0.98);
+  border:1px solid rgba(255,255,255,0.14);
+  border-radius:14px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.45);
+  padding:14px;
+}
+.popup-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.popup-title{font-size:16px;font-weight:700;}
+.popup-close{
+  background:rgba(255,255,255,0.08);
+  border:1px solid rgba(255,255,255,0.16);
+  color:inherit;
+  border-radius:10px;
+  padding:6px 10px;
+  cursor:pointer;
+}
+.popup-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.popup-btn{
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.16);
+  color:inherit;
+  border-radius:10px;
+  padding:8px 10px;
+  cursor:pointer;
+}
+.popup-btn.primary{
+  background:rgba(0,170,255,0.18);
+  border-color:rgba(0,200,255,0.35);
+}
+.popup-field{
+  width:100%;
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.16);
+  background:rgba(0,0,0,0.25);
+  color:inherit;
+}
+.popup-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+@media (max-width: 820px){
+  .popup-grid{grid-template-columns:1fr;}
+}
+
+.db-spell-row{
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.04);
+  border-radius:12px;
+  padding:10px;
+  margin:8px 0;
+}
+.db-spell-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.db-spell-name{font-weight:700;}
+.db-spell-controls{display:flex;gap:8px;}
+.db-spell-desc{
+  margin-top:8px;
+  font-size:13px;
+  line-height:1.25;
+  white-space:pre-wrap;
+}
+
+.spell-item-title{font-weight:700;}
+
