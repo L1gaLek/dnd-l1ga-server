@@ -1590,6 +1590,20 @@ textarea[data-sheet-path="text.profPlain.value"]{
   cursor: pointer;
 }
 
+/* ===== Dark dropdown (options list) ===== */
+.weapon-select,
+.dice-viz-select{
+  color-scheme: dark;            /* важно: делает нативную шторку тёмной (где поддерживается) */
+}
+
+.weapon-select option,
+.dice-viz-select option,
+.weapon-select optgroup,
+.dice-viz-select optgroup{
+  background: #1e1e1e;           /* тёмно-серый фон шторки */
+  color: #ffffff;                /* белый текст */
+}
+
 .dice-viz-btn:disabled{ opacity: .55; cursor: not-allowed; }
 
 #dice-canvas{
@@ -1895,4 +1909,5 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-summary .weapon-sum-item:first-child{
   gap: 6px; /* было больше — теперь компактно */
 }
+
 
