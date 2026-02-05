@@ -1657,7 +1657,7 @@ function renderCombatTab(vm) {
                 </div>
 
                 <div class="weapon-fieldbox">
-                  <div class="weapon-fieldlabel">Доп.мод.</div>
+                  <div class="weapon-fieldlabel">Доп. модификатор</div>
                   <input class="weapon-num weapon-extra" type="number" step="1"
                          value="${escapeHtml(String(safeInt(w.extraAtk, 0)))}"
                          data-weapon-field="extraAtk">
@@ -2043,5 +2043,6 @@ function renderCombatTab(vm) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
 
 
