@@ -1881,5 +1881,13 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .combat-skills-card{ margin-top: 10px; }
 .combat-skills-text{ width: 100%; resize: vertical; }
 
+/* Первый блок — Бонус атаки */
+.weapon-summary .weapon-sum-item:first-child .weapon-sum-val{
+  margin-left: 12px;
+}
 
+/* Второй блок — Урон */
+.weapon-summary .weapon-sum-item:last-child{
+  gap: 4px;
+}
 
