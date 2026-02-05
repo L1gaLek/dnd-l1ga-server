@@ -1389,6 +1389,35 @@ textarea[data-sheet-path="text.profPlain.value"]{
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.35);
   background: rgba(255,255,255,0.10);
+  cursor: pointer;
+}
+
+.slot-dot.is-available {
+  background: rgba(0, 170, 255, 0.85);
+  border-color: rgba(0, 200, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.15);
+}
+
+.slot-dot:hover {
+  border-color: rgba(0, 200, 255, 0.75);
+}
+
+/* ===== Spells list editors ===== */
+.spells-level-editor{
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+}
+.spells-level-pills{
+  margin-top: 8px;
 }
 .slot-dots-empty {
   opacity: 0.5;
@@ -2048,6 +2077,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 6px 10px;
   font-size: 13px;
 }
+
 
 
 
