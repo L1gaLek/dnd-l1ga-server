@@ -712,8 +712,8 @@ function updateWeaponsBonuses(root, sheet) {
       profDot.title = `Владение: +${getProfBonus(sheet)} к бонусу атаки`;
     }
 
-    const descWrap = card.querySelector('.weapon-desc');
-    if (descWrap) descWrap.classList.toggle('collapsed', !!w.collapsed);
+    const detailsWrap = card.querySelector('.weapon-details');
+    if (detailsWrap) detailsWrap.classList.toggle('collapsed', !!w.collapsed);
 
     const toggleBtn = card.querySelector('[data-weapon-toggle-desc]');
     if (toggleBtn) toggleBtn.textContent = w.collapsed ? "Показать" : "Скрыть";
@@ -1542,48 +1542,53 @@ function bindSlotEditors(root, player, canEdit) {
               </div>
             </div>
 
-            <div class="weapon-grid">
-              <div class="weapon-row">
-                <div class="weapon-label">Характеристика</div>
-                <select class="weapon-select" data-weapon-field="ability">
-                  ${abilityOptions.map(o => `<option value="${o.k}" ${o.k === w.ability ? "selected" : ""}>${escapeHtml(o.label)}</option>`).join("")}
-                </select>
+            <!-- компактная рамка под названием: Бонус атаки + Урон (всегда видима) -->
+            <div class="weapon-summary">
+              <div class="weapon-sum-item">
+                <div class="weapon-sum-label">Бонус атаки</div>
+                <div class="weapon-sum-val" data-weapon-atk>${escapeHtml(formatMod(atk))}</div>
               </div>
-
-              <div class="weapon-row">
-                <div class="weapon-label">Бонус владения</div>
-                <button class="weapon-prof-dot ${w.prof ? "active" : ""}" type="button" data-weapon-prof title="Владение: +${profBonus} к бонусу атаки"></button>
-              </div>
-
-              <div class="weapon-row">
-                <div class="weapon-label">Доп.модификатор</div>
-                <input class="weapon-num" type="number" step="1" value="${escapeHtml(String(safeInt(w.extraAtk, 0)))}" data-weapon-field="extraAtk">
-              </div>
-
-              <div class="weapon-row">
-                <div class="weapon-label">Бонус атаки</div>
-                <div class="weapon-atk" data-weapon-atk>${escapeHtml(formatMod(atk))}</div>
-              </div>
-
-              <div class="weapon-row weapon-dmg-row">
-                <div class="weapon-label">Урон/вид</div>
-                <div class="weapon-dmg-controls">
-                  <input class="weapon-num weapon-dmg-num" type="number" min="0" step="1" value="${escapeHtml(String(Math.max(0, safeInt(w.dmgNum, 1))))}" data-weapon-field="dmgNum">
-                  <select class="weapon-select weapon-dice" data-weapon-field="dmgDice">
-                    ${diceOptions.map(d => `<option value="${d}" ${d === w.dmgDice ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
-                  </select>
-                  <input class="weapon-text weapon-dmg-type" type="text" value="${escapeHtml(String(w.dmgType || ""))}" placeholder="вид (колющий/рубящий/...)" data-weapon-field="dmgType">
-                </div>
-              </div>
-
-              <div class="weapon-row">
-                <div class="weapon-label">Итог</div>
-                <div class="weapon-dmg-preview" data-weapon-dmg>${escapeHtml(dmgText(w))}</div>
+              <div class="weapon-sum-item">
+                <div class="weapon-sum-label">Урон</div>
+                <div class="weapon-sum-val" data-weapon-dmg>${escapeHtml(dmgText(w))}</div>
               </div>
             </div>
 
-            <div class="weapon-desc ${collapsed ? "collapsed" : ""}">
-              <textarea class="sheet-textarea weapon-desc-text" rows="4" placeholder="Описание оружия..." data-weapon-field="desc">${escapeHtml(String(w.desc || ""))}</textarea>
+            <!-- всё остальное скрывается кнопкой Скрыть -->
+            <div class="weapon-details ${collapsed ? "collapsed" : ""}">
+              <div class="weapon-grid">
+                <div class="weapon-row">
+                  <div class="weapon-label">Характеристика</div>
+                  <select class="weapon-select" data-weapon-field="ability">
+                    ${abilityOptions.map(o => `<option value="${o.k}" ${o.k === w.ability ? "selected" : ""}>${escapeHtml(o.label)}</option>`).join("")}
+                  </select>
+                </div>
+
+                <div class="weapon-row">
+                  <div class="weapon-label">Бонус владения</div>
+                  <button class="weapon-prof-dot ${w.prof ? "active" : ""}" type="button" data-weapon-prof title="Владение: +${profBonus} к бонусу атаки"></button>
+                </div>
+
+                <div class="weapon-row">
+                  <div class="weapon-label">Доп.модификатор</div>
+                  <input class="weapon-num" type="number" step="1" value="${escapeHtml(String(safeInt(w.extraAtk, 0)))}" data-weapon-field="extraAtk">
+                </div>
+
+                <div class="weapon-row weapon-dmg-row">
+                  <div class="weapon-label">Урон (редакт.)</div>
+                  <div class="weapon-dmg-controls">
+                    <input class="weapon-num weapon-dmg-num" type="number" min="0" step="1" value="${escapeHtml(String(Math.max(0, safeInt(w.dmgNum, 1))))}" data-weapon-field="dmgNum">
+                    <select class="weapon-select weapon-dice" data-weapon-field="dmgDice">
+                      ${diceOptions.map(d => `<option value="${d}" ${d === w.dmgDice ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
+                    </select>
+                    <input class="weapon-text weapon-dmg-type" type="text" value="${escapeHtml(String(w.dmgType || ""))}" placeholder="вид (колющий/рубящий/...)" data-weapon-field="dmgType">
+                  </div>
+                </div>
+              </div>
+
+              <div class="weapon-desc">
+                <textarea class="sheet-textarea weapon-desc-text" rows="4" placeholder="Описание оружия..." data-weapon-field="desc">${escapeHtml(String(w.desc || ""))}</textarea>
+              </div>
             </div>
           </div>
         `;
