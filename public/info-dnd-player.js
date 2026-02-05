@@ -71,6 +71,16 @@
     if (x && typeof x === "object" && "value" in x) return safeInt(x.value, fallback);
     return safeInt(x, fallback);
   }
+  function setMaybeObjField(obj, field, n) {
+    if (!obj || typeof obj !== "object") return;
+    const cur = obj[field];
+    if (cur && typeof cur === "object" && ("value" in cur)) {
+      cur.value = n;
+    } else {
+      obj[field] = n;
+    }
+  }
+
 
   
 
@@ -124,6 +134,38 @@
         closeModal();
       }
     });
+  }
+
+
+
+  // ================== POPUP HELPERS (внутренние окна) ==================
+  function openPopup({ title="", bodyHtml="" } = {}) {
+    const overlay = document.createElement("div");
+    overlay.className = "popup-overlay";
+    overlay.innerHTML = `
+      <div class="popup-card" role="dialog" aria-modal="true">
+        <div class="popup-head">
+          <div class="popup-title">${escapeHtml(String(title||""))}</div>
+          <button class="popup-close" type="button" data-popup-close>✕</button>
+        </div>
+        <div class="popup-body">${bodyHtml}</div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => {
+      overlay.remove();
+    };
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+      if (e.target?.closest?.("[data-popup-close]")) close();
+    });
+    document.addEventListener("keydown", function onEsc(ev){
+      if (ev.key === "Escape") {
+        document.removeEventListener("keydown", onEsc);
+        if (overlay.isConnected) close();
+      }
+    });
+    return { overlay, close };
   }
 
   // ================== UI STATE (tab/scroll/anti-jump) ==================
@@ -1379,10 +1421,10 @@ function bindSlotEditors(root, player, canEdit) {
       // total slots (value) keep, but ensure it is at least desired and not more than 12
       const totalPrev = numLike(sheet.spells[key].value, 0);
       const total = Math.max(desired, Math.min(12, totalPrev));
-      sheet.spells[key].value = total;
+      setMaybeObjField(sheet.spells[key], "value", total);
 
       // filled = total - desired
-      sheet.spells[key].filled = Math.max(0, total - desired);
+      setMaybeObjField(sheet.spells[key], "filled", Math.max(0, total - desired));
 
       // update dots in UI without full rerender
       const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
@@ -1426,7 +1468,7 @@ function bindSlotEditors(root, player, canEdit) {
       if (dot.classList.contains("is-available")) available = Math.max(0, available - 1);
       else available = Math.min(total, available + 1);
 
-      sheet.spells[key].filled = Math.max(0, total - available);
+      setMaybeObjField(sheet.spells[key], "filled", Math.max(0, total - available));
 
       const inp = root.querySelector(`.slot-current-input[data-slot-level="${lvl}"]`);
       if (inp) inp.value = String(available);
@@ -1790,15 +1832,23 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
   function renderSpellCard({ name, href, desc }) {
     const safeHref = escapeHtml(href || "");
-    const safeName = escapeHtml(name || href || "(ссылка)");
-    const text = String(desc || "").replaceAll("\r\n", "\n").replaceAll("\r", "\n");
-    const safeDescHtml = escapeHtml(text).replaceAll("\n", "<br>");
+    const safeName = escapeHtml(name || href || "(без названия)");
+    const text = String(desc || "").replace(/
+?/g, "
+");
+    const safeDescHtml = escapeHtml(text).replaceAll("
+", "<br>");
     const hasDesc = !!(text.trim().length);
+
+    const isHttp = /^https?:\/\//i.test(String(href || ""));
+    const titleHtml = isHttp
+      ? `<a class="spell-item-link" href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeName}</a>`
+      : `<span class="spell-item-title">${safeName}</span>`;
 
     return `
       <div class="spell-item" data-spell-url="${safeHref}">
         <div class="spell-item-head">
-          <a class="spell-item-link" href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeName}</a>
+          ${titleHtml}
           <button class="spell-desc-btn" type="button" data-spell-desc-toggle ${hasDesc ? "" : "disabled"}>Описание</button>
         </div>
         <div class="spell-item-desc hidden">${hasDesc ? safeDescHtml : ""}</div>
@@ -1883,13 +1933,6 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             <button class="spell-add-btn" type="button" data-spell-add data-spell-level="${lvl}">${lvl === 0 ? "Добавить заговор" : "Добавить заклинание"}</button>
           </div>
 
-          <div class="spell-add-form hidden" data-spell-add-form="${lvl}">
-            <input class="spell-add-input" type="text" placeholder="Вставь ссылку на dnd.su (например https://dnd.su/spells/9-bless/)" data-spell-add-input="${lvl}">
-            <button class="spell-add-confirm" type="button" data-spell-add-confirm="${lvl}">ОК</button>
-            <button class="spell-add-cancel" type="button" data-spell-add-cancel="${lvl}">Отмена</button>
-            <div class="spell-add-hint">Ссылка добавится кликабельной, а описание можно будет раскрывать кнопкой «Описание».</div>
-          </div>
-
           <textarea class="spells-level-editor" rows="4" data-spells-level="${lvl}" placeholder="Вписывай по 1 заклинанию на строку. Можно с ссылкой:\nНазвание | https://...">${escapeHtml(plain)}</textarea>
 
           <div class="spells-level-pills">
@@ -1932,7 +1975,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
         </div>
 
         <div class="sheet-section" style="margin-top:10px;">
-          <h3>Список заклинаний</h3>
+          <div class="spells-list-header"><h3 style="margin:0">Список заклинаний</h3><button class="spell-db-btn" type="button" data-spell-db>Выбор из базы</button></div>
           ${renderSpellsByLevel(vm)}
           <div class="sheet-note" style="margin-top:8px;">
             Подсказка: если в твоём .json ссылки на dnd.su — они кликабельны.
