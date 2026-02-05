@@ -1606,7 +1606,6 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 
 .dice-viz-btn{
-  flex: 1;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,.18);
   background: rgba(255,255,255,.08);
@@ -1614,6 +1613,28 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 8px 10px;
   font-weight: 900;
   cursor: pointer;
+}
+
+/* Инициатива — отдельной строкой, внутри панели */
+.dice-viz-btn--initiative{
+  width: 100%;
+  display: block;
+  margin-bottom: 8px;
+}
+
+/* Строка броска — строго в одну линию */
+.dice-viz-controls{
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;     /* важно */
+}
+
+/* Кнопка "Бросить" занимает остаток строки после количества */
+.dice-viz-btn--roll{
+  flex: 1 1 auto;
+  min-width: 88px;
+  padding: 7px 10px;     /* чуть компактнее, чтобы точно влезала */
 }
 
 /* ===== Dark dropdown (options list) ===== */
@@ -2027,6 +2048,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 6px 10px;
   font-size: 13px;
 }
+
 
 
 
