@@ -1824,7 +1824,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 4px 10px;
   min-width: 56px;
   text-align: center;
-  margin-left: 14px; /* ⬅️ сдвиг рамки бонуса атаки вправо */
+  margin-left: 6px; /* ⬅️ сдвиг рамки бонуса атаки вправо */
 }
 
 /* Второй элемент в summary — Урон */
@@ -1891,4 +1891,8 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .combat-skills-card{ margin-top: 10px; }
 .combat-skills-text{ width: 100%; resize: vertical; }
 
+/* Атака — кубик ближе к левому краю */
+.weapon-summary .weapon-sum-item:first-child{
+  gap: 6px; /* было больше — теперь компактно */
+}
 
