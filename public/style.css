@@ -1419,15 +1419,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 .weapon-add-btn:disabled{opacity:.5; cursor:not-allowed;}
 
-.weapons-list{
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-@media (max-width: 860px){
-  .weapons-list{ grid-template-columns: 1fr; }
-}
+.weapons-list{ display:flex; flex-direction:column; gap:10px; }
 
 .weapon-card{ padding:12px; }
 .weapon-card.legacy{ opacity:.9; }
@@ -1438,7 +1430,6 @@ textarea[data-sheet-path="text.profPlain.value"]{
   justify-content:space-between;
   gap:10px;
   margin-bottom:10px;
-  flex-wrap: wrap;
 }
 .weapon-title-input{
   width:100%;
@@ -1449,116 +1440,6 @@ textarea[data-sheet-path="text.profPlain.value"]{
   background: rgba(0,0,0,.18);
   color:#fff;
   font-weight:600;
-}
-
-/* при раскрытии — название уходит ниже кнопок и становится на всю ширину */
-.weapon-head.is-expanded .weapon-title-input{
-  order: 3;
-  max-width: none;
-}
-
-.weapon-actions{ order: 2; }
-
-/* рамка под названием: Бонус атаки + Урон */
-.weapon-summary{
-  margin-top: 8px;
-  border: 1px solid rgba(255,255,255,.14);
-  background: rgba(255,255,255,.05);
-  border-radius: 12px;
-  padding: 8px 10px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.weapon-sum-item{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  min-width: 0;
-}
-
-.weapon-sum-label{
-  font-size: 12px;
-  opacity: .85;
-  white-space: nowrap;
-}
-
-.weapon-sum-val{
-  font-size: 14px;
-  font-weight: 800;
-  border: 1px solid rgba(255,255,255,.14);
-  background: rgba(0,0,0,.18);
-  border-radius: 10px;
-  padding: 4px 10px;
-  min-width: 56px;
-  text-align: center;
-}
-
-/* всё “лишнее” прячем кнопкой Скрыть */
-.weapon-details.collapsed{ display: none; }
-
-/* сетка полей внутри раскрытого оружия */
-.weapon-details-grid{
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 12px;
-}
-@media (max-width: 860px){
-  .weapon-details-grid{ grid-template-columns: 1fr; }
-}
-
-.weapon-fieldbox{
-  border: 1px solid rgba(255,255,255,.14);
-  background: rgba(0,0,0,.14);
-  border-radius: 12px;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-.weapon-fieldbox-inline{
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.weapon-fieldlabel{
-  font-size: 12px;
-  opacity: .85;
-  line-height: 1.1;
-  white-space: normal;
-}
-
-.weapon-fieldbox .weapon-select,
-.weapon-fieldbox .weapon-num,
-.weapon-fieldbox .weapon-text{
-  width: 100%;
-  max-width: none;
-}
-
-/* Доп.мод. — чуть шире, чем обычные короткие поля */
-.weapon-extra{ width: 120px !important; max-width: 160px; }
-
-/* Урон (редакт.) — мини-поля в два раза меньше */
-.weapon-dmg-edit{ grid-column: span 1; }
-
-.weapon-dmg-mini{
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.weapon-dmg-num{ width: 48px !important; max-width: 64px; }
-.weapon-dice{ width: 64px !important; max-width: 84px; }
-
-.weapon-dmg-type-full{
-  width: 100% !important;
-  max-width: none !important;
 }
 .weapon-title{
   font-weight:700;
@@ -1829,4 +1710,156 @@ textarea[data-sheet-path="text.profPlain.value"]{
   justify-content: space-between;
   font-weight: 900;
 }
+
+
+
+/* ===== Combat / Weapons (v2 compact) ===== */
+.weapons-list{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 860px){
+  .weapons-list{ grid-template-columns: 1fr; }
+}
+
+.weapon-card{ overflow: hidden; }
+.weapon-head{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.weapon-head.is-expanded{
+  grid-template-columns: 1fr auto;
+}
+.weapon-head.is-expanded .weapon-title-input{
+  grid-column: 1 / -1;
+  margin-top: 6px;
+}
+.weapon-title-input{
+  min-width: 0;
+  width: 100%;
+}
+.weapon-actions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  flex-wrap:nowrap;
+}
+
+.weapon-summary{
+  margin-top: 8px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  border-radius: 12px;
+  padding: 8px 10px;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.weapon-sum-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width: 0;
+}
+
+.weapon-sum-label{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size: 12px;
+  opacity: .9;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.weapon-dice-btn{
+  width: 22px;
+  height: 22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius: 8px;
+  border: 1px solid rgba(255,165,0,.38);
+  background: rgba(255,165,0,.12);
+  color: rgba(255,165,0,.95);
+  cursor: pointer;
+  padding: 0;
+}
+.weapon-dice-btn:hover{
+  background: rgba(255,165,0,.18);
+}
+.weapon-dice-btn:active{
+  transform: translateY(1px);
+}
+
+.weapon-sum-val{
+  font-size: 14px;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  border-radius: 10px;
+  padding: 4px 10px;
+  min-width: 56px;
+  text-align: center;
+}
+
+.weapon-details.collapsed{ display:none; }
+
+.weapon-details-grid{
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 860px){
+  .weapon-details-grid{ grid-template-columns: 1fr; }
+}
+
+.weapon-fieldbox{
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+  border-radius: 12px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.weapon-fieldlabel{
+  font-size: 12px;
+  opacity: .8;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.weapon-fieldbox-inline{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+}
+.weapon-fieldbox-inline .weapon-fieldlabel{ margin-bottom: 0; }
+
+.weapon-dmg-edit{ grid-column: 1 / -1; }
+.weapon-dmg-mini{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin-bottom: 8px;
+}
+.weapon-dmg-mini .weapon-dmg-num{ width: 64px; }
+.weapon-dmg-mini .weapon-dice{ width: 86px; }
+.weapon-extra{ width: 86px; }
+
+.weapon-dmg-type-full{ width: 100%; }
+
+.weapon-desc{ margin-top: 10px; }
+.weapon-desc-text{ width: 100%; }
+
+.combat-skills-card{ margin-top: 10px; }
+.combat-skills-text{ width: 100%; resize: vertical; }
 
