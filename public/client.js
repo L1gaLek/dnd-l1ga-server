@@ -692,6 +692,58 @@ function animateSingleRoll(sides, finalValue) {
   });
 }
 
+// ===== other players dice feed =====
+let diceOthersWrap = null;
+
+function ensureDiceOthersUI() {
+  if (diceOthersWrap) return diceOthersWrap;
+
+  diceOthersWrap = document.createElement('div');
+  diceOthersWrap.className = 'dice-others';
+  diceOthersWrap.innerHTML = `<div class="dice-others__title">Броски других</div>`;
+  document.body.appendChild(diceOthersWrap);
+
+  return diceOthersWrap;
+}
+
+function pushOtherDice(ev) {
+  // не показываем свои же броски
+  if (ev?.fromId && typeof myId !== 'undefined' && ev.fromId === myId) return;
+
+  ensureDiceOthersUI();
+
+  const item = document.createElement('div');
+  item.className = 'dice-others__item';
+
+  if (ev.crit === 'crit-fail') item.classList.add('crit-fail');
+  if (ev.crit === 'crit-success') item.classList.add('crit-success');
+
+  const head = `${ev.fromName || 'Игрок'}: ${ev.kindText || `d${ev.sides} × ${ev.count}`}`;
+  const rollsText = (ev.rolls && ev.rolls.length) ? ev.rolls.join(' + ') : '-';
+  const body = `${rollsText} = ${ev.total}`;
+
+  item.innerHTML = `
+    <div class="dice-others__head">${escapeHtmlLocal(head)}</div>
+    <div class="dice-others__body">${escapeHtmlLocal(body)}</div>
+  `;
+
+  diceOthersWrap.appendChild(item);
+
+  // затухание и удаление
+  setTimeout(() => item.classList.add('fade'), 4200);
+  setTimeout(() => item.remove(), 5200);
+}
+
+// маленький экранировщик (чтобы имена не ломали HTML)
+function escapeHtmlLocal(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 
 // ===== API: programmatic dice rolls (used by InfoModal weapons) =====
 window.DicePanel = window.DicePanel || {};
@@ -840,7 +892,18 @@ sendMessage({
 endTurnBtn?.addEventListener('click', () => sendMessage({ type: 'endTurn' }));
 
 // ================== INITIATIVE ==================
-rollInitiativeBtn.addEventListener('click', () => sendMessage({ type: 'rollInitiative' }));
+rollInitiativeBtn.addEventListener('click', async () => {
+  // 1) визуальный бросок у тебя (анимация + журнал + diceEvent для других)
+  await window.DicePanel.roll({
+    sides: 20,
+    count: 1,
+    bonus: 0,
+    kindText: 'Инициатива'
+  });
+
+  // 2) серверная логика инициативы (чтобы флаг hasRolledInitiative / порядок работали как сейчас)
+  sendMessage({ type: 'rollInitiative' });
+});
 
 // ================== WALLS ==================
 editEnvBtn.addEventListener('click', () => {
@@ -946,6 +1009,7 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
 
 
