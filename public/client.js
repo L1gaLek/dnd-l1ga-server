@@ -599,6 +599,53 @@ function animateSingleRoll(sides, finalValue) {
   });
 }
 
+
+// ===== API: programmatic dice rolls (used by InfoModal weapons) =====
+window.DicePanel = window.DicePanel || {};
+window.DicePanel.roll = async ({ sides = 20, count = 1, bonus = 0, kindText = null } = {}) => {
+  if (diceAnimBusy) return;
+  diceAnimBusy = true;
+
+  const S = clampInt(sides, 2, 100, 20);
+  const C = clampInt(count, 1, 20, 1);
+  const B = Number(bonus) || 0;
+
+  // чтобы UI панели соответствовал броску
+  if (dice) dice.value = String(S);
+  if (diceCountInput) diceCountInput.value = String(C);
+
+  const finals = Array.from({ length: C }, () => rollDie(S));
+  const shown = Array.from({ length: C }, () => null);
+
+  renderRollChips(shown, 0);
+
+  if (diceVizKind) diceVizKind.textContent = kindText ? String(kindText) : `d${S} × ${C}`;
+  if (diceVizValue) diceVizValue.textContent = "…";
+
+  for (let i = 0; i < C; i++) {
+    renderRollChips(shown, i);
+    await animateSingleRoll(S, finals[i]);
+    shown[i] = finals[i];
+    renderRollChips(shown, Math.min(i + 1, C - 1));
+  }
+
+  const sum = finals.reduce((a, b) => a + b, 0);
+  const total = sum + B;
+
+  if (diceVizValue) diceVizValue.textContent = String(total);
+  renderRollChips(shown, -1);
+
+  // в лог — тоже отправим
+  try {
+    if (typeof sendMessage === "function") {
+      const bonusTxt = B ? ` ${B >= 0 ? "+" : "-"} ${Math.abs(B)}` : "";
+      sendMessage({ type: 'log', text: `${kindText || `Бросок d${S} × ${C}`}: ${finals.join(' + ')} = ${sum}${bonusTxt} => ${total}` });
+    }
+  } catch {}
+
+  diceAnimBusy = false;
+};
+
 // ================== DICE (from the bottom-left panel) ==================
 rollBtn?.addEventListener('click', async () => {
   if (diceAnimBusy) return;
