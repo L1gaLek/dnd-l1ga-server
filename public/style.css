@@ -1922,3 +1922,62 @@ textarea[data-sheet-path="text.profPlain.value"]{
   color: #ffa500;
   font-weight: 900;
 }
+
+/* ===== Other players dice feed (right of dice panel) ===== */
+.dice-others{
+  position: fixed;
+  left: 300px;      /* 14px + ~270px + зазор */
+  bottom: 14px;
+  width: 240px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(20,20,20,0.88);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  z-index: 9997;
+  pointer-events: none;
+}
+
+.dice-others__title{
+  font-weight: 900;
+  font-size: 12px;
+  margin-bottom: 8px;
+  opacity: .9;
+}
+
+.dice-others__item{
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  opacity: .98;
+  transition: opacity .9s ease, transform .9s ease;
+}
+
+.dice-others__head{
+  font-weight: 900;
+  font-size: 12px;
+  margin-bottom: 4px;
+  opacity: .95;
+}
+
+.dice-others__body{
+  font-weight: 800;
+  font-size: 12px;
+  opacity: .9;
+}
+
+.dice-others__item.fade{
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* крит подсветка */
+.dice-others__item.crit-fail{ border-color: rgba(255,77,77,0.55); }
+.dice-others__item.crit-success{ border-color: rgba(255,165,0,0.60); }
+
+/* если экран узкий — прячем, чтобы не мешало */
+@media (max-width: 700px){
+  .dice-others{ display:none; }
+}
