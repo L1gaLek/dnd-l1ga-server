@@ -66,6 +66,12 @@
     return Number.isFinite(n) ? n : fallback;
   }
 
+  // Иногда числа приходят в виде { value: n }
+  function numLike(x, fallback = 0) {
+    if (x && typeof x === "object" && "value" in x) return safeInt(x.value, fallback);
+    return safeInt(x, fallback);
+  }
+
   
 
   // D&D 5e: модификатор = floor((score - 10) / 2), ограничиваем 1..30
@@ -575,8 +581,8 @@
     const slots = [];
     for (let lvlN = 1; lvlN <= 9; lvlN++) {
       const k = `slots-${lvlN}`;
-      const total = safeInt(slotsRaw?.[k]?.value, 0);
-      const filled = safeInt(slotsRaw?.[k]?.filled, 0);
+      const total = numLike(slotsRaw?.[k]?.value, 0);
+      const filled = numLike(slotsRaw?.[k]?.filled, 0);
       slots.push({ level: lvlN, total, filled });
     }
 
@@ -588,6 +594,25 @@
     // - plain:  sheet.text["spells-level-N-plain"].value (строка)  <-- редактируемый список
     const spellsByLevel = [];
     const spellsPlainByLevel = {};
+    const spellNameByHref = {};
+    const spellDescByHref = {};
+
+    // кастомные описания/имена (добавленные кнопкой) сохраняем в sheet.text
+    if (sheet?.text && typeof sheet.text === "object") {
+      for (const k of Object.keys(sheet.text)) {
+        if (!k) continue;
+        if (k.startsWith("spell-name:")) {
+          const href = k.slice("spell-name:".length);
+          const val = sheet.text?.[k]?.value;
+          if (href && typeof val === "string" && val.trim()) spellNameByHref[href] = val.trim();
+        }
+        if (k.startsWith("spell-desc:")) {
+          const href = k.slice("spell-desc:".length);
+          const val = sheet.text?.[k]?.value;
+          if (href && typeof val === "string" && val.trim()) spellDescByHref[href] = val;
+        }
+      }
+    }
 
     for (let lvlN = 0; lvlN <= 9; lvlN++) {
       const tipKey = `spells-level-${lvlN}`;
@@ -698,7 +723,7 @@ const weapons = weaponsRaw
     const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
     const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
 
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, profBonus: getProfBonus(sheet), weapons, coins };
+    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -1352,7 +1377,7 @@ function bindSlotEditors(root, player, canEdit) {
       }
 
       // total slots (value) keep, but ensure it is at least desired and not more than 12
-      const totalPrev = safeInt(sheet.spells[key].value, 0);
+      const totalPrev = numLike(sheet.spells[key].value, 0);
       const total = Math.max(desired, Math.min(12, totalPrev));
       sheet.spells[key].value = total;
 
@@ -1362,7 +1387,7 @@ function bindSlotEditors(root, player, canEdit) {
       // update dots in UI without full rerender
       const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
       if (dotsWrap) {
-        const totalForUi = Math.max(0, Math.min(12, safeInt(sheet.spells[key].value, 0)));
+        const totalForUi = Math.max(0, Math.min(12, numLike(sheet.spells[key].value, 0)));
         const dots = Array.from({ length: totalForUi })
           .map((_, i) => `<span class="slot-dot${i < desired ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
           .join("");
@@ -1393,8 +1418,8 @@ function bindSlotEditors(root, player, canEdit) {
         sheet.spells[key] = { value: 0, filled: 0 };
       }
 
-      const total = Math.max(0, Math.min(12, safeInt(sheet.spells[key].value, 0)));
-      const filled = Math.max(0, Math.min(total, safeInt(sheet.spells[key].filled, 0)));
+      const total = Math.max(0, Math.min(12, numLike(sheet.spells[key].value, 0)));
+      const filled = Math.max(0, Math.min(total, numLike(sheet.spells[key].filled, 0)));
       let available = Math.max(0, total - filled);
 
       // нажали на доступный -> используем 1; нажали на пустой -> возвращаем 1
@@ -1456,6 +1481,173 @@ function bindSpellsListEditors(root, player, canEdit) {
 
     area.addEventListener('input', save);
     area.addEventListener('change', save);
+  });
+}
+
+// ===== add spells by URL + toggle descriptions =====
+function normalizeDndSuUrl(url) {
+  const u = String(url || "").trim();
+  if (!u) return "";
+  // accept dnd.su links only (spells)
+  try {
+    const parsed = new URL(u);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    if (!parsed.hostname.endsWith("dnd.su")) return "";
+    // normalize trailing slash
+    let href = parsed.href;
+    if (!href.endsWith("/")) href += "/";
+    return href;
+  } catch {
+    return "";
+  }
+}
+
+async function fetchSpellHtml(url) {
+  // IMPORTANT: через наш сервер, чтобы избежать CORS
+  const r = await fetch(`/api/fetch?url=${encodeURIComponent(url)}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return await r.text();
+}
+
+function extractSpellFromHtml(html) {
+  const txt = String(html || "");
+  // name
+  let name = "";
+  try {
+    const doc = new DOMParser().parseFromString(txt, "text/html");
+    name = (doc.querySelector('h2.card-title[itemprop="name"]')?.textContent || "").trim();
+  } catch { name = ""; }
+
+  // description block: from <ul class="params card__article-body"> ... to <section class="comments-block ...">
+  let desc = "";
+  const start = txt.indexOf('<ul class="params card__article-body"');
+  const end = txt.indexOf('<section class="comments-block');
+  if (start !== -1 && end !== -1 && end > start) {
+    const slice = txt.slice(start, end);
+    const wrap = document.createElement("div");
+    wrap.innerHTML = slice;
+    // innerText обычно сохраняет абзацы и списки достаточно близко к сайту
+    desc = (wrap.innerText || "").replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+    // подчистим лишние пустые строки
+    desc = desc
+      .split("\n")
+      .map(l => l.replace(/\s+$/g, ""))
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  return { name: name || "(без названия)", desc: desc || "" };
+}
+
+function ensureSpellSaved(sheet, level, name, href, desc) {
+  if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
+
+  // store meta
+  sheet.text[`spell-name:${href}`] = { value: String(name || "").trim() };
+  sheet.text[`spell-desc:${href}`] = { value: String(desc || "") };
+
+  // append to plain list if absent
+  const plainKey = `spells-level-${level}-plain`;
+  const cur = String(sheet.text?.[plainKey]?.value ?? "");
+  const lines = cur.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const already = lines.some(l => l.includes(href));
+  if (!already) lines.push(`${name} | ${href}`);
+  sheet.text[plainKey] = { value: lines.join("\n") };
+}
+
+function bindSpellAddAndDesc(root, player, canEdit) {
+  if (!root || !player?.sheet?.parsed) return;
+  const sheet = player.sheet.parsed;
+
+  if (root.__spellAddBound) return;
+  root.__spellAddBound = true;
+
+  root.addEventListener("click", async (e) => {
+    const addBtn = e.target?.closest?.("[data-spell-add][data-spell-level]");
+    if (addBtn) {
+      if (!canEdit) return;
+      const lvl = safeInt(addBtn.getAttribute("data-spell-level"), 0);
+      const form = root.querySelector(`.spell-add-form[data-spell-add-form="${lvl}"]`);
+      if (form) {
+        form.classList.toggle("hidden");
+        const inp = form.querySelector(`input[data-spell-add-input="${lvl}"]`);
+        inp?.focus?.();
+      }
+      return;
+    }
+
+    const cancelBtn = e.target?.closest?.("[data-spell-add-cancel]");
+    if (cancelBtn) {
+      if (!canEdit) return;
+      const lvl = safeInt(cancelBtn.getAttribute("data-spell-add-cancel"), 0);
+      const form = root.querySelector(`.spell-add-form[data-spell-add-form="${lvl}"]`);
+      if (form) form.classList.add("hidden");
+      return;
+    }
+
+    const okBtn = e.target?.closest?.("[data-spell-add-confirm]");
+    if (okBtn) {
+      if (!canEdit) return;
+      const lvl = safeInt(okBtn.getAttribute("data-spell-add-confirm"), 0);
+      const form = root.querySelector(`.spell-add-form[data-spell-add-form="${lvl}"]`);
+      const inp = root.querySelector(`input[data-spell-add-input="${lvl}"]`);
+      const rawUrl = inp?.value || "";
+      const href = normalizeDndSuUrl(rawUrl);
+      if (!href || !href.includes("/spells/")) {
+        alert("Нужна ссылка на dnd.su/spells/... (пример: https://dnd.su/spells/9-bless/)");
+        return;
+      }
+
+      // UX: disable
+      okBtn.disabled = true;
+      if (inp) inp.disabled = true;
+
+      try {
+        const html = await fetchSpellHtml(href);
+        const { name, desc } = extractSpellFromHtml(html);
+        ensureSpellSaved(sheet, lvl, name, href, desc);
+        scheduleSheetSave(player);
+
+        // rerender текущую вкладку "Заклинания"
+        const main = root.querySelector("#sheet-main");
+        if (main) {
+          const scrollTop = main.scrollTop;
+          const freshVm = toViewModel(sheet, player.name);
+          main.innerHTML = renderSpellsTab(freshVm);
+
+          bindEditableInputs(root, player, canEdit);
+          bindSkillBoostDots(root, player, canEdit);
+          bindAbilityAndSkillEditors(root, player, canEdit);
+          bindNotesEditors(root, player, canEdit);
+          bindSlotEditors(root, player, canEdit);
+          bindSpellsListEditors(root, player, canEdit);
+          bindSpellAddAndDesc(root, player, canEdit);
+          bindCombatEditors(root, player, canEdit);
+
+          main.scrollTop = scrollTop;
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Не удалось получить/распарсить описание с dnd.su. Проверь ссылку.");
+      } finally {
+        okBtn.disabled = false;
+        if (inp) inp.disabled = false;
+        if (form) form.classList.add("hidden");
+        if (inp) inp.value = "";
+      }
+      return;
+    }
+
+    const descBtn = e.target?.closest?.("[data-spell-desc-toggle]");
+    if (descBtn) {
+      const item = descBtn.closest(".spell-item");
+      const desc = item?.querySelector?.(".spell-item-desc");
+      if (!desc) return;
+      desc.classList.toggle("hidden");
+      descBtn.classList.toggle("is-open");
+      return;
+    }
   });
 }
 
@@ -1595,6 +1787,25 @@ function bindSpellsListEditors(root, player, canEdit) {
   }
 
   // ================== RENDER: SPELLS ==================
+
+  function renderSpellCard({ name, href, desc }) {
+    const safeHref = escapeHtml(href || "");
+    const safeName = escapeHtml(name || href || "(ссылка)");
+    const text = String(desc || "").replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+    const safeDescHtml = escapeHtml(text).replaceAll("\n", "<br>");
+    const hasDesc = !!(text.trim().length);
+
+    return `
+      <div class="spell-item" data-spell-url="${safeHref}">
+        <div class="spell-item-head">
+          <a class="spell-item-link" href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeName}</a>
+          <button class="spell-desc-btn" type="button" data-spell-desc-toggle ${hasDesc ? "" : "disabled"}>Описание</button>
+        </div>
+        <div class="spell-item-desc hidden">${hasDesc ? safeDescHtml : ""}</div>
+      </div>
+    `;
+  }
+
   function renderSlots(vm) {
     const slots = Array.isArray(vm?.slots) ? vm.slots : [];
     if (!slots.length) return `<div class="sheet-note">Ячейки заклинаний не указаны.</div>`;
@@ -1607,8 +1818,8 @@ function bindSpellsListEditors(root, player, canEdit) {
     });
 
     const cells = slots.slice(0, 9).map(s => {
-      const total = Math.max(0, Math.min(12, safeInt(s.total, 0)));
-      const filled = Math.max(0, Math.min(total, safeInt(s.filled, 0)));
+      const total = Math.max(0, Math.min(12, numLike(s.total, 0)));
+      const filled = Math.max(0, Math.min(total, numLike(s.filled, 0)));
       const current = Math.max(0, total - filled); // доступные
       const spellsCount = countByLevel[s.level] || 0;
 
@@ -1646,6 +1857,8 @@ function bindSpellsListEditors(root, player, canEdit) {
   }
 
   function renderSpellsByLevel(vm) {
+    const spellNameByHref = (vm?.spellNameByHref && typeof vm.spellNameByHref === "object") ? vm.spellNameByHref : {};
+    const spellDescByHref = (vm?.spellDescByHref && typeof vm.spellDescByHref === "object") ? vm.spellDescByHref : {};
     const blocks = (vm?.spellsByLevel || []).map(b => {
       const lvl = safeInt(b.level, 0);
       const title = (lvl === 0) ? "Заговоры (0)" : `Уровень ${lvl}`;
@@ -1656,14 +1869,26 @@ function bindSpellsListEditors(root, player, canEdit) {
 
       const items = (b.items || []).map(it => {
         if (it.href) {
-          return `<a class="sheet-pill spell-link" href="${escapeHtml(it.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.text)}</a>`;
+          const name = spellNameByHref[it.href] || it.text;
+          const desc = spellDescByHref[it.href] || "";
+          return renderSpellCard({ name, href: it.href, desc });
         }
         return `<span class="sheet-pill">${escapeHtml(it.text)}</span>`;
       }).join("");
 
       return `
         <div class="sheet-card">
-          <h4>${escapeHtml(title)}</h4>
+          <div class="spells-level-header">
+            <h4 style="margin:0">${escapeHtml(title)}</h4>
+            <button class="spell-add-btn" type="button" data-spell-add data-spell-level="${lvl}">${lvl === 0 ? "Добавить заговор" : "Добавить заклинание"}</button>
+          </div>
+
+          <div class="spell-add-form hidden" data-spell-add-form="${lvl}">
+            <input class="spell-add-input" type="text" placeholder="Вставь ссылку на dnd.su (например https://dnd.su/spells/9-bless/)" data-spell-add-input="${lvl}">
+            <button class="spell-add-confirm" type="button" data-spell-add-confirm="${lvl}">ОК</button>
+            <button class="spell-add-cancel" type="button" data-spell-add-cancel="${lvl}">Отмена</button>
+            <div class="spell-add-hint">Ссылка добавится кликабельной, а описание можно будет раскрывать кнопкой «Описание».</div>
+          </div>
 
           <textarea class="spells-level-editor" rows="4" data-spells-level="${lvl}" placeholder="Вписывай по 1 заклинанию на строку. Можно с ссылкой:\nНазвание | https://...">${escapeHtml(plain)}</textarea>
 
@@ -2156,6 +2381,7 @@ function renderCombatTab(vm) {
     bindNotesEditors(sheetContent, player, canEdit);
     bindSlotEditors(sheetContent, player, canEdit);
     bindSpellsListEditors(sheetContent, player, canEdit);
+    bindSpellAddAndDesc(sheetContent, player, canEdit);
    bindCombatEditors(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
@@ -2183,6 +2409,7 @@ function renderCombatTab(vm) {
           bindNotesEditors(sheetContent, player, canEdit);
           bindSlotEditors(sheetContent, player, canEdit);
           bindSpellsListEditors(sheetContent, player, canEdit);
+          bindSpellAddAndDesc(sheetContent, player, canEdit);
            bindCombatEditors(sheetContent, player, canEdit);
         }
       });
