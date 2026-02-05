@@ -252,6 +252,42 @@
     return items;
   }
 
+  // ================== PLAIN SPELLS PARSING (для ручного редактирования) ==================
+  function parseSpellsFromPlain(text) {
+    if (typeof text !== "string") return [];
+
+    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const out = [];
+
+    for (const line of lines) {
+      // поддерживаем форматы:
+      // 1) "Название | https://..."
+      // 2) "Название https://..."
+      // 3) "https://..."
+      let t = line;
+      let href = null;
+
+      const partsPipe = t.split("|").map(s => s.trim()).filter(Boolean);
+      if (partsPipe.length >= 2 && /^https?:\/\//i.test(partsPipe[1])) {
+        t = partsPipe[0];
+        href = partsPipe[1];
+      } else {
+        const m = t.match(/(https?:\/\/[^\s]+)\s*$/i);
+        if (m) {
+          href = m[1];
+          t = t.replace(m[1], "").trim();
+        } else if (/^https?:\/\//i.test(t)) {
+          href = t;
+          t = t;
+        }
+      }
+
+      out.push({ text: t || line, href: href || null });
+    }
+
+    return out;
+  }
+
   // ================== MANUAL SHEET DEFAULT ==================
   function createEmptySheet(fallbackName = "-") {
     return {
@@ -545,11 +581,44 @@
     }
 
     const text = (sheet?.text && typeof sheet.text === "object") ? sheet.text : {};
-    const spellKeys = Object.keys(text).filter(k => k.startsWith("spells-level-"));
-    const spellsByLevel = spellKeys
-      .map(k => ({ level: safeInt(k.split("-").pop(), 0), items: parseSpellsFromTiptap(text[k]?.value?.data) }))
-      .filter(x => x.items && x.items.length)
-      .sort((a,b) => a.level - b.level);
+
+    // Всегда показываем уровни 0..9 даже без .json.
+    // Поддерживаем 2 источника:
+    // - tiptap: sheet.text["spells-level-N"].value.data
+    // - plain:  sheet.text["spells-level-N-plain"].value (строка)  <-- редактируемый список
+    const spellsByLevel = [];
+    const spellsPlainByLevel = {};
+
+    for (let lvlN = 0; lvlN <= 9; lvlN++) {
+      const tipKey = `spells-level-${lvlN}`;
+      const plainKey = `spells-level-${lvlN}-plain`;
+
+      const tipItems = parseSpellsFromTiptap(text?.[tipKey]?.value?.data);
+      const plainVal = (text?.[plainKey]?.value ?? text?.[plainKey] ?? "");
+      const plainItems = parseSpellsFromPlain(plainVal);
+
+      // сохраним plain текст для textarea (если его нет — сгенерим из tiptap, чтобы сразу можно было редактировать)
+      if (typeof plainVal === "string" && plainVal.trim().length) {
+        spellsPlainByLevel[lvlN] = plainVal;
+      } else if (tipItems && tipItems.length) {
+        spellsPlainByLevel[lvlN] = tipItems.map(it => (it.href ? `${it.text} | ${it.href}` : it.text)).join("\n");
+      } else {
+        spellsPlainByLevel[lvlN] = "";
+      }
+
+      // объединяем items (без умного дедупа — но уберём совсем очевидные повторы по (text+href))
+      const merged = [];
+      const seen = new Set();
+      [...tipItems, ...plainItems].forEach(it => {
+        const key = `${it?.text || ""}@@${it?.href || ""}`;
+        if (!it?.text) return;
+        if (seen.has(key)) return;
+        seen.add(key);
+        merged.push({ text: String(it.text), href: it.href ? String(it.href) : null });
+      });
+
+      spellsByLevel.push({ level: lvlN, items: merged });
+    }
 
 const weaponsRaw = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
 
@@ -629,7 +698,7 @@ const weapons = weaponsRaw
     const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
     const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
 
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, profBonus: getProfBonus(sheet), weapons, coins };
+    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, profBonus: getProfBonus(sheet), weapons, coins };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -783,7 +852,6 @@ function rerenderCombatTabInPlace(root, player, canEdit) {
   bindAbilityAndSkillEditors(root, player, canEdit);
   bindNotesEditors(root, player, canEdit);
   bindSlotEditors(root, player, canEdit);
-   bindSpellsListEditors(sheetContent, player, canEdit);
   bindCombatEditors(root, player, canEdit);
 
   updateWeaponsBonuses(root, player.sheet?.parsed);
@@ -1261,48 +1329,7 @@ if (path === "proficiency") {
       });
     });
   }
- 
-  // ===== manual spells list editors (spells-level-*-plain) =====
-function bindSpellsListEditors(root, player, canEdit) {
-  if (!root || !player?.sheet?.parsed) return;
-  const sheet = player.sheet.parsed;
-  if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
-
-  const areas = root.querySelectorAll('.spells-level-editor[data-spells-level]');
-  areas.forEach(area => {
-    const lvl = safeInt(area.getAttribute('data-spells-level'), 0);
-    if (lvl < 0 || lvl > 9) return;
-
-    if (!canEdit) {
-      area.disabled = true;
-      return;
-    }
-
-    const save = () => {
-      const key = `spells-level-${lvl}-plain`;
-      if (!sheet.text[key] || typeof sheet.text[key] !== 'object') sheet.text[key] = { value: "" };
-      sheet.text[key].value = String(area.value || "");
-
-      // live update: кол-во заклинаний (число слева от "/"), если этот уровень есть в ячейках
-      if (lvl >= 1 && lvl <= 9) {
-        const count = (String(area.value || "")
-          .split(/\r?\n/)
-          .map(s => s.trim())
-          .filter(Boolean)
-          .length);
-        const el = root.querySelector(`.slot-cell[data-slot-level="${lvl}"] .slot-spells`);
-        if (el) el.textContent = String(count);
-      }
-
-      scheduleSheetSave(player);
-    };
-
-    area.addEventListener('input', save);
-    area.addEventListener('change', save);
-  });
-} 
-   
-   // ===== Slots (spell slots) editors =====
+  // ===== Slots (spell slots) editors =====
 function bindSlotEditors(root, player, canEdit) {
   if (!root || !player?.sheet?.parsed) return;
   const sheet = player.sheet.parsed;
@@ -1335,11 +1362,22 @@ function bindSlotEditors(root, player, canEdit) {
       // update dots in UI without full rerender
       const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
       if (dotsWrap) {
-        const dots = Array.from({ length: desired }).map(() => `<span class="slot-dot"></span>`).join("");
+        const totalForUi = Math.max(0, Math.min(12, safeInt(sheet.spells[key].value, 0)));
+        const dots = Array.from({ length: totalForUi })
+          .map((_, i) => `<span class="slot-dot${i < desired ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
+          .join("");
         dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
       }
 
-// кликабельные кружки: синий = доступно, пустой = использовано
+      inp.value = String(desired);
+      scheduleSheetSave(player);
+    };
+
+    inp.addEventListener("input", handler);
+    inp.addEventListener("change", handler);
+  });
+
+  // кликабельные кружки: синий = доступно, пустой = использовано
   if (!root.__spellSlotsDotsBound) {
     root.__spellSlotsDotsBound = true;
     root.addEventListener("click", (e) => {
@@ -1379,13 +1417,45 @@ function bindSlotEditors(root, player, canEdit) {
       scheduleSheetSave(player);
     });
   }
-       
-      inp.value = String(desired);
+}
+
+// ===== manual spells list editors (spells-level-*-plain) =====
+function bindSpellsListEditors(root, player, canEdit) {
+  if (!root || !player?.sheet?.parsed) return;
+  const sheet = player.sheet.parsed;
+  if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
+
+  const areas = root.querySelectorAll('.spells-level-editor[data-spells-level]');
+  areas.forEach(area => {
+    const lvl = safeInt(area.getAttribute('data-spells-level'), 0);
+    if (lvl < 0 || lvl > 9) return;
+
+    if (!canEdit) {
+      area.disabled = true;
+      return;
+    }
+
+    const save = () => {
+      const key = `spells-level-${lvl}-plain`;
+      if (!sheet.text[key] || typeof sheet.text[key] !== 'object') sheet.text[key] = { value: "" };
+      sheet.text[key].value = String(area.value || "");
+
+      // live update: кол-во заклинаний (число слева от "/"), если этот уровень есть в ячейках
+      if (lvl >= 1 && lvl <= 9) {
+        const count = (String(area.value || "")
+          .split(/\r?\n/)
+          .map(s => s.trim())
+          .filter(Boolean)
+          .length);
+        const el = root.querySelector(`.slot-cell[data-slot-level="${lvl}"] .slot-spells`);
+        if (el) el.textContent = String(count);
+      }
+
       scheduleSheetSave(player);
     };
 
-    inp.addEventListener("input", handler);
-    inp.addEventListener("change", handler);
+    area.addEventListener('input', save);
+    area.addEventListener('change', save);
   });
 }
 
@@ -1537,9 +1607,17 @@ function bindSlotEditors(root, player, canEdit) {
     });
 
     const cells = slots.slice(0, 9).map(s => {
-      const current = Math.max(0, safeInt(s.total, 0) - safeInt(s.filled, 0));
+      const total = Math.max(0, Math.min(12, safeInt(s.total, 0)));
+      const filled = Math.max(0, Math.min(total, safeInt(s.filled, 0)));
+      const current = Math.max(0, total - filled); // доступные
       const spellsCount = countByLevel[s.level] || 0;
-      const dots = Array.from({ length: Math.min(12, current) }).map(() => `<span class="slot-dot"></span>`).join("");
+
+      const dots = Array.from({ length: total })
+        .map((_, i) => {
+          const on = i < current;
+          return `<span class="slot-dot${on ? " is-available" : ""}" data-slot-level="${s.level}"></span>`;
+        })
+        .join("");
 
       return `
         <div class="slot-cell" data-slot-level="${s.level}">
@@ -1568,11 +1646,14 @@ function bindSlotEditors(root, player, canEdit) {
   }
 
   function renderSpellsByLevel(vm) {
-    if (!vm.spellsByLevel || !vm.spellsByLevel.length) {
-      return `<div class="sheet-note">Заклинания не найдены в разделе spells-level-* (в твоём .json они лежат в sheet.text).</div>`;
-    }
+    const blocks = (vm?.spellsByLevel || []).map(b => {
+      const lvl = safeInt(b.level, 0);
+      const title = (lvl === 0) ? "Заговоры (0)" : `Уровень ${lvl}`;
 
-    const blocks = vm.spellsByLevel.map(b => {
+      const plain = (vm?.spellsPlainByLevel && typeof vm.spellsPlainByLevel === "object")
+        ? (vm.spellsPlainByLevel[lvl] || "")
+        : "";
+
       const items = (b.items || []).map(it => {
         if (it.href) {
           return `<a class="sheet-pill spell-link" href="${escapeHtml(it.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.text)}</a>`;
@@ -1580,11 +1661,15 @@ function bindSlotEditors(root, player, canEdit) {
         return `<span class="sheet-pill">${escapeHtml(it.text)}</span>`;
       }).join("");
 
-      const title = (b.level === 0) ? "Заговоры (0)" : `Уровень ${b.level}`;
       return `
         <div class="sheet-card">
           <h4>${escapeHtml(title)}</h4>
-          <div>${items || `<div class="sheet-note">Пусто</div>`}</div>
+
+          <textarea class="spells-level-editor" rows="4" data-spells-level="${lvl}" placeholder="Вписывай по 1 заклинанию на строку. Можно с ссылкой:\nНазвание | https://...">${escapeHtml(plain)}</textarea>
+
+          <div class="spells-level-pills">
+            ${items || `<div class="sheet-note">Пока пусто (можно заполнять вручную).</div>`}
+          </div>
         </div>
       `;
     }).join("");
@@ -2070,7 +2155,7 @@ function renderCombatTab(vm) {
     bindAbilityAndSkillEditors(sheetContent, player, canEdit);
     bindNotesEditors(sheetContent, player, canEdit);
     bindSlotEditors(sheetContent, player, canEdit);
-     bindSpellsListEditors(sheetContent, player, canEdit);
+    bindSpellsListEditors(sheetContent, player, canEdit);
    bindCombatEditors(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
@@ -2097,7 +2182,7 @@ function renderCombatTab(vm) {
           bindAbilityAndSkillEditors(sheetContent, player, canEdit);
           bindNotesEditors(sheetContent, player, canEdit);
           bindSlotEditors(sheetContent, player, canEdit);
-           bindSpellsListEditors(sheetContent, player, canEdit);
+          bindSpellsListEditors(sheetContent, player, canEdit);
            bindCombatEditors(sheetContent, player, canEdit);
         }
       });
@@ -2128,7 +2213,6 @@ function renderCombatTab(vm) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
-
 
 
 
