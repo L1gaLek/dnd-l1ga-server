@@ -651,7 +651,8 @@
         if (k.startsWith("spell-desc:")) {
           const href = k.slice("spell-desc:".length);
           const val = sheet.text?.[k]?.value;
-          if (href && typeof val === "string" && val.trim()) spellDescByHref[href] = val;
+          // сохраняем даже пустую строку — чтобы пользователь мог очистить описание
+          if (href && typeof val === "string") spellDescByHref[href] = val;
         }
       }
     }
@@ -1486,46 +1487,6 @@ function bindSlotEditors(root, player, canEdit) {
   }
 }
 
-// ===== manual spells list editors (spells-level-*-plain) =====
-function bindSpellsListEditors(root, player, canEdit) {
-  if (!root || !player?.sheet?.parsed) return;
-  const sheet = player.sheet.parsed;
-  if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
-
-  const areas = root.querySelectorAll('.spells-level-editor[data-spells-level]');
-  areas.forEach(area => {
-    const lvl = safeInt(area.getAttribute('data-spells-level'), 0);
-    if (lvl < 0 || lvl > 9) return;
-
-    if (!canEdit) {
-      area.disabled = true;
-      return;
-    }
-
-    const save = () => {
-      const key = `spells-level-${lvl}-plain`;
-      if (!sheet.text[key] || typeof sheet.text[key] !== 'object') sheet.text[key] = { value: "" };
-      sheet.text[key].value = String(area.value || "");
-
-      // live update: кол-во заклинаний (число слева от "/"), если этот уровень есть в ячейках
-      if (lvl >= 1 && lvl <= 9) {
-        const count = (String(area.value || "")
-          .split(/\r?\n/)
-          .map(s => s.trim())
-          .filter(Boolean)
-          .length);
-        const el = root.querySelector(`.slot-cell[data-slot-level="${lvl}"] .slot-spells`);
-        if (el) el.textContent = String(count);
-      }
-
-      scheduleSheetSave(player);
-    };
-
-    area.addEventListener('input', save);
-    area.addEventListener('change', save);
-  });
-}
-
 // ===== add spells by URL + toggle descriptions =====
 function normalizeDndSuUrl(url) {
   const u = String(url || "").trim();
@@ -1617,7 +1578,6 @@ function rerenderSpellsTabInPlace(root, player, sheet, canEdit) {
   bindAbilityAndSkillEditors(root, player, canEdit);
   bindNotesEditors(root, player, canEdit);
   bindSlotEditors(root, player, canEdit);
-  bindSpellsListEditors(root, player, canEdit);
   bindSpellAddAndDesc(root, player, canEdit);
   bindCombatEditors(root, player, canEdit);
 
@@ -1636,8 +1596,21 @@ function parseSpellClassesFromHtml(html) {
   try {
     const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
 
+    // 0) актуальная разметка dnd.su (список классов):
+    // <li class="if-list__item" data-value="21"><div class="if-list__item-title">Волшебник</div></li>
+    // выбранный класс: class="if-list__item active"
+    const liItems = Array.from(doc.querySelectorAll('li.if-list__item[data-value]'));
+    if (liItems.length) {
+      liItems.forEach(li => {
+        const val = String(li.getAttribute('data-value') || '').trim();
+        const label = (li.querySelector('.if-list__item-title')?.textContent || li.textContent || '').trim();
+        if (!val || !label) return;
+        out.push({ value: val, label, url: `https://dnd.su/spells/?class=${encodeURIComponent(val)}` });
+      });
+    }
+
     // 1) пробуем найти select с классами
-    const sel = doc.querySelector('select[name="class"], select#class, select[class*="class"]');
+    const sel = !out.length ? doc.querySelector('select[name="class"], select#class, select[class*="class"]') : null;
     if (sel) {
       sel.querySelectorAll("option").forEach(opt => {
         const val = (opt.getAttribute("value") || "").trim();
@@ -2105,6 +2078,23 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       return;
     }
   });
+
+  // редактирование описания (textarea внутри раскрывашки)
+  root.addEventListener("input", (e) => {
+    const ta = e.target?.closest?.("[data-spell-desc-editor]");
+    if (!ta) return;
+    if (!canEdit) return;
+
+    const item = ta.closest(".spell-item");
+    const href = item?.getAttribute?.("data-spell-url") || "";
+    if (!href) return;
+
+    if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
+    const key = `spell-desc:${href}`;
+    if (!sheet.text[key] || typeof sheet.text[key] !== "object") sheet.text[key] = { value: "" };
+    sheet.text[key].value = String(ta.value || "");
+    scheduleSheetSave(player);
+  });
 }
   function updateDerivedForStat(root, sheet, statKey) {
     if (!root || !sheet || !statKey) return;
@@ -2245,8 +2235,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     const safeHref = escapeHtml(href || "");
     const safeName = escapeHtml(name || href || "(без названия)");
     const text = String(desc || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-    const safeDescHtml = escapeHtml(text).replaceAll("\n", "<br>");
-    const hasDesc = !!(text.trim().length);
+    const hasDesc = true; // кнопку "Описание" держим активной всегда (можно вписывать вручную)
 
     const isHttp = /^https?:\/\//i.test(String(href || ""));
     const titleHtml = isHttp
@@ -2257,9 +2246,12 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       <div class="spell-item" data-spell-url="${safeHref}">
         <div class="spell-item-head">
           ${titleHtml}
-          <button class="spell-desc-btn" type="button" data-spell-desc-toggle ${hasDesc ? "" : "disabled"}>Описание</button>
+          <button class="spell-desc-btn" type="button" data-spell-desc-toggle>Описание</button>
         </div>
-        <div class="spell-item-desc hidden">${hasDesc ? safeDescHtml : ""}</div>
+        <div class="spell-item-desc hidden">
+          <textarea class="spell-desc-editor" data-spell-desc-editor rows="6" placeholder="Описание (можно редактировать)…">${escapeHtml(text)}</textarea>
+          <div class="sheet-note" style="margin-top:6px;">Сохраняется автоматически.</div>
+        </div>
       </div>
     `;
   }
@@ -2321,10 +2313,6 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       const lvl = safeInt(b.level, 0);
       const title = (lvl === 0) ? "Заговоры (0)" : `Уровень ${lvl}`;
 
-      const plain = (vm?.spellsPlainByLevel && typeof vm.spellsPlainByLevel === "object")
-        ? (vm.spellsPlainByLevel[lvl] || "")
-        : "";
-
       const items = (b.items || []).map(it => {
         if (it.href) {
           const name = spellNameByHref[it.href] || it.text;
@@ -2341,10 +2329,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             <button class="spell-add-btn" type="button" data-spell-add data-spell-level="${lvl}">${lvl === 0 ? "Добавить заговор" : "Добавить заклинание"}</button>
           </div>
 
-          <textarea class="spells-level-editor" rows="4" data-spells-level="${lvl}" placeholder="Вписывай по 1 заклинанию на строку. Можно с ссылкой:\nНазвание | https://...">${escapeHtml(plain)}</textarea>
-
           <div class="spells-level-pills">
-            ${items || `<div class="sheet-note">Пока пусто (можно заполнять вручную).</div>`}
+            ${items || `<div class="sheet-note">Пока пусто. Добавляй кнопкой выше или через «Выбор из базы».</div>`}
           </div>
         </div>
       `;
@@ -2831,7 +2817,6 @@ function renderCombatTab(vm) {
     bindAbilityAndSkillEditors(sheetContent, player, canEdit);
     bindNotesEditors(sheetContent, player, canEdit);
     bindSlotEditors(sheetContent, player, canEdit);
-    bindSpellsListEditors(sheetContent, player, canEdit);
     bindSpellAddAndDesc(sheetContent, player, canEdit);
    bindCombatEditors(sheetContent, player, canEdit);
 
@@ -2859,7 +2844,6 @@ function renderCombatTab(vm) {
           bindAbilityAndSkillEditors(sheetContent, player, canEdit);
           bindNotesEditors(sheetContent, player, canEdit);
           bindSlotEditors(sheetContent, player, canEdit);
-          bindSpellsListEditors(sheetContent, player, canEdit);
           bindSpellAddAndDesc(sheetContent, player, canEdit);
            bindCombatEditors(sheetContent, player, canEdit);
         }
