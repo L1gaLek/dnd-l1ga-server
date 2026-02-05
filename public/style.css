@@ -1910,14 +1910,15 @@ textarea[data-sheet-path="text.profPlain.value"]{
   gap: 6px; /* было больше — теперь компактно */
 }
 
-/* ===== d20 critical highlights ===== */
-.dice-roll.crit-fail{
+/* ===== d20 crit highlight (only pure d20) ===== */
+#dice-viz-value.crit-fail,
+.dice-chip.crit-fail{
   color: #ff4d4d;
   font-weight: 900;
 }
 
-.dice-roll.crit-success{
+#dice-viz-value.crit-success,
+.dice-chip.crit-success{
   color: #ffa500;
   font-weight: 900;
 }
-
