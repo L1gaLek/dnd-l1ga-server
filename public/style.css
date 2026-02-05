@@ -1419,7 +1419,14 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 .weapon-add-btn:disabled{opacity:.5; cursor:not-allowed;}
 
-.weapons-list{ display:flex; flex-direction:column; gap:10px; }
+.weapons-list{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap:10px;
+}
+@media (max-width: 860px){
+  .weapons-list{ grid-template-columns: 1fr; }
+}
 
 .weapon-card{ padding:12px; }
 .weapon-card.legacy{ opacity:.9; }
@@ -1458,6 +1465,50 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-btn:disabled{opacity:.5; cursor:not-allowed;}
 .weapon-btn.danger{ border-color: rgba(255,80,80,.35); background: rgba(255,80,80,.10); }
 
+/* Рамка под названием: Бонус атаки + Урон */
+.weapon-summary{
+  margin-top:8px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  border-radius:12px;
+  padding:8px 10px;
+
+  display:grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap:10px;
+}
+
+.weapon-sum-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width:0;
+}
+
+.weapon-sum-label{
+  font-size:12px;
+  opacity:.85;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.weapon-sum-val{
+  font-size:14px;
+  font-weight:800;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  border-radius:10px;
+  padding:4px 10px;
+  min-width:56px;
+  text-align:center;
+}
+
+/* Скрываем всё “лишнее” кнопкой Скрыть */
+.weapon-details.collapsed{ display:none; }
+
 .weapon-badge{
   font-size:12px;
   padding:3px 8px;
@@ -1481,11 +1532,17 @@ textarea[data-sheet-path="text.profPlain.value"]{
   align-items:center;
   justify-content:space-between;
   gap:10px;
+  min-width: 0;
 }
 .weapon-label{
   font-size:12px;
   opacity:.85;
-  white-space:nowrap;
+  white-space:normal;
+  line-height: 1.15;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 52%;
+  overflow-wrap: anywhere;
 }
 
 .weapon-select, .weapon-num, .weapon-text{
@@ -1494,6 +1551,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   border:1px solid rgba(255,255,255,.14);
   background: rgba(0,0,0,.18);
   color:#fff;
+  max-width: 100%;
 }
 .weapon-num{ width:90px; }
 .weapon-text{ width: 100%; max-width: 260px; }
@@ -1524,6 +1582,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   gap:8px;
   flex-wrap:wrap;
   justify-content:flex-end;
+  min-width: 0;
 }
 .weapon-dmg-num{ width:80px; }
 .weapon-dice{ width:90px; }
@@ -1534,8 +1593,43 @@ textarea[data-sheet-path="text.profPlain.value"]{
   opacity:.95;
 }
 
+.weapon-summary{
+  margin-top: 8px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  border-radius: 12px;
+  padding: 8px 10px;
+
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.weapon-sum-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width: 0;
+}
+.weapon-sum-label{
+  font-size: 12px;
+  opacity: .85;
+  white-space: nowrap;
+}
+.weapon-sum-val{
+  font-size: 14px;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  border-radius: 10px;
+  padding: 4px 10px;
+  min-width: 56px;
+  text-align: center;
+}
+
+.weapon-details.collapsed{ display:none; }
+
 .weapon-desc{ margin-top:10px; }
-.weapon-desc.collapsed{ display:none; }
 .weapon-desc-text{ width:100%; resize:vertical; }
 
 /* ================== DICE VISUALIZER (bottom-left) ================== */
