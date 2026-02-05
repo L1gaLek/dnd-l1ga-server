@@ -2197,6 +2197,22 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 
 
+
+.spell-db-btn{
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.spell-db-btn:hover{
+  border-color: rgba(0,200,255,0.65);
+}
+
+
 /* ===== Spells: header + popups ===== */
 .spells-list-header{
   display:flex;
