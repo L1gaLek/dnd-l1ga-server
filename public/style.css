@@ -1824,7 +1824,17 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 4px 10px;
   min-width: 56px;
   text-align: center;
-  margin-left: auto; /* ✅ отталкиваем значение вправо, сохраняем gap */
+  margin-left: 14px; /* ⬅️ сдвиг рамки бонуса атаки вправо */
+}
+
+/* Второй элемент в summary — Урон */
+.weapon-summary .weapon-sum-item:last-child{
+  margin-left: 10px; /* ⬅️ двигаем весь блок "Урон" вправо */
+  gap: 4px;          /* ⬅️ кубик ближе к рамке значения */
+}
+
+.weapon-summary .weapon-sum-item:last-child .weapon-sum-val{
+  margin-left: 6px; /* ⬅️ меньше отступ, чем у бонуса атаки */
 }
 
 .weapon-details.collapsed{ display:none; }
@@ -1881,13 +1891,4 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .combat-skills-card{ margin-top: 10px; }
 .combat-skills-text{ width: 100%; resize: vertical; }
 
-/* Первый блок — Бонус атаки */
-.weapon-summary .weapon-sum-item:first-child .weapon-sum-val{
-  margin-left: 12px;
-}
-
-/* Второй блок — Урон */
-.weapon-summary .weapon-sum-item:last-child{
-  gap: 4px;
-}
 
