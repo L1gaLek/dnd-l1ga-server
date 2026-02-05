@@ -1998,5 +1998,8 @@ textarea[data-sheet-path="text.profPlain.value"]{
   border-color: rgba(80, 200, 120, .55);
   background: rgba(80, 200, 120, .18);
   box-shadow: 0 0 0 2px rgba(80, 200, 120, .10) inset;
+  padding: 6px 10px;
+  font-size: 13px;
 }
+
 
