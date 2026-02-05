@@ -1781,16 +1781,28 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .weapon-dice-btn{
   width: 22px;
   height: 22px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 8px;
-  border: 1px solid rgba(255,165,0,.38);
-  background: rgba(255,165,0,.12);
-  color: rgba(255,165,0,.95);
+  border: 1px solid rgba(255,165,0,38);
+  background: rgba(255,165,0,12);
+  color: rgba(255,165,0,95);
   cursor: pointer;
   padding: 0;
+
+  /* ✅ фикс: чтобы SVG не вылезал за рамки */
+  overflow: hidden;
+  flex: 0 0 auto;
+  line-height: 0;
 }
+
+.weapon-dice-btn svg{
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
 .weapon-dice-btn:hover{
   background: rgba(255,165,0,.18);
 }
@@ -1862,4 +1874,5 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 .combat-skills-card{ margin-top: 10px; }
 .combat-skills-text{ width: 100%; resize: vertical; }
+
 
