@@ -1,6 +1,4 @@
-*,
-*::before,
-*::after {
+after {
   box-sizing: border-box;
 }
 
@@ -2075,6 +2073,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 6px 10px;
   font-size: 13px;
 }
+
 
 
 
