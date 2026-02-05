@@ -1391,15 +1391,23 @@ textarea[data-sheet-path="text.profPlain.value"]{
   background: rgba(255,255,255,0.10);
   cursor: pointer;
 }
-
 .slot-dot.is-available {
   background: rgba(0, 170, 255, 0.85);
   border-color: rgba(0, 200, 255, 0.95);
   box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.15);
 }
-
 .slot-dot:hover {
   border-color: rgba(0, 200, 255, 0.75);
+}
+.slot-dots-empty {
+  opacity: 0.5;
+  font-size: 12px;
+}
+@media (max-width: 820px) {
+  .slots-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .slots-grid { grid-template-columns: 1fr; }
 }
 
 /* ===== Spells list editors ===== */
@@ -1419,15 +1427,119 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .spells-level-pills{
   margin-top: 8px;
 }
-.slot-dots-empty {
-  opacity: 0.5;
+
+/* ===== Spells: add button + description cards ===== */
+.spells-level-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.spell-add-btn{
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  cursor: pointer;
   font-size: 12px;
+  white-space: nowrap;
 }
-@media (max-width: 820px) {
-  .slots-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.spell-add-btn:hover{
+  border-color: rgba(0,200,255,0.65);
 }
-@media (max-width: 520px) {
-  .slots-grid { grid-template-columns: 1fr; }
+
+.spell-add-form{
+  margin: 6px 0 10px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.20);
+}
+
+.spell-add-input{
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  margin-bottom: 8px;
+}
+
+.spell-add-confirm,
+.spell-add-cancel{
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: 6px;
+}
+
+.spell-add-confirm:hover,
+.spell-add-cancel:hover{
+  border-color: rgba(0,200,255,0.65);
+}
+
+.spell-add-hint{
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.8;
+  line-height: 1.25;
+}
+
+.spell-item{
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.spell-item-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.spell-item-link{
+  color: rgba(0,200,255,0.95);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.spell-item-link:hover{
+  text-decoration: underline;
+}
+
+.spell-desc-btn{
+  padding: 5px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.spell-desc-btn:hover{
+  border-color: rgba(0,200,255,0.65);
+}
+.spell-desc-btn.is-open{
+  border-color: rgba(0,200,255,0.85);
+}
+
+.spell-item-desc{
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  opacity: 0.95;
 }
 
 /* ===== Combat / Weapons UI ===== */
@@ -2077,7 +2189,6 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 6px 10px;
   font-size: 13px;
 }
-
 
 
 
