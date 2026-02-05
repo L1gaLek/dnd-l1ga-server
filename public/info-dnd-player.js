@@ -783,6 +783,7 @@ function rerenderCombatTabInPlace(root, player, canEdit) {
   bindAbilityAndSkillEditors(root, player, canEdit);
   bindNotesEditors(root, player, canEdit);
   bindSlotEditors(root, player, canEdit);
+   bindSpellsListEditors(sheetContent, player, canEdit);
   bindCombatEditors(root, player, canEdit);
 
   updateWeaponsBonuses(root, player.sheet?.parsed);
@@ -1260,7 +1261,48 @@ if (path === "proficiency") {
       });
     });
   }
-  // ===== Slots (spell slots) editors =====
+ 
+  // ===== manual spells list editors (spells-level-*-plain) =====
+function bindSpellsListEditors(root, player, canEdit) {
+  if (!root || !player?.sheet?.parsed) return;
+  const sheet = player.sheet.parsed;
+  if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
+
+  const areas = root.querySelectorAll('.spells-level-editor[data-spells-level]');
+  areas.forEach(area => {
+    const lvl = safeInt(area.getAttribute('data-spells-level'), 0);
+    if (lvl < 0 || lvl > 9) return;
+
+    if (!canEdit) {
+      area.disabled = true;
+      return;
+    }
+
+    const save = () => {
+      const key = `spells-level-${lvl}-plain`;
+      if (!sheet.text[key] || typeof sheet.text[key] !== 'object') sheet.text[key] = { value: "" };
+      sheet.text[key].value = String(area.value || "");
+
+      // live update: кол-во заклинаний (число слева от "/"), если этот уровень есть в ячейках
+      if (lvl >= 1 && lvl <= 9) {
+        const count = (String(area.value || "")
+          .split(/\r?\n/)
+          .map(s => s.trim())
+          .filter(Boolean)
+          .length);
+        const el = root.querySelector(`.slot-cell[data-slot-level="${lvl}"] .slot-spells`);
+        if (el) el.textContent = String(count);
+      }
+
+      scheduleSheetSave(player);
+    };
+
+    area.addEventListener('input', save);
+    area.addEventListener('change', save);
+  });
+} 
+   
+   // ===== Slots (spell slots) editors =====
 function bindSlotEditors(root, player, canEdit) {
   if (!root || !player?.sheet?.parsed) return;
   const sheet = player.sheet.parsed;
@@ -1297,6 +1339,47 @@ function bindSlotEditors(root, player, canEdit) {
         dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
       }
 
+// кликабельные кружки: синий = доступно, пустой = использовано
+  if (!root.__spellSlotsDotsBound) {
+    root.__spellSlotsDotsBound = true;
+    root.addEventListener("click", (e) => {
+      const dot = e.target?.closest?.(".slot-dot[data-slot-level]");
+      if (!dot) return;
+      if (!canEdit) return;
+
+      const lvl = safeInt(dot.getAttribute("data-slot-level"), 0);
+      if (!lvl) return;
+
+      const key = `slots-${lvl}`;
+      if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
+        sheet.spells[key] = { value: 0, filled: 0 };
+      }
+
+      const total = Math.max(0, Math.min(12, safeInt(sheet.spells[key].value, 0)));
+      const filled = Math.max(0, Math.min(total, safeInt(sheet.spells[key].filled, 0)));
+      let available = Math.max(0, total - filled);
+
+      // нажали на доступный -> используем 1; нажали на пустой -> возвращаем 1
+      if (dot.classList.contains("is-available")) available = Math.max(0, available - 1);
+      else available = Math.min(total, available + 1);
+
+      sheet.spells[key].filled = Math.max(0, total - available);
+
+      const inp = root.querySelector(`.slot-current-input[data-slot-level="${lvl}"]`);
+      if (inp) inp.value = String(available);
+
+      const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
+      if (dotsWrap) {
+        const dots = Array.from({ length: total })
+          .map((_, i) => `<span class="slot-dot${i < available ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
+          .join("");
+        dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
+      }
+
+      scheduleSheetSave(player);
+    });
+  }
+       
       inp.value = String(desired);
       scheduleSheetSave(player);
     };
@@ -1987,6 +2070,7 @@ function renderCombatTab(vm) {
     bindAbilityAndSkillEditors(sheetContent, player, canEdit);
     bindNotesEditors(sheetContent, player, canEdit);
     bindSlotEditors(sheetContent, player, canEdit);
+     bindSpellsListEditors(sheetContent, player, canEdit);
    bindCombatEditors(sheetContent, player, canEdit);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
@@ -2013,6 +2097,7 @@ function renderCombatTab(vm) {
           bindAbilityAndSkillEditors(sheetContent, player, canEdit);
           bindNotesEditors(sheetContent, player, canEdit);
           bindSlotEditors(sheetContent, player, canEdit);
+           bindSpellsListEditors(sheetContent, player, canEdit);
            bindCombatEditors(sheetContent, player, canEdit);
         }
       });
@@ -2043,6 +2128,7 @@ function renderCombatTab(vm) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
 
 
 
