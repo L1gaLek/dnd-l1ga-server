@@ -1419,7 +1419,59 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 .weapon-add-btn:disabled{opacity:.5; cursor:not-allowed;}
 
-.weapons-list{ display:flex; flex-direction:column; gap:10px; }
+.weapons-list{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 860px){
+  .weapons-list{ grid-template-columns: 1fr; }
+}
+
+/* Рамка под названием: Бонус атаки + Урон */
+.weapon-summary{
+  margin-top: 8px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  border-radius: 12px;
+  padding: 8px 10px;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.weapon-sum-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  min-width: 0;
+}
+
+.weapon-sum-label{
+  font-size: 12px;
+  opacity: .85;
+  white-space: nowrap;
+}
+
+.weapon-sum-val{
+  font-size: 14px;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  border-radius: 10px;
+  padding: 4px 10px;
+  min-width: 56px;
+  text-align: center;
+}
+
+/* Скрываем всё “лишнее” кнопкой Скрыть */
+.weapon-details.collapsed{
+  display: none;
+}
+
 
 .weapon-card{ padding:12px; }
 .weapon-card.legacy{ opacity:.9; }
@@ -1710,4 +1762,5 @@ textarea[data-sheet-path="text.profPlain.value"]{
   justify-content: space-between;
   font-weight: 900;
 }
+
 
