@@ -1540,7 +1540,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 /* ================== DICE VISUALIZER (bottom-left) ================== */
 .dice-viz{
-  position: fixed;
+  position: relative;
   left: 14px;
   bottom: 14px;
   width: 270px;
@@ -1984,9 +1984,13 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 /* ===== Dice panel: actions column ===== */
 .dice-viz-actions{
+  position: absolute;     /* ⬅️ ВАЖНО: больше не влияет на ширину панели */
+  right: 10px;
+  top: -12px;             /* ⬅️ чуть заезжает над полем количества */
   display: flex;
   flex-direction: column;
   gap: 6px;
+  z-index: 2;
 }
 
 /* Initiative button: same as roll button, but can glow when active */
@@ -1995,3 +1999,4 @@ textarea[data-sheet-path="text.profPlain.value"]{
   background: rgba(80, 200, 120, .18);
   box-shadow: 0 0 0 2px rgba(80, 200, 120, .10) inset;
 }
+
