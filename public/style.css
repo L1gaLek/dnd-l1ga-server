@@ -1561,9 +1561,33 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 .dice-viz-controls{
   display: flex;
+  flex-wrap: wrap;            /* разрешаем перенос строки */
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;     /* чтобы “Инициатива” не тянула высоту */
   margin-bottom: 8px;
+}
+
+/* Делаем кнопки независимыми: Инициатива сверху, Бросить в строке с селектом/кол-вом */
+.dice-viz-actions{
+  display: contents; /* кнопки становятся "как будто" прямыми детьми .dice-viz-controls */
+}
+
+/* Инициатива — отдельной строкой, влезает в рамку */
+.dice-viz-btn--initiative{
+  order: 0;
+  flex: 1 0 100%;     /* занимает всю ширину */
+  width: 100%;
+  margin-bottom: 0;
+}
+
+/* Селект, количество, “Бросить” — следующей строкой */
+.dice-viz-select{ order: 1; }
+.dice-viz-count{ order: 2; }
+
+#roll{
+  order: 3;
+  flex: 1 1 auto;     /* занимает остаток строки */
+  min-width: 88px;    /* чтобы не схлопывалась */
 }
 
 .dice-viz-select,
@@ -2001,6 +2025,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding: 6px 10px;
   font-size: 13px;
 }
+
 
 
 
