@@ -1833,11 +1833,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
   function renderSpellCard({ name, href, desc }) {
     const safeHref = escapeHtml(href || "");
     const safeName = escapeHtml(name || href || "(без названия)");
-    const text = String(desc || "").replace(/
-?/g, "
-");
-    const safeDescHtml = escapeHtml(text).replaceAll("
-", "<br>");
+    const text = String(desc || "").replace(/?/g, "");
+    const safeDescHtml = escapeHtml(text).replaceAll("", "<br>");
     const hasDesc = !!(text.trim().length);
 
     const isHttp = /^https?:\/\//i.test(String(href || ""));
@@ -2483,6 +2480,7 @@ function renderCombatTab(vm) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
 
 
 
