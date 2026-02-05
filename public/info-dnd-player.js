@@ -1,2218 +1,2084 @@
-/* info-dnd-player.js
-   UI/логика модалки "Инфа" вынесены сюда.
-   Экспортирует window.InfoModal:
-   - init(context)
-   - open(player)
-   - refresh(players)
-*/
-
-(function () {
-  // ===== MODAL ELEMENTS =====
-  const sheetModal = document.getElementById('sheet-modal');
-  const sheetClose = document.getElementById('sheet-close');
-  const sheetTitle = document.getElementById('sheet-title');
-  const sheetSubtitle = document.getElementById('sheet-subtitle');
-  const sheetActions = document.getElementById('sheet-actions');
-  const sheetContent = document.getElementById('sheet-content');
-
-  // context from client.js
-  let ctx = null;
-
-  // состояние модалки
-  let openedSheetPlayerId = null;
-
-  // UI-состояние модалки (чтобы обновления state не сбрасывали вкладку/скролл)
-  // Map<playerId, { activeTab: string, scrollTopByTab: Record<string, number>, lastInteractAt: number }>
-  const uiStateByPlayerId = new Map();
-
-  // debounce save timers
-  const sheetSaveTimers = new Map();
-
-  // ================== UTILS ==================
-  function v(x, fallback = "-") {
-    if (x && typeof x === "object") {
-      if ("value" in x) return (x.value ?? fallback);
-      if ("name" in x && x.name && typeof x.name === "object" && "value" in x.name) return (x.name.value ?? fallback);
-    }
-    return (x ?? fallback);
-  }
-
-  function get(obj, path, fallback = "-") {
-    try {
-      const raw = path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj);
-      return v(raw, fallback);
-    } catch {
-      return fallback;
-    }
-  }
-
-  function escapeHtml(s) {
-    return String(s)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
-  }
-
-  function formatMod(n) {
-    const x = Number(n);
-    if (!Number.isFinite(x)) return String(n);
-    return x >= 0 ? `+${x}` : `${x}`;
-  }
-
-  function safeInt(x, fallback = 0) {
-    const n = Number(x);
-    return Number.isFinite(n) ? n : fallback;
-  }
-
-  
-
-  // D&D 5e: модификатор = floor((score - 10) / 2), ограничиваем 1..30
-  function scoreToModifier(score) {
-    const s = Math.max(1, Math.min(30, safeInt(score, 10)));
-    const m = Math.floor((s - 10) / 2);
-    // для надёжности ограничим диапазон -5..+10
-    return Math.max(-5, Math.min(10, m));
-  }
-
-  // принимает "+3", "-1", "3", "" -> number
-  function parseModInput(str, fallback = 0) {
-    if (str == null) return fallback;
-    const t = String(str).trim();
-    if (!t) return fallback;
-    const n = Number(t.replace(",", "."));
-    return Number.isFinite(n) ? n : fallback;
-  }
-
-// ================== MODAL HELPERS ==================
-  function openModal() {
-    if (!sheetModal) return;
-    sheetModal.classList.remove('hidden');
-    sheetModal.setAttribute('aria-hidden', 'false');
-  }
-
-  function closeModal() {
-    if (!sheetModal) return;
-    sheetModal.classList.add('hidden');
-    sheetModal.setAttribute('aria-hidden', 'true');
-    openedSheetPlayerId = null;
-
-    if (sheetTitle) sheetTitle.textContent = "Информация о персонаже";
-    if (sheetSubtitle) sheetSubtitle.textContent = "";
-    if (sheetActions) sheetActions.innerHTML = "";
-    if (sheetContent) sheetContent.innerHTML = "";
-  }
-
-  function ensureWiredCloseHandlers() {
-    sheetClose?.addEventListener('click', closeModal);
-
-    // клик по фону закрывает
-    sheetModal?.addEventListener('click', (e) => {
-      if (e.target === sheetModal) closeModal();
-    });
-
-    // ESC закрывает
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && sheetModal && !sheetModal.classList.contains('hidden')) {
-        closeModal();
-      }
-    });
-  }
-
-  // ================== UI STATE (tab/scroll/anti-jump) ==================
-  function getUiState(playerId) {
-    if (!playerId) return { activeTab: "basic", scrollTopByTab: {}, lastInteractAt: 0 };
-    if (!uiStateByPlayerId.has(playerId)) {
-      uiStateByPlayerId.set(playerId, { activeTab: "basic", scrollTopByTab: {}, lastInteractAt: 0 });
-    }
-    return uiStateByPlayerId.get(playerId);
-  }
-
-  function captureUiStateFromDom(player) {
-    if (!player?.id) return;
-    const st = getUiState(player.id);
-    const activeTab = player._activeSheetTab || st.activeTab || "basic";
-    st.activeTab = activeTab;
-
-    const main = sheetContent?.querySelector?.("#sheet-main");
-    if (main) {
-      st.scrollTopByTab[activeTab] = main.scrollTop || 0;
-    }
-  }
-
-  function restoreUiStateToDom(player) {
-    if (!player?.id) return;
-    const st = getUiState(player.id);
-    const activeTab = player._activeSheetTab || st.activeTab || "basic";
-    const main = sheetContent?.querySelector?.("#sheet-main");
-    if (main && st.scrollTopByTab && typeof st.scrollTopByTab[activeTab] === "number") {
-      main.scrollTop = st.scrollTopByTab[activeTab];
-    }
-  }
-
-  function markModalInteracted(playerId) {
-    if (!playerId) return;
-    const st = getUiState(playerId);
-    st.lastInteractAt = Date.now();
-  }
-
-  function isModalBusy(playerId) {
-    if (!sheetModal || sheetModal.classList.contains('hidden')) return false;
-    const activeEl = document.activeElement;
-    if (activeEl && sheetModal.contains(activeEl)) return true;
-    const st = getUiState(playerId);
-    return (Date.now() - (st.lastInteractAt || 0)) < 900;
-  }
-
-  // ================== SHEET PARSER (Charbox/LSS) ==================
-  function parseCharboxFileText(fileText) {
-    const outer = JSON.parse(fileText);
-
-    // Charbox LSS: outer.data — строка JSON
-    let inner = null;
-    if (outer && typeof outer.data === 'string') {
-      try { inner = JSON.parse(outer.data); } catch { inner = null; }
-    }
-
-    return {
-      source: "charbox",
-      importedAt: Date.now(),
-      raw: outer,
-      parsed: inner || outer
-    };
-  }
-
-  // ================== TIPTAP DOC PARSING ==================
-  function tiptapToPlainLines(doc) {
-    if (!doc || typeof doc !== "object") return [];
-    const root = doc?.content;
-    if (!Array.isArray(root)) return [];
-    const lines = [];
-
-    function walkNode(node, acc) {
-      if (!node || typeof node !== "object") return acc;
-      if (node.type === "text") {
-        acc.push(String(node.text || ""));
-        return acc;
-      }
-      if (Array.isArray(node.content)) {
-        node.content.forEach(ch => walkNode(ch, acc));
-      }
-      return acc;
-    }
-
-    for (const block of root) {
-      if (!block) continue;
-      if (block.type === "paragraph") {
-        const acc = [];
-        walkNode(block, acc);
-        const line = acc.join("").trim();
-        if (line) lines.push(line);
-      }
-    }
-    return lines;
-  }
-
-  function parseSpellsFromTiptap(doc) {
-    if (!doc || typeof doc !== "object") return [];
-    const root = doc?.content;
-    if (!Array.isArray(root)) return [];
-    const items = [];
-
-    function walk(node, state) {
-      if (!node || typeof node !== "object") return;
-      if (node.type === "text") {
-        const text = String(node.text || "").trim();
-        if (!text) return;
-
-        let href = null;
-        if (Array.isArray(node.marks)) {
-          const link = node.marks.find(m => m?.type === "link" && m?.attrs?.href);
-          if (link) href = link.attrs.href;
-        }
-        state.parts.push({ text, href });
-        return;
-      }
-      if (Array.isArray(node.content)) node.content.forEach(ch => walk(ch, state));
-    }
-
-    for (const block of root) {
-      if (!block) continue;
-      if (block.type === "paragraph") {
-        const state = { parts: [] };
-        walk(block, state);
-        const combinedText = state.parts.map(p => p.text).join("").trim();
-        if (combinedText) {
-          const href = state.parts.find(p => p.href)?.href || null;
-          items.push({ text: combinedText, href });
-        }
-      }
-    }
-    return items;
-  }
-
-  // ================== PLAIN SPELLS PARSING (для ручного редактирования) ==================
-  function parseSpellsFromPlain(text) {
-    if (typeof text !== "string") return [];
-
-    const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-    const out = [];
-
-    for (const line of lines) {
-      // поддерживаем форматы:
-      // 1) "Название | https://..."
-      // 2) "Название https://..."
-      // 3) "https://..."
-      let t = line;
-      let href = null;
-
-      const partsPipe = t.split("|").map(s => s.trim()).filter(Boolean);
-      if (partsPipe.length >= 2 && /^https?:\/\//i.test(partsPipe[1])) {
-        t = partsPipe[0];
-        href = partsPipe[1];
-      } else {
-        const m = t.match(/(https?:\/\/[^\s]+)\s*$/i);
-        if (m) {
-          href = m[1];
-          t = t.replace(m[1], "").trim();
-        } else if (/^https?:\/\//i.test(t)) {
-          href = t;
-          t = t;
-        }
-      }
-
-      out.push({ text: t || line, href: href || null });
-    }
-
-    return out;
-  }
-
-  // ================== MANUAL SHEET DEFAULT ==================
-  function createEmptySheet(fallbackName = "-") {
-    return {
-      name: { value: fallbackName },
-      info: {
-        charClass: { value: "" },
-        level: { value: 1 },
-        race: { value: "" },
-        background: { value: "" },
-        alignment: { value: "" }
-      },
-      vitality: {
-        "hp-max": { value: 0 },
-        "hp-current": { value: 0 },
-        ac: { value: 0 },
-        speed: { value: 0 }
-      },
-      proficiency: 2,
-      stats: {
-        str: { score: 10, modifier: 0, label: "Сила", check: 0 },
-        dex: { score: 10, modifier: 0, label: "Ловкость", check: 0 },
-        con: { score: 10, modifier: 0, label: "Телосложение", check: 0 },
-        int: { score: 10, modifier: 0, label: "Интеллект", check: 0 },
-        wis: { score: 10, modifier: 0, label: "Мудрость", check: 0 },
-        cha: { score: 10, modifier: 0, label: "Харизма", check: 0 }
-      },
-      saves: {
-        str: { isProf: false, bonus: 0 },
-        dex: { isProf: false, bonus: 0 },
-        con: { isProf: false, bonus: 0 },
-        int: { isProf: false, bonus: 0 },
-        wis: { isProf: false, bonus: 0 },
-        cha: { isProf: false, bonus: 0 }
-      },
-      // Навыки должны существовать даже до загрузки .json (всё по 0)
-      skills: {
-        // STR
-        athletics: { label: "Атлетика", baseStat: "str", isProf: 0, bonus: 0 },
-        // DEX
-        acrobatics: { label: "Акробатика", baseStat: "dex", isProf: 0, bonus: 0 },
-        "sleight of hand": { label: "Ловкость рук", baseStat: "dex", isProf: 0, bonus: 0 },
-        stealth: { label: "Скрытность", baseStat: "dex", isProf: 0, bonus: 0 },
-        // INT
-        arcana: { label: "Магия", baseStat: "int", isProf: 0, bonus: 0 },
-        history: { label: "История", baseStat: "int", isProf: 0, bonus: 0 },
-        investigation: { label: "Анализ", baseStat: "int", isProf: 0, bonus: 0 },
-        nature: { label: "Природа", baseStat: "int", isProf: 0, bonus: 0 },
-        religion: { label: "Религия", baseStat: "int", isProf: 0, bonus: 0 },
-        // WIS
-        "animal handling": { label: "Уход за животными", baseStat: "wis", isProf: 0, bonus: 0 },
-        insight: { label: "Проницательность", baseStat: "wis", isProf: 0, bonus: 0 },
-        medicine: { label: "Медицина", baseStat: "wis", isProf: 0, bonus: 0 },
-        perception: { label: "Восприятие", baseStat: "wis", isProf: 0, bonus: 0 },
-        survival: { label: "Выживание", baseStat: "wis", isProf: 0, bonus: 0 },
-        // CHA
-        deception: { label: "Обман", baseStat: "cha", isProf: 0, bonus: 0 },
-        intimidation: { label: "Запугивание", baseStat: "cha", isProf: 0, bonus: 0 },
-        performance: { label: "Выступление", baseStat: "cha", isProf: 0, bonus: 0 },
-        persuasion: { label: "Убеждение", baseStat: "cha", isProf: 0, bonus: 0 }
-      },
-      bonusesSkills: {},
-      bonusesStats: {},
-      spellsInfo: {
-        base: { code: "" },
-        save: { customModifier: "" },
-        mod: { customModifier: "" }
-      },
-      spells: {},
-      personality: {
-        backstory: { value: "" },
-        allies: { value: "" },
-        traits: { value: "" },
-        ideals: { value: "" },
-        bonds: { value: "" },
-        flaws: { value: "" }
-      },
-      notes: {
-        details: {
-          height: { value: "" },
-          weight: { value: "" },
-          age: { value: "" },
-          eyes: { value: "" },
-          skin: { value: "" },
-          hair: { value: "" }
-        },
-        entries: []
-      },
-      text: {},
-      combat: {
-        skillsAbilities: { value: "" }
-      },
-      weaponsList: [],
-      coins: { cp: { value: 0 }, sp: { value: 0 }, ep: { value: 0 }, gp: { value: 0 }, pp: { value: 0 } }
-    };
-  }
-
-  function ensurePlayerSheetWrapper(player) {
-    if (!player.sheet || typeof player.sheet !== "object") {
-      player.sheet = { source: "manual", importedAt: Date.now(), raw: null, parsed: createEmptySheet(player.name) };
-      return;
-    }
-    if (!player.sheet.parsed || typeof player.sheet.parsed !== "object") {
-      player.sheet.parsed = createEmptySheet(player.name);
-    }
-  }
-
-  // ================== CALC MODIFIERS ==================
-  function getProfBonus(sheet) {
-    return safeInt(sheet?.proficiency, 2) + safeInt(sheet?.proficiencyCustom, 0);
-  }
-
-  // ===== ВАЖНО: теперь "звезды" навыка = это boost (0/1/2), БЕЗ двойного суммирования =====
-  // Поддержка старых файлов:
-  // - если sheet.skills[skillKey].boostLevel есть -> используем его
-  // - иначе используем sheet.skills[skillKey].isProf как уровень звезд (0/1/2), как у тебя в json
-  function getSkillBoostLevel(sheet, skillKey) {
-    const sk = sheet?.skills?.[skillKey];
-    if (!sk || typeof sk !== "object") return 0;
-
-    if (sk.boostLevel !== undefined && sk.boostLevel !== null) {
-      const lvl = safeInt(sk.boostLevel, 0);
-      return (lvl === 1 || lvl === 2) ? lvl : 0;
-    }
-
-    // fallback: isProf уже содержит 0/1/2 (звезды в файле)
-    const legacy = safeInt(sk.isProf, 0);
-    return (legacy === 1 || legacy === 2) ? legacy : 0;
-  }
-
-  function setSkillBoostLevel(sheet, skillKey, lvl) {
-    if (!sheet.skills || typeof sheet.skills !== "object") sheet.skills = {};
-    if (!sheet.skills[skillKey] || typeof sheet.skills[skillKey] !== "object") sheet.skills[skillKey] = {};
-    sheet.skills[skillKey].boostLevel = lvl;
-
-    // чтобы при повторной загрузке/экспорте и в других местах (если где-то ожидается isProf) не было рассинхрона:
-    sheet.skills[skillKey].isProf = lvl;
-  }
-
-  function boostLevelToAdd(lvl, prof) {
-    const p = safeInt(prof, 0);
-    if (lvl === 1) return p;
-    if (lvl === 2) return p * 2;
-    return 0;
-  }
-
-  function boostLevelToStars(lvl) {
-    if (lvl === 1) return "★";
-    if (lvl === 2) return "★★";
-    return "";
-  }
-
-  // Скилл-бонус: statMod + boostAdd (+ бонусы из sheet.skills[skillKey].bonus если есть)
-  // (важно: никакого prof* по isProf — иначе снова будет двойное начисление)
-  function calcSkillBonus(sheet, skillKey) {
-    const skill = sheet?.skills?.[skillKey];
-    const baseStat = skill?.baseStat;
-    const statMod = safeInt(sheet?.stats?.[baseStat]?.modifier, 0);
-
-    const extra = safeInt(skill?.bonus, 0); // если в файле есть отдельный бонус — учитываем
-    const boostLevel = getSkillBoostLevel(sheet, skillKey);
-
-    // ВАЖНО: звёзды навыков считаются от "владения" (proficiency):
-    // 1 звезда = +proficiency, 2 звезды = +proficiency*2
-    const prof = getProfBonus(sheet);
-
-    return statMod + extra + boostLevelToAdd(boostLevel, prof);
-  }
-
-  function calcSaveBonus(sheet, statKey) {
-    const prof = getProfBonus(sheet);
-    const statMod = safeInt(sheet?.stats?.[statKey]?.modifier, 0);
-    const save = sheet?.saves?.[statKey];
-    const isProf = !!save?.isProf;
-    const bonusExtra = safeInt(save?.bonus, 0);
-    return statMod + (isProf ? prof : 0) + bonusExtra;
-  }
-
-  function calcCheckBonus(sheet, statKey) {
-    const prof = getProfBonus(sheet);
-    const statMod = safeInt(sheet?.stats?.[statKey]?.modifier, 0);
-    const check = safeInt(sheet?.stats?.[statKey]?.check, 0);
-
-    let bonus = statMod;
-    if (check === 1) bonus += prof;
-    if (check === 2) bonus += prof * 2;
-    bonus += safeInt(sheet?.stats?.[statKey]?.checkBonus, 0);
-    return bonus;
-  }
-
-  // ================== VIEW MODEL ==================
-  function toViewModel(sheet, fallbackName = "-") {
-    const name = get(sheet, 'name.value', fallbackName);
-    const cls = get(sheet, 'info.charClass.value', '-');
-    const lvl = get(sheet, 'info.level.value', '-');
-    const race = get(sheet, 'info.race.value', '-');
-
-    const hp = get(sheet, 'vitality.hp-max.value', '-');
-    const hpCur = get(sheet, 'vitality.hp-current.value', '-');
-    const ac = get(sheet, 'vitality.ac.value', '-');
-    const spd = get(sheet, 'vitality.speed.value', '-');
-
-    const statKeys = ["str","dex","con","int","wis","cha"];
-    const stats = statKeys.map(k => {
-      const s = sheet?.stats?.[k] || {};
-      const label = s.label || ({ str:"Сила", dex:"Ловкость", con:"Телосложение", int:"Интеллект", wis:"Мудрость", cha:"Харизма" })[k];
-      const score = safeInt(s.score, 10);
-      const mod = safeInt(s.modifier, 0);
-      return { k, label, score, mod, check: calcCheckBonus(sheet, k), save: calcSaveBonus(sheet, k), skills: [] };
-    });
-
-    // group skills under stats
-    const skillsRaw = (sheet?.skills && typeof sheet.skills === "object") ? sheet.skills : {};
-    for (const key of Object.keys(skillsRaw)) {
-      const sk = skillsRaw[key];
-      const baseStat = sk?.baseStat;
-      const label = sk?.label || key;
-
-      const boostLevel = getSkillBoostLevel(sheet, key);
-      const bonus = calcSkillBonus(sheet, key);
-
-      const statBlock = stats.find(s => s.k === baseStat);
-      if (!statBlock) continue;
-
-      statBlock.skills.push({
-        key,
-        label,
-        bonus,
-        boostLevel,
-        boostStars: boostLevelToStars(boostLevel)
-      });
-    }
-    stats.forEach(s => s.skills.sort((a,b) => a.label.localeCompare(b.label, 'ru')));
-
-    // passive senses
-    const passive = [
-      { key: "perception", label: "Мудрость (Восприятие)" },
-      { key: "insight", label: "Мудрость (Проницательность)" },
-      { key: "investigation", label: "Интеллект (Анализ)" }
-    ].map(x => {
-      const skillBonus = (sheet?.skills?.[x.key]) ? calcSkillBonus(sheet, x.key) : 0;
-      return { key: x.key, label: x.label, value: 10 + skillBonus };
-    });
-
-    // “прочие владения и заклинания” (редактируемый текст)
-    const profDoc = sheet?.text?.prof?.value?.data;
-    const profPlain = (sheet?.text?.profPlain?.value ?? sheet?.text?.profPlain ?? "");
-    let profLines = tiptapToPlainLines(profDoc);
-    // если нет tiptap-данных — используем редактируемый plain-text
-    if ((!profLines || !profLines.length) && typeof profPlain === "string") {
-      profLines = profPlain.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-    }
-    const profText = (typeof profPlain === "string" && profPlain.length)
-      ? profPlain
-      : (profLines && profLines.length ? profLines.join("\n") : "");
-
-    // personality (редактируемые поля)
-    const personality = {
-      backstory: get(sheet, "personality.backstory.value", get(sheet, "info.background.value", "")),
-      allies: get(sheet, "personality.allies.value", ""),
-      traits: get(sheet, "personality.traits.value", ""),
-      ideals: get(sheet, "personality.ideals.value", ""),
-      bonds: get(sheet, "personality.bonds.value", ""),
-      flaws: get(sheet, "personality.flaws.value", "")
-    };
-
-    // notes (детали + список заметок)
-    const notesDetails = {
-      height: get(sheet, "notes.details.height.value", ""),
-      weight: get(sheet, "notes.details.weight.value", ""),
-      age: get(sheet, "notes.details.age.value", ""),
-      eyes: get(sheet, "notes.details.eyes.value", ""),
-      skin: get(sheet, "notes.details.skin.value", ""),
-      hair: get(sheet, "notes.details.hair.value", "")
-    };
-    const notesEntries = Array.isArray(sheet?.notes?.entries) ? sheet.notes.entries : [];
-
-    // spells info + slots + lists
-    const spellsInfo = {
-      base: sheet?.spellsInfo?.base?.code || sheet?.spellsInfo?.base?.value || "",
-      save: sheet?.spellsInfo?.save?.customModifier || sheet?.spellsInfo?.save?.value || "",
-      mod: sheet?.spellsInfo?.mod?.customModifier || sheet?.spellsInfo?.mod?.value || ""
-    };
-
-    const slotsRaw = (sheet?.spells && typeof sheet.spells === "object") ? sheet.spells : {};
-    const slots = [];
-    for (let lvlN = 1; lvlN <= 9; lvlN++) {
-      const k = `slots-${lvlN}`;
-      const total = safeInt(slotsRaw?.[k]?.value, 0);
-      const filled = safeInt(slotsRaw?.[k]?.filled, 0);
-      slots.push({ level: lvlN, total, filled });
-    }
-
-    const text = (sheet?.text && typeof sheet.text === "object") ? sheet.text : {};
-
-    // Всегда показываем уровни 0..9 даже без .json.
-    // Поддерживаем 2 источника:
-    // - tiptap: sheet.text["spells-level-N"].value.data
-    // - plain:  sheet.text["spells-level-N-plain"].value (строка)  <-- редактируемый список
-    const spellsByLevel = [];
-    const spellsPlainByLevel = {};
-
-    for (let lvlN = 0; lvlN <= 9; lvlN++) {
-      const tipKey = `spells-level-${lvlN}`;
-      const plainKey = `spells-level-${lvlN}-plain`;
-
-      const tipItems = parseSpellsFromTiptap(text?.[tipKey]?.value?.data);
-      const plainVal = (text?.[plainKey]?.value ?? text?.[plainKey] ?? "");
-      const plainItems = parseSpellsFromPlain(plainVal);
-
-      // сохраним plain текст для textarea (если его нет — сгенерим из tiptap, чтобы сразу можно было редактировать)
-      if (typeof plainVal === "string" && plainVal.trim().length) {
-        spellsPlainByLevel[lvlN] = plainVal;
-      } else if (tipItems && tipItems.length) {
-        spellsPlainByLevel[lvlN] = tipItems.map(it => (it.href ? `${it.text} | ${it.href}` : it.text)).join("\n");
-      } else {
-        spellsPlainByLevel[lvlN] = "";
-      }
-
-      // объединяем items (без умного дедупа — но уберём совсем очевидные повторы по (text+href))
-      const merged = [];
-      const seen = new Set();
-      [...tipItems, ...plainItems].forEach(it => {
-        const key = `${it?.text || ""}@@${it?.href || ""}`;
-        if (!it?.text) return;
-        if (seen.has(key)) return;
-        seen.add(key);
-        merged.push({ text: String(it.text), href: it.href ? String(it.href) : null });
-      });
-
-      spellsByLevel.push({ level: lvlN, items: merged });
-    }
-
-const weaponsRaw = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
-
-// нормализация текстовых полей (чтобы не ловить "[object Object]" и т.п.)
-const normText = (x, fallback = "") => {
-  if (x == null) return fallback;
-  if (typeof x === "string") return x;
-  if (typeof x === "number" || typeof x === "boolean") return String(x);
-  if (typeof x === "object") {
-    if ("value" in x) return normText(x.value, fallback);
-    if ("name" in x && x.name && typeof x.name === "object" && "value" in x.name) return normText(x.name.value, fallback);
-  }
-  return fallback;
-};
-
-const parseLegacyDamage = (dmgStr) => {
-  const s = normText(dmgStr, "").trim();
-  // примеры: "1к6", "2к8 рубящий", "1к6+2 колющий" -> "+2" оставим в type
-  const m = s.match(/(\d+)\s*(к\d+)\s*(.*)$/i);
-  if (!m) return { dmgNum: 1, dmgDice: "к6", dmgType: s };
-  const dmgNum = safeInt(m[1], 1);
-  const dmgDice = m[2] ? String(m[2]).toLowerCase() : "к6";
-  const dmgType = (m[3] || "").trim();
-  return { dmgNum, dmgDice, dmgType };
-};
-
-const weapons = weaponsRaw
-  .map((w, idx) => {
-    // Новый формат оружия (создаётся в UI вкладки "Бой")
-    const isNew = !!(w && typeof w === "object" && (
-      "ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w
-    ));
-
-    if (isNew) {
-      // FIX: приводим строковые поля к строкам (в т.ч. dmgType)
-      const normalized = {
-        name: normText(w?.name, "-"),
-        ability: normText(w?.ability, "str"),
-        prof: !!w?.prof,
-        extraAtk: safeInt(w?.extraAtk, 0),
-        dmgNum: safeInt(w?.dmgNum, 1),
-        dmgDice: normText(w?.dmgDice, "к6"),
-        dmgType: normText(w?.dmgType, ""),
-        desc: normText(w?.desc, ""),
-        collapsed: !!w?.collapsed
-      };
-      // (необязательно, но полезно) — подправим исходник, чтобы дальше не всплывал [object Object]
-      weaponsRaw[idx] = normalized;
-
-      return { kind: "new", idx, ...normalized };
-    }
-
-    // Legacy формат из некоторых json (name + mod + dmg) -> конвертируем В СХЕМУ UI (чтобы работали Показать/Удалить)
-    const legacyName = normText(w?.name, "-");
-    const legacyAtk = normText(w?.mod, "0");
-    const parsed = parseLegacyDamage(w?.dmg);
-
-    const converted = {
-      name: legacyName,
-      ability: "str",
-      prof: false,
-      extraAtk: parseModInput(legacyAtk, 0),
-      dmgNum: parsed.dmgNum,
-      dmgDice: parsed.dmgDice,
-      dmgType: parsed.dmgType,
-      desc: "",
-      collapsed: true
-    };
-
-    // ВАЖНО: записываем обратно в sheet.weaponsList, иначе bindCombatEditors не сможет управлять legacy-оружием
-    weaponsRaw[idx] = converted;
-
-    return { kind: "new", idx, ...converted };
-  })
-  .filter(w => w.name && w.name !== "-");
-
-    const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
-    const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
-
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, profBonus: getProfBonus(sheet), weapons, coins };
-  }
-
-  // ================== SHEET UPDATE HELPERS ==================
-  function setByPath(obj, path, value) {
-    const parts = path.split('.');
-    let cur = obj;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const k = parts[i];
-      if (!cur[k] || typeof cur[k] !== "object") cur[k] = {};
-      cur = cur[k];
-    }
-    cur[parts[parts.length - 1]] = value;
-  }
-
-  function getByPath(obj, path) {
-    try { return path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj); }
-    catch { return undefined; }
-  }
-
-  function scheduleSheetSave(player) {
-    if (!player?.id || !ctx?.sendMessage) return;
-
-    const key = player.id;
-    const prev = sheetSaveTimers.get(key);
-    if (prev) clearTimeout(prev);
-
-    const t = setTimeout(() => {
-      ctx.sendMessage({ type: "setPlayerSheet", id: player.id, sheet: player.sheet });
-      sheetSaveTimers.delete(key);
-    }, 450);
-
-    sheetSaveTimers.set(key, t);
-  }
-
-  
-  // ===== LIVE UI UPDATERS (без полного ререндера) =====
-  function updateHeroChips(root, sheet) {
-    if (!root || !sheet) return;
-    const ac = safeInt(sheet?.vitality?.ac?.value, 0);
-    const hp = safeInt(sheet?.vitality?.["hp-max"]?.value, 0);
-    const hpCur = safeInt(sheet?.vitality?.["hp-current"]?.value, 0);
-    const spd = safeInt(sheet?.vitality?.speed?.value, 0);
-
-    const acEl = root.querySelector('[data-hero-val="ac"]');
-    if (acEl) acEl.textContent = String(ac);
-
-    const hpEl = root.querySelector('[data-hero-val="hp"]');
-    if (hpEl) hpEl.textContent = `${hpCur}/${hp}`;
-
-    const spdEl = root.querySelector('[data-hero-val="speed"]');
-    if (spdEl) spdEl.textContent = String(spd);
-  }
-
-  function updateSkillsAndPassives(root, sheet) {
-    if (!root || !sheet) return;
-
-    // skills
-    const dots = root.querySelectorAll('.lss-dot[data-skill-key]');
-    dots.forEach(dot => {
-      const key = dot.getAttribute('data-skill-key');
-      if (!key) return;
-      const row = dot.closest('.lss-skill-row');
-      if (!row) return;
-      const valEl = row.querySelector('.lss-skill-val');
-      if (valEl) {
-        const v = formatMod(calcSkillBonus(sheet, key));
-        if (valEl.tagName === "INPUT" || valEl.tagName === "TEXTAREA") valEl.value = v;
-        else valEl.textContent = v;
-      }
-    });
-
-    // passives (10 + skill bonus)
-    const passiveKeys = ["perception", "insight", "investigation"];
-    passiveKeys.forEach(k => {
-      const val = 10 + (sheet?.skills?.[k] ? calcSkillBonus(sheet, k) : 0);
-      const el = root.querySelector(`.lss-passive-val[data-passive-val="${k}"]`);
-      if (el) el.textContent = String(val);
-    });
-  }
-
-function calcWeaponAttackBonus(sheet, weapon) {
-  if (!sheet || !weapon) return 0;
-  const ability = String(weapon.ability || "str");
-  const statMod = safeInt(sheet?.stats?.[ability]?.modifier, 0);
-  const prof = weapon.prof ? getProfBonus(sheet) : 0;
-  const extra = safeInt(weapon.extraAtk, 0);
-  return statMod + prof + extra;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-function weaponDamageText(weapon) {
-  const n = Math.max(0, safeInt(weapon?.dmgNum, 1));
-  const dice = String(weapon?.dmgDice || "к6");
-  const type = String(weapon?.dmgType || "").trim();
-  return `${n}${dice}${type ? ` ${type}` : ""}`.trim();
+body {
+  font-family: sans-serif;
+  margin: 20px;
+  background-color: #121212;
+  color: #ddd;
 }
 
-// Обновляем "Бонус атаки" и превью урона без полного ререндера
-function updateWeaponsBonuses(root, sheet) {
-  if (!root || !sheet) return;
-  const list = Array.isArray(sheet?.weaponsList) ? sheet.weaponsList : [];
+/* Основной контейнер */
+#main-container {
+  display: flex;
+  align-items: flex-start; /* выравнивание по верху */
+  gap: 20px;
+}
 
-  const cards = root.querySelectorAll('.weapon-card[data-weapon-idx]');
-  cards.forEach(card => {
-    const idx = safeInt(card.getAttribute('data-weapon-idx'), -1);
-    if (idx < 0) return;
+/* Левая панель: журнал + управление + инициатива (в одну строку) */
+#action-log-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 540px; /* ширина под 2 карточки */
+}
 
-    const w = list[idx];
-    if (!w || typeof w !== "object") return;
+#content-row {
+  display: flex;
+  align-items: flex-start; /* 🔑 теперь ВЕРХ СОВПАДАЕТ */
+  gap: 20px;
+}
 
-    // Legacy оружие просто пропускаем
-    const isNew = ("ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w);
-    if (!isNew) return;
+/* Статус (Вы | Роль) */
+#status-bar {
+  font-weight: bold;
+  color: #fff;
+  margin-bottom: 10px;
+}
 
-    const atkEl = card.querySelector('[data-weapon-atk]');
-    if (atkEl) atkEl.textContent = formatMod(calcWeaponAttackBonus(sheet, w));
+/* Журнал, управление, список инициативы */
+#action-log, #player-management, #player-list-container {
+  background-color: #1e1e1e;
+  border: 1px solid #555;
+  padding: 10px;
+  color: #ddd;
+  border-radius: 5px;
+  overflow-y: auto;
+}
 
-    const dmgEl = card.querySelector('[data-weapon-dmg]');
-    if (dmgEl) dmgEl.textContent = weaponDamageText(w);
+#action-log {
+  max-height: 200px;
+}
 
-    const profDot = card.querySelector('[data-weapon-prof]');
-    if (profDot) {
-      profDot.classList.toggle('active', !!w.prof);
-      profDot.title = `Владение: +${getProfBonus(sheet)} к бонусу атаки`;
-    }
+#player-management {
+  width: 260px;
+  max-height: 260px;
+}
 
-    const detailsWrap = card.querySelector('.weapon-details');
-    if (detailsWrap) detailsWrap.classList.toggle('collapsed', !!w.collapsed);
+#player-list-container {
+  width: 260px;
+  max-height: 360px;
+  overflow-x: hidden;
+}
 
-    const head = card.querySelector('.weapon-head');
-    if (head) {
-      head.classList.toggle('is-collapsed', !!w.collapsed);
-      head.classList.toggle('is-expanded', !w.collapsed);
-    }
+#action-log h3, #player-list-container h3 {
+  margin-top: 0;
+  color: #fff;
+}
 
-    const toggleBtn = card.querySelector('[data-weapon-toggle-desc]');
-    if (toggleBtn) toggleBtn.textContent = w.collapsed ? "Показать" : "Скрыть";
-  });
+#action-log ul, #player-list {
+  list-style: none;
+  padding-left: 10px;
+  margin: 0;
+}
+
+#action-log li, #player-list li {
+  margin-bottom: 4px;
+  font-weight: bold;
+}
+
+/* Игровая область */
+#game-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;      /* ⬅ центрируем СОДЕРЖИМОЕ */
+  gap: 10px;
+
+  /* КЛЮЧЕВОЕ */
+  margin: 0 auto;           /* ⬅ центрируем колонку */
+  max-width: fit-content;   /* ⬅ ширина = контент (поле) */
+}
+
+/* Текущий игрок */
+#current-turn {
+  font-weight: bold;
+  font-size: 18px;
+  color: #fff;
+}
+
+/* Настройки поля и игрока */
+#board-settings, #controls, #player-controls, #environment-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+button, input, select {
+  padding: 5px 10px;
+  background-color: #2c2c2c;
+  border: 1px solid #555;
+  color: #ddd;
+  border-radius: 3px;
+}
+
+button:hover {
+  background-color: #3d3d3d;
+  cursor: pointer;
+}
+
+/* Рамка поля боя */
+#board-wrapper {
+  border: 2px solid #555;
+  background-color: #111;
+  padding: 2px;
+
+  /* КЛЮЧЕВОЕ */
+  overflow: hidden;
+  width: fit-content;
+  height: fit-content;
+}
+
+/* Поле игры */
+#game-board {
+  position: relative;
+  display: grid;
+
+  /* УБИРАЕМ gap — он ломает расчёты */
+  gap: 0;
+
+  background-color: #111;
+}
+
+/* Клетки поля */
+.cell {
+  width: 50px;
+  height: 50px;
+  background-color: #2a2a2a;
+  box-sizing: border-box;
+
+  /* вместо border */
+  outline: 1px solid #444;
+}
+
+/* Игроки */
+.player {
+  position: absolute;
+  border-radius: 50%;
+  color: white;
+  font-weight: bold;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: grab;
+  border: 2px solid #888;
+  box-sizing: border-box;
+}
+
+.player.selected {
+  outline: 3px solid yellow;
+  cursor: grabbing;
+}
+
+/* Стены и подсветка */
+.cell.wall {
+  background-color: #555 !important;
+}
+
+.wall.dragging {
+  opacity: 0.6;
+  outline: 2px dashed yellow;
+}
+
+.cell.hovering {
+  outline: 2px dashed #f0f;
+}
+
+#gm-controls button {
+  margin-right: 5px;
+  padding: 5px 10px;
+}
+
+/* Подсветки фаз (используем классы на конкретных кнопках) */
+#start-initiative.active {
+  background-color: red;
+  color: white;
+}
+
+#start-initiative.ready {
+  background-color: green;
+  color: white;
+}
+
+/* Оранжевая подсветка: можно начинать бой */
+#start-combat.pending {
+  background-color: orange;
+  color: black;
+}
+
+#start-combat.ready {
+  background-color: green;
+  color: white;
+}
+
+/* Подсветка игрока, который сейчас ходит */
+.player.current-turn {
+  outline: 4px solid orange;
+  box-shadow: 0 0 12px rgba(255, 165, 0, 0.8);
+}
+
+/* Если персонаж одновременно "ходит" и "выбран", приоритет у выбора (жёлтый) */
+.player.selected.current-turn {
+  outline: 4px solid yellow;
+  box-shadow: 0 0 12px rgba(255, 255, 0, 0.75);
+}
+
+/* Призванные/временные до "К бою" — лёгкая пунктирная рамка */
+.player.pending-combat {
+  outline: 2px dashed rgba(255,255,255,0.7);
+  outline-offset: 2px;
+}
+
+#player-management h3 {
+  margin-top: 0;
+  color: #fff;
+}
+
+.player-type {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.type-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Строка под журналом: управление + инициатива */
+#action-bottom-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+/* Индикатор размещения игрока */
+.placement-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* Не размещён */
+.placement-indicator.not-placed {
+  background-color: orange;
+}
+
+/* Размещён */
+.placement-indicator.placed {
+  background-color: #3cb371; /* зелёный */
+}
+
+/* Строка игрока в списке */
+.player-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 6px;
+}
+
+/* Имя занимает всё свободное место и НЕ сжимается до нуля */
+.player-name-text {
+  flex: 1 1 100%;
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* Кнопки не должны сжиматься */
+.player-list-item button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 3px 6px;
+  margin-top: 4px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+/* левая часть: индикатор + имя + бейдж "основа" */
+.player-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* уменьшаем текст и "высоту" строки */
+.player-name-text {
+  font-size: 12px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Рамка одного игрока в списке инициативы */
+.player-list-item {
+  width: 100%;
+  max-width: 100%;
+
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+
+  background-color: #1a1a1a;
+}
+
+.player-list-item:hover {
+  border-color: #777;
+  background-color: #222;
+}
+
+/* ===== РОЛИ В СПИСКЕ "ИГРОКИ И ИНИЦИАТИВА" ===== */
+.role-badge {
+  font-weight: bold;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #555;
+  background: #1a1a1a;
+}
+
+.role-badge.role-gm {
+  color: #00ff66;
+  border-color: rgba(0,255,102,0.6);
+}
+
+.role-badge.role-player {
+  color: #3aa7ff;
+  border-color: rgba(58,167,255,0.6);
+}
+
+.role-badge.role-spectr {
+  color: #ddd;
+  border-color: #555;
+}
+
+/* ===== ГРУППА ВЛАДЕЛЬЦА В СПИСКЕ ===== */
+.owner-group {
+  margin-top: 10px;
+}
+
+.owner-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.owner-players {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 0 12px;
+}
+
+/* ===== МАЛЕНЬКИЙ БЕЙДЖ "ОСНОВА" ===== */
+.base-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 215, 0, 0.95);
+  color: #ffd966;
+  background: rgba(255, 215, 0, 0.08);
+  text-transform: lowercase;
+}
+
+/* справа: селект + кнопки */
+.player-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.size-select {
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background: #111;
+  color: #eee;
+  font-size: 12px;
+  line-height: 14px;
+}
+
+/* кнопки в списке игроков компактнее */
+.player-actions button {
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 14px;
+}
+
+/* ================== MODAL ================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 9999;
+}
+
+.modal-overlay.hidden { display: none; }
+
+.modal {
+  width: min(900px, 96vw);
+  max-height: min(86vh, 900px);
+  background: #1b1b1b;
+  border: 1px solid #444;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #333;
+  background: #161616;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.modal-subtitle {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 2px;
+}
+
+.modal-close {
+  padding: 6px 10px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.modal-body {
+  padding: 12px 14px;
+  overflow: auto;
+}
+
+.sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.sheet-content {
+  background: #141414;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.sheet-card {
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.sheet-card h4 {
+  margin: 0 0 6px 0;
+  color: #fff;
+  font-size: 14px;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  padding: 2px 0;
+  border-bottom: 1px dashed rgba(255,255,255,0.08);
+}
+
+.kv:last-child { border-bottom: none; }
+
+.k { color: #bbb; }
+.v { color: #fff; text-align: right; }
+
+.sheet-note {
+  color: #aaa;
+  font-size: 13px;
+}
+
+/* ===== MODAL (LSS-like: left tabs) ===== */
+.modal {
+  width: min(980px, 96vw);
+  max-height: min(86vh, 900px);
+}
+
+.modal-body {
+  padding: 0;              /* чтобы sidebar был встык */
+  overflow: hidden;        /* скролл будет внутри контента */
+
+  /* FIX: чтобы правая часть модалки скроллилась ДО КОНЦА */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sheet-layout {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+/* левое меню */
+.sheet-sidebar {
+  width: 210px;
+  background: #161616;
+  border-right: 1px solid #2a2a2a;
+  padding: 10px;
+  overflow: auto;
+}
+
+.sheet-tab {
+  width: 100%;
+  text-align: left;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #ddd;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sheet-tab:hover {
+  background: #1f1f1f;
+  border-color: #333;
+}
+
+.sheet-tab.active {
+  background: #222;
+  border-color: #555;
+  color: #fff;
+}
+
+/* правая часть */
+.sheet-main {
+  flex: 1;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+/* "шапка" как у LSS: имя + краткие значения */
+.sheet-hero {
+  padding: 12px 14px;
+  border-bottom: 1px solid #2a2a2a;
+  background: #141414;
+}
+
+.sheet-hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-hero-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.sheet-hero-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.sheet-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sheet-chip {
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 6px 10px;
+  min-width: 86px;
+}
+
+.sheet-chip .k {
+  font-size: 11px;
+  color: #aaa;
+}
+.sheet-chip .v {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+/* секции внутри вкладок */
+.sheet-section {
+  margin-bottom: 12px;
+}
+
+.sheet-section h3 {
+  margin: 10px 0 8px 0;
+  font-size: 14px;
+  color: #fff;
+}
+
+.sheet-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.sheet-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.sheet-card {
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.sheet-card h4 {
+  margin: 0 0 6px 0;
+  color: #fff;
+  font-size: 13px;
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  padding: 2px 0;
+  border-bottom: 1px dashed rgba(255,255,255,0.08);
+}
+.kv:last-child { border-bottom: none; }
+
+.k { color: #bbb; }
+.v { color: #fff; text-align: right; }
+
+.sheet-list {
+  margin: 0;
+  padding-left: 16px;
+  color: #ddd;
+  font-size: 13px;
+}
+
+.sheet-pill {
+  display: inline-block;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
+  margin: 3px 6px 0 0;
+  color: #fff;
+}
+
+/* ===== DND INFO: abilities layout (LSS-like) ===== */
+.ab-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.ab-card {
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.ab-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ab-title {
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+.ab-score {
+  font-size: 18px;
+  font-weight: 900;
+  color: #fff;
+}
+
+.ab-mini-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ab-mini {
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: #171717;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ab-mini-label {
+  font-size: 11px;
+  color: #aaa;
+}
+
+.ab-mini-val {
+  font-weight: 900;
+  color: #fff;
+}
+
+.ab-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ab-skill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #233152;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 6px 8px;
+}
+
+.ab-skill .left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ab-skill .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(0,0,0,0.25);
+}
+
+.ab-skill .label {
+  font-size: 12px;
+  color: #eaeaea;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ab-skill .val {
+  font-weight: 900;
+  color: #fff;
+  min-width: 36px;
+  text-align: right;
+}
+
+.sheet-scrollbox {
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 10px;
+  background: #141414;
+  color: #ddd;
+  font-size: 13px;
 }
 
 
-function rerenderCombatTabInPlace(root, player, canEdit) {
-  const main = root?.querySelector('#sheet-main');
-  if (!main || player?._activeSheetTab !== "combat") return;
-
-  const freshSheet = player.sheet?.parsed || createEmptySheet(player.name);
-  const freshVm = toViewModel(freshSheet, player.name);
-  main.innerHTML = renderActiveTab("combat", freshVm);
-
-  bindEditableInputs(root, player, canEdit);
-  bindSkillBoostDots(root, player, canEdit);
-  bindAbilityAndSkillEditors(root, player, canEdit);
-  bindNotesEditors(root, player, canEdit);
-  bindSlotEditors(root, player, canEdit);
-  bindCombatEditors(root, player, canEdit);
-
-  updateWeaponsBonuses(root, player.sheet?.parsed);
+/* ===== LSS-like abilities layout inside "Основное" ===== */
+.lss-abilities-grid{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap:12px;
+}
+@media (max-width: 1100px){
+  .lss-abilities-grid{ grid-template-columns: repeat(2, minmax(240px, 1fr)); }
+}
+@media (max-width: 900px){
+  .lss-abilities-grid{ grid-template-columns: 1fr; }
 }
 
-function bindCombatEditors(root, player, canEdit) {
-  if (!root || !player?.sheet?.parsed) return;
-  const sheet = player.sheet.parsed;
-
-  // кнопка "Добавить оружие"
-  const addBtn = root.querySelector('[data-weapon-add]');
-  if (addBtn) {
-    if (!canEdit) addBtn.disabled = true;
-    addBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      if (!canEdit) return;
-
-      if (!Array.isArray(sheet.weaponsList)) sheet.weaponsList = [];
-
-      sheet.weaponsList.push({
-        name: "Новое оружие",
-        ability: "str",
-        prof: false,
-        extraAtk: 0,
-        dmgNum: 1,
-        dmgDice: "к6",
-        dmgType: "",
-        desc: "",
-        collapsed: false
-      });
-
-      scheduleSheetSave(player);
-      rerenderCombatTabInPlace(root, player, canEdit);
-    });
-  }
-
-  const weaponCards = root.querySelectorAll('.weapon-card[data-weapon-idx]');
-  weaponCards.forEach(card => {
-    const idx = safeInt(card.getAttribute('data-weapon-idx'), -1);
-    if (idx < 0) return;
-
-    if (!Array.isArray(sheet.weaponsList)) sheet.weaponsList = [];
-    const w = sheet.weaponsList[idx];
-    if (!w || typeof w !== "object") return;
-
-    // Legacy карточки не редактируем
-    const isNew = ("ability" in w || "prof" in w || "extraAtk" in w || "dmgNum" in w || "dmgDice" in w || "dmgType" in w || "desc" in w || "collapsed" in w);
-    if (!isNew) return;
-
-    // редактирование полей
-    const fields = card.querySelectorAll('[data-weapon-field]');
-    fields.forEach(el => {
-      const field = el.getAttribute('data-weapon-field');
-      if (!field) return;
-
-      if (!canEdit) {
-        el.disabled = true;
-        return;
-      }
-
-      const handler = () => {
-        let val;
-        if (el.tagName === "SELECT") val = el.value;
-        else if (el.type === "number") val = el.value === "" ? 0 : Number(el.value);
-        else val = el.value;
-
-        if (field === "extraAtk" || field === "dmgNum") val = safeInt(val, 0);
-
-        w[field] = val;
-
-        updateWeaponsBonuses(root, sheet);
-        scheduleSheetSave(player);
-      };
-
-      el.addEventListener('input', handler);
-      el.addEventListener('change', handler);
-    });
-
-    // владение (кружок)
-    const profBtn = card.querySelector('[data-weapon-prof]');
-    if (profBtn) {
-      if (!canEdit) profBtn.disabled = true;
-      profBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (!canEdit) return;
-        w.prof = !w.prof;
-        updateWeaponsBonuses(root, sheet);
-        scheduleSheetSave(player);
-      });
-    }
-
-    // свернуть/развернуть описание
-    const toggleDescBtn = card.querySelector('[data-weapon-toggle-desc]');
-    if (toggleDescBtn) {
-      if (!canEdit) toggleDescBtn.disabled = true;
-      toggleDescBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (!canEdit) return;
-        w.collapsed = !w.collapsed;
-        updateWeaponsBonuses(root, sheet);
-        scheduleSheetSave(player);
-      });
-    }
-
-    // удалить
-    const delBtn = card.querySelector('[data-weapon-del]');
-    if (delBtn) {
-      if (!canEdit) delBtn.disabled = true;
-      delBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (!canEdit) return;
-
-        sheet.weaponsList.splice(idx, 1);
-        scheduleSheetSave(player);
-        rerenderCombatTabInPlace(root, player, canEdit);
-      });
-    }
-
-    // 🎲 броски из оружия -> в панель кубиков
-    const rollAtkBtn = card.querySelector('[data-weapon-roll-atk]');
-    if (rollAtkBtn) {
-      rollAtkBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        const bonus = calcWeaponAttackBonus(sheet, w);
-        if (window.DicePanel?.roll) {
-          window.DicePanel.roll({ sides: 20, count: 1, bonus, kindText: `Атака: d20 ${formatMod(bonus)}` });
-        }
-      });
-    }
-
-    const rollDmgBtn = card.querySelector('[data-weapon-roll-dmg]');
-    if (rollDmgBtn) {
-      rollDmgBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        const n = Math.max(0, safeInt(w?.dmgNum, 1));
-        const diceStr = String(w?.dmgDice || "к6").trim().toLowerCase(); // "к8"
-        const sides = safeInt(diceStr.replace("к", ""), 6);
-        if (window.DicePanel?.roll) {
-          window.DicePanel.roll({ sides, count: Math.max(1, n), bonus: 0, kindText: `Урон: d${sides} × ${Math.max(1,n)}` });
-        }
-      });
-    }
-  });
-
-  updateWeaponsBonuses(root, sheet);
+.lss-ability{
+  background:#1c1c1c;
+  border:1px solid #333;
+  border-radius:12px;
+  padding:8px; /* ⬅ компактнее */
 }
 
-   
-function bindEditableInputs(root, player, canEdit) {
-    if (!root || !player?.sheet?.parsed) return;
-
-    const inputs = root.querySelectorAll("[data-sheet-path]");
-    inputs.forEach(inp => {
-      const path = inp.getAttribute("data-sheet-path");
-      if (!path) return;
-
-      // если в json есть tiptap-профи, а plain пустой — заполняем plain один раз, чтобы было что редактировать
-      if (path === "text.profPlain.value") {
-        const curPlain = getByPath(player.sheet.parsed, "text.profPlain.value");
-        if (!curPlain) {
-          const profDoc = player.sheet.parsed?.text?.prof?.value?.data;
-          const lines = tiptapToPlainLines(profDoc);
-          if (lines && lines.length) {
-            setByPath(player.sheet.parsed, "text.profPlain.value", lines.join("\n"));
-          }
-        }
-      }
-
-      const raw = getByPath(player.sheet.parsed, path);
-      if (inp.type === "checkbox") inp.checked = !!raw;
-      else inp.value = (raw ?? "");
-
-      if (!canEdit) {
-        inp.disabled = true;
-        return;
-      }
-
-      const handler = () => {
-        let val;
-        if (inp.type === "checkbox") val = !!inp.checked;
-        else if (inp.type === "number") val = inp.value === "" ? "" : Number(inp.value);
-        else val = inp.value;
-
-        setByPath(player.sheet.parsed, path, val);
-
-        if (path === "name.value") player.name = val || player.name;
-
-        // live updates
-if (path === "proficiency") {
-  updateSkillsAndPassives(root, player.sheet.parsed);
-  updateWeaponsBonuses(root, player.sheet.parsed);
-}
-        if (path === "vitality.ac.value" || path === "vitality.hp-max.value" || path === "vitality.hp-current.value" || path === "vitality.speed.value") {
-          updateHeroChips(root, player.sheet.parsed);
-        }
-
-        scheduleSheetSave(player);
-      };
-
-      inp.addEventListener("input", handler);
-      inp.addEventListener("change", handler);
-    });
-  }
-
-  // ===== clickable dots binding (skills boost) =====
-  function bindSkillBoostDots(root, player, canEdit) {
-    if (!root || !player?.sheet?.parsed) return;
-
-    const sheet = player.sheet.parsed;
-    const dots = root.querySelectorAll(".lss-dot[data-skill-key]");
-    dots.forEach(dot => {
-      const skillKey = dot.getAttribute("data-skill-key");
-      if (!skillKey) return;
-
-      dot.classList.add("clickable");
-      if (!canEdit) return;
-
-      dot.addEventListener("click", (e) => {
-        e.stopPropagation();
-
-        const cur = getSkillBoostLevel(sheet, skillKey);
-        const next = (cur === 0) ? 1 : (cur === 1) ? 2 : 0;
-
-        setSkillBoostLevel(sheet, skillKey, next);
-
-        dot.classList.remove("boost1", "boost2");
-        if (next === 1) dot.classList.add("boost1");
-        if (next === 2) dot.classList.add("boost2");
-
-        const row = dot.closest(".lss-skill-row");
-        if (row) {
-          const valEl = row.querySelector(".lss-skill-val");
-          if (valEl) {
-            const v = formatMod(calcSkillBonus(sheet, skillKey));
-            if (valEl.tagName === "INPUT" || valEl.tagName === "TEXTAREA") valEl.value = v;
-            else valEl.textContent = v;
-          }
-
-          const nameEl = row.querySelector(".lss-skill-name");
-          if (nameEl) {
-            let boostSpan = nameEl.querySelector(".lss-boost");
-            const stars = boostLevelToStars(next);
-
-            if (!boostSpan) {
-              boostSpan = document.createElement("span");
-              boostSpan.className = "lss-boost";
-              nameEl.appendChild(boostSpan);
-            }
-            boostSpan.textContent = stars ? ` ${stars}` : "";
-          }
-        }
-
-        scheduleSheetSave(player);
-      });
-    });
-  }
-
-  // ===== editable abilities / checks / saves / skill values =====
-  function bindAbilityAndSkillEditors(root, player, canEdit) {
-    if (!root || !player?.sheet?.parsed) return;
-    const sheet = player.sheet.parsed;
-
-    // ---- ability score edits (score -> modifier -> recompute) ----
-    const scoreInputs = root.querySelectorAll('.lss-ability-score-input[data-stat-key]');
-    scoreInputs.forEach(inp => {
-      const statKey = inp.getAttribute('data-stat-key');
-      if (!statKey) return;
-
-      if (!canEdit) { inp.disabled = true; return; }
-
-      const handler = () => {
-        const score = safeInt(inp.value, 10);
-        if (!sheet.stats) sheet.stats = {};
-        if (!sheet.stats[statKey]) sheet.stats[statKey] = {};
-        sheet.stats[statKey].score = score;
-        sheet.stats[statKey].modifier = scoreToModifier(score);
-
-        // обновляем связанные значения на экране
-        updateDerivedForStat(root, sheet, statKey);
-        updateSkillsAndPassives(root, sheet);
-         updateWeaponsBonuses(root, sheet);
-
-        scheduleSheetSave(player);
-      };
-
-      inp.addEventListener('input', handler);
-      inp.addEventListener('change', handler);
-    });
-
-    // ---- check/save edits (меняем bonus-часть, чтобы итог стал нужным) ----
-    const pillInputs = root.querySelectorAll('.lss-pill-val-input[data-stat-key][data-kind]');
-    pillInputs.forEach(inp => {
-      const statKey = inp.getAttribute('data-stat-key');
-      const kind = inp.getAttribute('data-kind');
-      if (!statKey || !kind) return;
-
-      if (!canEdit) { inp.disabled = true; return; }
-
-      const handler = () => {
-        const desired = parseModInput(inp.value, 0);
-        const prof = getProfBonus(sheet);
-        const statMod = safeInt(sheet?.stats?.[statKey]?.modifier, 0);
-
-        if (kind === "save") {
-          if (!sheet.saves) sheet.saves = {};
-          if (!sheet.saves[statKey]) sheet.saves[statKey] = {};
-          const isProf = !!sheet.saves[statKey].isProf;
-          const base = statMod + (isProf ? prof : 0);
-          sheet.saves[statKey].bonus = desired - base;
-        }
-
-        if (kind === "check") {
-          if (!sheet.stats) sheet.stats = {};
-          if (!sheet.stats[statKey]) sheet.stats[statKey] = {};
-          const check = safeInt(sheet.stats[statKey].check, 0); // 0/1/2
-          let base = statMod;
-          if (check === 1) base += prof;
-          if (check === 2) base += prof * 2;
-          sheet.stats[statKey].checkBonus = desired - base;
-        }
-
-        // сразу обновим вывод (на случай странного ввода)
-        updateDerivedForStat(root, sheet, statKey);
-        updateSkillsAndPassives(root, sheet);
-
-        scheduleSheetSave(player);
-      };
-
-      inp.addEventListener('input', handler);
-      inp.addEventListener('change', handler);
-    });
-
-    // ---- skill bonus edits (меняем skill.bonus так, чтобы итог стал нужным) ----
-    const skillInputs = root.querySelectorAll('.lss-skill-val-input[data-skill-key]');
-    skillInputs.forEach(inp => {
-      const skillKey = inp.getAttribute('data-skill-key');
-      if (!skillKey) return;
-
-      if (!canEdit) { inp.disabled = true; return; }
-
-      const handler = () => {
-        const desired = parseModInput(inp.value, 0);
-        if (!sheet.skills) sheet.skills = {};
-        if (!sheet.skills[skillKey]) sheet.skills[skillKey] = {};
-
-        const baseStat = sheet.skills[skillKey].baseStat;
-        const statMod = safeInt(sheet?.stats?.[baseStat]?.modifier, 0);
-        const prof = getProfBonus(sheet);
-        const boostLevel = getSkillBoostLevel(sheet, skillKey);
-        const boostAdd = boostLevelToAdd(boostLevel, prof);
-
-        // extra бонус внутри навыка
-        sheet.skills[skillKey].bonus = desired - statMod - boostAdd;
-
-        // обновляем навык и пассивки
-        updateSkillsAndPassives(root, sheet);
-
-        scheduleSheetSave(player);
-      };
-
-      inp.addEventListener('input', handler);
-      inp.addEventListener('change', handler);
-    });
-  }
-
-  // ===== Notes tab: add / rename / toggle / delete, text editing =====
-  function bindNotesEditors(root, player, canEdit) {
-    if (!root || !player?.sheet?.parsed) return;
-
-    const sheet = player.sheet.parsed;
-    if (!sheet.notes || typeof sheet.notes !== "object") sheet.notes = {};
-    if (!sheet.notes.details || typeof sheet.notes.details !== "object") sheet.notes.details = {};
-    if (!Array.isArray(sheet.notes.entries)) sheet.notes.entries = [];
-
-    const main = root.querySelector("#sheet-main");
-    if (!main) return;
-
-    // add note button
-    const addBtn = main.querySelector("[data-note-add]");
-    if (addBtn) {
-      if (!canEdit) addBtn.disabled = true;
-      addBtn.addEventListener("click", () => {
-        if (!canEdit) return;
-
-        // choose next Заметка-N
-        const titles = sheet.notes.entries.map(e => String(e?.title || "")).filter(Boolean);
-        let maxN = 0;
-        for (const t of titles) {
-          const mm = /^Заметка-(\d+)$/i.exec(t.trim());
-          if (mm) maxN = Math.max(maxN, parseInt(mm[1], 10) || 0);
-        }
-        const nextN = maxN + 1;
-
-        sheet.notes.entries.push({ title: `Заметка-${nextN}`, text: "", collapsed: false });
-        scheduleSheetSave(player);
-
-        // rerender current tab to show new note
-        const freshVm = toViewModel(sheet, player.name);
-        main.innerHTML = renderNotesTab(freshVm);
-        bindEditableInputs(root, player, canEdit);
-        bindSkillBoostDots(root, player, canEdit);
-        bindAbilityAndSkillEditors(root, player, canEdit);
-        bindNotesEditors(root, player, canEdit);
-      });
-    }
-
-    // title edit
-    const titleInputs = main.querySelectorAll("input[data-note-title]");
-    titleInputs.forEach(inp => {
-      const idx = parseInt(inp.getAttribute("data-note-title") || "", 10);
-      if (!Number.isFinite(idx)) return;
-      if (!canEdit) { inp.disabled = true; return; }
-
-      inp.addEventListener("input", () => {
-        if (!sheet.notes.entries[idx]) return;
-        sheet.notes.entries[idx].title = inp.value;
-        scheduleSheetSave(player);
-      });
-    });
-
-    // text edit
-    const textAreas = main.querySelectorAll("textarea[data-note-text]");
-    textAreas.forEach(ta => {
-      const idx = parseInt(ta.getAttribute("data-note-text") || "", 10);
-      if (!Number.isFinite(idx)) return;
-      if (!canEdit) { ta.disabled = true; return; }
-
-      ta.addEventListener("input", () => {
-        if (!sheet.notes.entries[idx]) return;
-        sheet.notes.entries[idx].text = ta.value;
-        scheduleSheetSave(player);
-      });
-    });
-
-    // toggle collapse
-    const toggleBtns = main.querySelectorAll("[data-note-toggle]");
-    toggleBtns.forEach(btn => {
-      const idx = parseInt(btn.getAttribute("data-note-toggle") || "", 10);
-      if (!Number.isFinite(idx)) return;
-      if (!canEdit) btn.disabled = true;
-
-      btn.addEventListener("click", () => {
-        if (!sheet.notes.entries[idx]) return;
-        sheet.notes.entries[idx].collapsed = !sheet.notes.entries[idx].collapsed;
-        scheduleSheetSave(player);
-
-        const freshVm = toViewModel(sheet, player.name);
-        main.innerHTML = renderNotesTab(freshVm);
-        bindEditableInputs(root, player, canEdit);
-        bindSkillBoostDots(root, player, canEdit);
-        bindAbilityAndSkillEditors(root, player, canEdit);
-        bindNotesEditors(root, player, canEdit);
-      });
-    });
-
-    // delete
-    const delBtns = main.querySelectorAll("[data-note-del]");
-    delBtns.forEach(btn => {
-      const idx = parseInt(btn.getAttribute("data-note-del") || "", 10);
-      if (!Number.isFinite(idx)) return;
-      if (!canEdit) btn.disabled = true;
-
-      btn.addEventListener("click", () => {
-        if (!canEdit) return;
-        if (!sheet.notes.entries[idx]) return;
-        sheet.notes.entries.splice(idx, 1);
-        scheduleSheetSave(player);
-
-        const freshVm = toViewModel(sheet, player.name);
-        main.innerHTML = renderNotesTab(freshVm);
-        bindEditableInputs(root, player, canEdit);
-        bindSkillBoostDots(root, player, canEdit);
-        bindAbilityAndSkillEditors(root, player, canEdit);
-        bindNotesEditors(root, player, canEdit);
-      });
-    });
-  }
-  // ===== Slots (spell slots) editors =====
-function bindSlotEditors(root, player, canEdit) {
-  if (!root || !player?.sheet?.parsed) return;
-  const sheet = player.sheet.parsed;
-  if (!sheet.spells || typeof sheet.spells !== "object") sheet.spells = {};
-
-  const inputs = root.querySelectorAll(".slot-current-input[data-slot-level]");
-  inputs.forEach(inp => {
-    const lvl = safeInt(inp.getAttribute("data-slot-level"), 0);
-    if (!lvl) return;
-
-    if (!canEdit) { inp.disabled = true; return; }
-
-    const handler = () => {
-      // desired = доступные ячейки, редактируемое значение (0..12)
-      const desired = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
-
-      const key = `slots-${lvl}`;
-      if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
-        sheet.spells[key] = { value: 0, filled: 0 };
-      }
-
-      // total slots (value) keep, but ensure it is at least desired and not more than 12
-      const totalPrev = safeInt(sheet.spells[key].value, 0);
-      const total = Math.max(desired, Math.min(12, totalPrev));
-      sheet.spells[key].value = total;
-
-      // filled = total - desired
-      sheet.spells[key].filled = Math.max(0, total - desired);
-
-      // update dots in UI without full rerender
-      const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
-      if (dotsWrap) {
-        const totalForUi = Math.max(0, Math.min(12, safeInt(sheet.spells[key].value, 0)));
-        const dots = Array.from({ length: totalForUi })
-          .map((_, i) => `<span class="slot-dot${i < desired ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
-          .join("");
-        dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
-      }
-
-      inp.value = String(desired);
-      scheduleSheetSave(player);
-    };
-
-    inp.addEventListener("input", handler);
-    inp.addEventListener("change", handler);
-  });
-
-  // кликабельные кружки: синий = доступно, пустой = использовано
-  if (!root.__spellSlotsDotsBound) {
-    root.__spellSlotsDotsBound = true;
-    root.addEventListener("click", (e) => {
-      const dot = e.target?.closest?.(".slot-dot[data-slot-level]");
-      if (!dot) return;
-      if (!canEdit) return;
-
-      const lvl = safeInt(dot.getAttribute("data-slot-level"), 0);
-      if (!lvl) return;
-
-      const key = `slots-${lvl}`;
-      if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
-        sheet.spells[key] = { value: 0, filled: 0 };
-      }
-
-      const total = Math.max(0, Math.min(12, safeInt(sheet.spells[key].value, 0)));
-      const filled = Math.max(0, Math.min(total, safeInt(sheet.spells[key].filled, 0)));
-      let available = Math.max(0, total - filled);
-
-      // нажали на доступный -> используем 1; нажали на пустой -> возвращаем 1
-      if (dot.classList.contains("is-available")) available = Math.max(0, available - 1);
-      else available = Math.min(total, available + 1);
-
-      sheet.spells[key].filled = Math.max(0, total - available);
-
-      const inp = root.querySelector(`.slot-current-input[data-slot-level="${lvl}"]`);
-      if (inp) inp.value = String(available);
-
-      const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
-      if (dotsWrap) {
-        const dots = Array.from({ length: total })
-          .map((_, i) => `<span class="slot-dot${i < available ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
-          .join("");
-        dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
-      }
-
-      scheduleSheetSave(player);
-    });
-  }
+.lss-ability-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+  padding-bottom:4px; /* ⬅ компактнее */
+  border-bottom:1px solid rgba(255,255,255,0.08);
 }
 
-// ===== manual spells list editors (spells-level-*-plain) =====
-function bindSpellsListEditors(root, player, canEdit) {
-  if (!root || !player?.sheet?.parsed) return;
-  const sheet = player.sheet.parsed;
-  if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
+.lss-ability-name{
+  font-weight:900;
+  letter-spacing:0.4px;
+  color:#fff;
+  font-size:12px;      /* ⬅ меньше */
+  line-height: 14px;   /* ⬅ меньше высота */
+}
 
-  const areas = root.querySelectorAll('.spells-level-editor[data-spells-level]');
-  areas.forEach(area => {
-    const lvl = safeInt(area.getAttribute('data-spells-level'), 0);
-    if (lvl < 0 || lvl > 9) return;
+.lss-ability-score{
+  font-weight:900;
+  font-size:16px;      /* ⬅ меньше цифры характеристики */
+  line-height: 18px;
+  color:#fff;
+  opacity:0.95;
+}
 
-    if (!canEdit) {
-      area.disabled = true;
-      return;
-    }
+.lss-ability-actions{
+  display:flex;
+  gap:8px;            /* ⬅ меньше */
+  margin-top:6px;     /* ⬅ меньше */
+  flex-wrap:wrap;
+}
 
-    const save = () => {
-      const key = `spells-level-${lvl}-plain`;
-      if (!sheet.text[key] || typeof sheet.text[key] !== 'object') sheet.text[key] = { value: "" };
-      sheet.text[key].value = String(area.value || "");
+.lss-pill{
+  display:flex;
+  align-items:center;
+  gap:6px;            /* ⬅ меньше */
+  border:1px solid rgba(255,255,255,0.16);
+  background:rgba(0,0,0,0.15);
+  border-radius:10px;
+  padding:4px 6px;    /* ⬅ меньше высота "Проверка/Спасбросок" */
+}
 
-      // live update: кол-во заклинаний (число слева от "/"), если этот уровень есть в ячейках
-      if (lvl >= 1 && lvl <= 9) {
-        const count = (String(area.value || "")
-          .split(/\r?\n/)
-          .map(s => s.trim())
-          .filter(Boolean)
-          .length);
-        const el = root.querySelector(`.slot-cell[data-slot-level="${lvl}"] .slot-spells`);
-        if (el) el.textContent = String(count);
-      }
+.lss-pill-label{
+  font-size:10px;     /* ⬅ меньше */
+  line-height: 12px;
+  font-weight:800;
+  color:#d0d6e4;
+}
 
-      scheduleSheetSave(player);
-    };
+.lss-pill-val{
+  min-width:30px;     /* ⬅ меньше */
+  text-align:center;
+  font-weight:900;
+  font-size:12px;     /* ⬅ меньше цифры */
+  line-height: 14px;
+  color:#fff;
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px;
+  padding:1px 8px;    /* ⬅ компактнее */
+}
 
-    area.addEventListener('input', save);
-    area.addEventListener('change', save);
-  });
+.lss-skill-list{
+  margin-top:6px;     /* ⬅ меньше */
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+}
+
+.lss-skill-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  background:#1a1a1a;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:4px 6px;    /* ⬅ компактнее строка навыка */
+}
+
+.lss-skill-left{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+
+.lss-dot{
+  width:12px;
+  height:12px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,0.35);
+  flex:0 0 auto;
+}
+
+/* кликабельный кружок навыка */
+.lss-dot.clickable{
+  cursor: pointer;
+}
+
+/* 2-е состояние: белое свечение */
+.lss-dot.boost1{
+  border-color: rgba(199,153,67,0.95);
+  box-shadow: 0 0 0 2px rgba(199,153,67,0.22), 0 0 10px rgba(199,153,67,0.18);
+}
+
+/* 3-е состояние: оранжевое свечение */
+.lss-dot.boost2{
+  border-color: orange;
+  box-shadow: 0 0 0 2px rgba(255,165,0,0.20), 0 0 12px rgba(255,165,0,0.32);
+}
+
+.lss-skill-name{
+  font-size:12px;     /* ⬅ меньше */
+  line-height: 14px;
+  color:#eef2ff;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.lss-prof{
+  opacity:0.9;
+  font-size:11px;
+}
+
+.lss-boost{
+  opacity:0.95;
+  font-size:11px;
+  margin-left: 4px;
+}
+
+.lss-skill-val{
+  font-weight:900;
+  font-size:12px;     /* ⬅ меньше */
+  line-height: 14px;
+  color:#fff;
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px;
+  padding:1px 8px;    /* ⬅ меньше */
+  min-width:40px;     /* ⬅ меньше */
+  text-align:center;
+}
+
+/* пассивки + владения */
+.lss-bottom-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:12px;
+  margin-top:12px;
+}
+@media (max-width: 900px){
+  .lss-bottom-grid{ grid-template-columns: 1fr; }
+}
+.lss-passives, .lss-profbox{
+  background:#121212;
+  border:1px solid #333;
+  border-radius:12px;
+  padding:10px;
+}
+.lss-passives-title{
+  font-weight:900;
+  letter-spacing:0.6px;
+  color:#d8dde8;
+  font-size:12px;
+  margin-bottom:8px;
+}
+.lss-passive-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border:1px solid rgba(255,255,255,0.10);
+  background:rgba(255,255,255,0.04);
+  border-radius:10px;
+  padding:6px 8px;
+  margin-bottom:6px;
+}
+.lss-passive-row:last-child{ margin-bottom:0; }
+.lss-passive-val{
+  font-weight:900;
+  color:#fff;
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px;
+  padding:2px 10px;
+  min-width:44px;
+  text-align:center;
+}
+.lss-passive-label{
+  color:#d8dde8;
+  font-size:13px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.lss-prof-scroll{
+  max-height:160px;
+  overflow:auto;
+  padding-right:6px;
+}
+.lss-prof-line{
+  color:#d8dde8;
+  font-size:13px;
+  padding:4px 2px;
+  border-bottom:1px dashed rgba(255,255,255,0.10);
+}
+.lss-prof-line:last-child{ border-bottom:none; }
+
+/* spells slots */
+.lss-slots{ display:flex; flex-direction:column; gap:8px; }
+.lss-slot{ display:flex; align-items:center; gap:10px; }
+.lss-slot-lvl{
+  width:28px; height:28px; border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:900;
+  border:1px solid rgba(255,255,255,0.16);
+  background:rgba(255,255,255,0.08);
+  color:#fff;
+}
+.lss-slot-bar{
+  flex:1;
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:10px;
+  background:rgba(255,255,255,0.04);
+  padding:6px 10px;
+}
+.lss-slot-text{ font-size:13px; color:#e7ecff; font-weight:800; }
+
+/* clickable spell pills */
+.spell-link{ text-decoration:none; }
+.spell-link:hover{
+  border-color:#4aa3ff;
+  box-shadow:0 0 0 2px rgba(74,163,255,0.15);
+}
+
+
+/* ===== FIX: modal scrolling inside "Инфа" ===== */
+/* modal-body уже flex+min-height:0; важно дать sheet-content занимать высоту и не обрезаться */
+.sheet-content{
+  display:flex;
+  flex-direction:column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* шапка (hero) фиксированная, скролл — в правой части (sheet-main) */
+.sheet-hero{
+  flex: 0 0 auto;
+}
+
+/* чтобы контент вкладки гарантированно скроллился до конца */
+.sheet-main{
+  overflow:auto;
+  min-height:0;
+}
+
+
+/* ===== PATCH: Пассивные чувства как навыки (рамки/текст/числа) ===== */
+.lss-passive-row{
+  gap: 8px;
+  background:#1a1a1a;
+  border:1px solid #333;
+  border-radius:10px;
+  padding:4px 6px;
+}
+.lss-passive-val{
+  font-weight:900;
+  font-size:12px;
+  line-height:14px;
+  color:#fff;
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:8px;
+  padding:1px 8px;
+  min-width:40px;
+  text-align:center;
+}
+.lss-passive-label{
+  font-size:12px;
+  line-height:14px;
+  color:#eef2ff;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+
+/* ===== PATCH: рамка "прочие владения и заклинания" в сером контуре ===== */
+.lss-prof-text{
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #666;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  color: #ddd;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.lss-prof-text:focus{
+  border-color: #888;
+}
+
+/* ===== PATCH: инпуты для характеристик/проверок/спасбросков/навыков ===== */
+.lss-ability-score-input{
+  width: 64px;
+  text-align: right;
+  font-weight: 900;
+  font-size: 16px;
+  line-height: 18px;
+  color: #fff;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  padding: 2px 8px;
+}
+
+.lss-pill-val-input,
+.lss-skill-val-input{
+  min-width: 44px;
+  text-align: center;
+  font-weight: 900;
+  font-size: 12px;
+  line-height: 14px;
+  color: #fff;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 1px 8px;
+}
+
+.lss-pill-val-input{
+  width: 52px;
+}
+
+.lss-skill-val-input{
+  width: 52px;
 }
 
 
 
-  function updateDerivedForStat(root, sheet, statKey) {
-    if (!root || !sheet || !statKey) return;
-
-    // check/save inputs inside this stat block
-    const checkEl = root.querySelector(`.lss-pill-val-input[data-stat-key="${statKey}"][data-kind="check"]`);
-    if (checkEl) checkEl.value = formatMod(calcCheckBonus(sheet, statKey));
-
-    const saveEl = root.querySelector(`.lss-pill-val-input[data-stat-key="${statKey}"][data-kind="save"]`);
-    if (saveEl) saveEl.value = formatMod(calcSaveBonus(sheet, statKey));
-
-    // skills under this stat: just refresh all skills UI
-    const scoreEl = root.querySelector(`.lss-ability-score-input[data-stat-key="${statKey}"]`);
-    if (scoreEl && sheet?.stats?.[statKey]?.score != null) {
-      scoreEl.value = String(sheet.stats[statKey].score);
-    }
-  }
-
-
-
-  // ================== RENDER
-  // ================== RENDER ==================
-  function renderAbilitiesGrid(vm) {
-    const blocks = vm.stats.map(s => {
-      const skillRows = (s.skills || []).map(sk => {
-        const dotClass = (sk.boostLevel === 1) ? "boost1" : (sk.boostLevel === 2) ? "boost2" : "";
-        return `
-          <div class="lss-skill-row">
-            <div class="lss-skill-left">
-              <span class="lss-dot ${dotClass}" data-skill-key="${escapeHtml(sk.key)}"></span>
-              <span class="lss-skill-name">
-                ${escapeHtml(sk.label)}
-                <span class="lss-boost">${sk.boostStars ? ` ${escapeHtml(sk.boostStars)}` : ""}</span>
-              </span>
-            </div>
-            <input class="lss-skill-val lss-skill-val-input" type="text" value="${escapeHtml(formatMod(sk.bonus))}" data-skill-key="${escapeHtml(sk.key)}">
-          </div>
-        `;
-      }).join("");
-
-      return `
-        <div class="lss-ability">
-          <div class="lss-ability-head">
-            <div class="lss-ability-name">${escapeHtml(s.label.toUpperCase())}</div>
-            <input class="lss-ability-score lss-ability-score-input" type="number" min="1" max="30" value="${escapeHtml(String(s.score))}" data-stat-key="${escapeHtml(s.k)}">
-          </div>
-
-          <div class="lss-ability-actions">
-            <div class="lss-pill">
-              <span class="lss-pill-label">ПРОВЕРКА</span>
-              <input class="lss-pill-val lss-pill-val-input" type="text" value="${escapeHtml(formatMod(s.check))}" data-stat-key="${escapeHtml(s.k)}" data-kind="check">
-            </div>
-            <div class="lss-pill">
-              <span class="lss-pill-label">СПАСБРОСОК</span>
-              <input class="lss-pill-val lss-pill-val-input" type="text" value="${escapeHtml(formatMod(s.save))}" data-stat-key="${escapeHtml(s.k)}" data-kind="save">
-            </div>
-          </div>
-
-          <div class="lss-skill-list">
-            ${skillRows || `<div class="sheet-note">Нет навыков</div>`}
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    return `<div class="lss-abilities-grid">${blocks}</div>`;
-  }
-
-  function renderPassives(vm) {
-    const rows = vm.passive.map(p => `
-      <div class="lss-passive-row" data-passive-key="${escapeHtml(String(p.key || ''))}">
-        <div class="lss-passive-val" data-passive-val="${escapeHtml(String(p.key || ''))}">${escapeHtml(String(p.value))}</div>
-        <div class="lss-passive-label">${escapeHtml(p.label)}</div>
-      </div>
-    `).join("");
-
-    return `
-      <div class="lss-passives">
-        <div class="lss-passives-title">ПАССИВНЫЕ ЧУВСТВА</div>
-        ${rows}
-      </div>
-    `;
-  }
-
-  function renderProfBox(vm) {
-    // всегда показываем блок, даже без загруженного файла
-    return `
-      <div class="lss-profbox">
-        <div class="lss-passives-title">ПРОЧИЕ ВЛАДЕНИЯ И ЗАКЛИНАНИЯ</div>
-        <textarea class="lss-prof-text" rows="8" data-sheet-path="text.profPlain.value" placeholder="Например: владения, инструменты, языки, заклинания...">${escapeHtml(vm.profText || "")}</textarea>
-      </div>
-    `;
-  }
-
-  function renderBasicTab(vm) {
-    return `
-      <div class="sheet-section">
-        <h3>Основное</h3>
-
-        <div class="sheet-grid-2">
-          <div class="sheet-card">
-            <h4>Профиль</h4>
-
-            <div class="kv"><div class="k">Имя</div><div class="v"><input type="text" data-sheet-path="name.value" style="width:180px"></div></div>
-            <div class="kv"><div class="k">Класс</div><div class="v"><input type="text" data-sheet-path="info.charClass.value" style="width:180px"></div></div>
-            <div class="kv"><div class="k">Уровень</div><div class="v"><input type="number" min="1" max="20" data-sheet-path="info.level.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Раса</div><div class="v"><input type="text" data-sheet-path="info.race.value" style="width:180px"></div></div>
-            <div class="kv"><div class="k">Предыстория</div><div class="v"><input type="text" data-sheet-path="info.background.value" style="width:180px"></div></div>
-            <div class="kv"><div class="k">Мировоззрение</div><div class="v"><input type="text" data-sheet-path="info.alignment.value" style="width:180px"></div></div>
-          </div>
-
-          <div class="sheet-card">
-            <h4>Базовые параметры</h4>
-            <div class="kv"><div class="k">AC</div><div class="v"><input type="number" min="0" max="40" data-sheet-path="vitality.ac.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">HP max</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">HP current</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Speed</div><div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Владение</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
-          </div>
-        </div>
-
-        <div class="sheet-section" style="margin-top:12px;">
-          <h3>Характеристики и навыки</h3>
-          ${renderAbilitiesGrid(vm)}
-        </div>
-
-        <div class="lss-bottom-grid">
-          ${renderPassives(vm)}
-          ${renderProfBox(vm)}
-        </div>
-      </div>
-    `;
-  }
-
-  // ================== RENDER: SPELLS ==================
-  function renderSlots(vm) {
-    const slots = Array.isArray(vm?.slots) ? vm.slots : [];
-    if (!slots.length) return `<div class="sheet-note">Ячейки заклинаний не указаны.</div>`;
-
-    const countByLevel = {};
-    (vm.spellsByLevel || []).forEach(b => {
-      const lvl = Number(b.level);
-      if (!Number.isFinite(lvl)) return;
-      countByLevel[lvl] = Array.isArray(b.items) ? b.items.length : 0;
-    });
-
-    const cells = slots.slice(0, 9).map(s => {
-      const total = Math.max(0, Math.min(12, safeInt(s.total, 0)));
-      const filled = Math.max(0, Math.min(total, safeInt(s.filled, 0)));
-      const current = Math.max(0, total - filled); // доступные
-      const spellsCount = countByLevel[s.level] || 0;
-
-      const dots = Array.from({ length: total })
-        .map((_, i) => {
-          const on = i < current;
-          return `<span class="slot-dot${on ? " is-available" : ""}" data-slot-level="${s.level}"></span>`;
-        })
-        .join("");
-
-      return `
-        <div class="slot-cell" data-slot-level="${s.level}">
-          <div class="slot-top">
-            <div class="slot-level">Ур. ${s.level}</div>
-            <div class="slot-nums">
-              <span class="slot-spells" title="Кол-во заклинаний уровня">${spellsCount}</span>
-              <span class="slot-sep">/</span>
-              <input class="slot-current slot-current-input" type="number" min="0" max="12" value="${escapeHtml(String(current))}" data-slot-level="${s.level}" title="Доступно ячеек (редактируемое)">
-            </div>
-          </div>
-          <div class="slot-dots" data-slot-dots="${s.level}">
-            ${dots || `<span class="slot-dots-empty">—</span>`}
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    return `
-      <div class="slots-frame">
-        <div class="slots-grid">
-          ${cells}
-        </div>
-      </div>
-    `;
-  }
-
-  function renderSpellsByLevel(vm) {
-    const blocks = (vm?.spellsByLevel || []).map(b => {
-      const lvl = safeInt(b.level, 0);
-      const title = (lvl === 0) ? "Заговоры (0)" : `Уровень ${lvl}`;
-
-      const plain = (vm?.spellsPlainByLevel && typeof vm.spellsPlainByLevel === "object")
-        ? (vm.spellsPlainByLevel[lvl] || "")
-        : "";
-
-      const items = (b.items || []).map(it => {
-        if (it.href) {
-          return `<a class="sheet-pill spell-link" href="${escapeHtml(it.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(it.text)}</a>`;
-        }
-        return `<span class="sheet-pill">${escapeHtml(it.text)}</span>`;
-      }).join("");
-
-      return `
-        <div class="sheet-card">
-          <h4>${escapeHtml(title)}</h4>
-
-          <textarea class="spells-level-editor" rows="4" data-spells-level="${lvl}" placeholder="Вписывай по 1 заклинанию на строку. Можно с ссылкой:\nНазвание | https://...">${escapeHtml(plain)}</textarea>
-
-          <div class="spells-level-pills">
-            ${items || `<div class="sheet-note">Пока пусто (можно заполнять вручную).</div>`}
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    return `<div class="sheet-grid-2">${blocks}</div>`;
-  }
-
-  function renderSpellsTab(vm) {
-    const save = vm.spellsInfo?.save || "-";
-    const mod = vm.spellsInfo?.mod || "-";
-
-    return `
-      <div class="sheet-section">
-        <h3>Заклинания</h3>
-
-        <div class="sheet-card spells-metrics-card fullwidth">
-          <div class="spell-metrics">
-            <div class="spell-metric">
-              <div class="spell-metric-label">СЛ спасброска</div>
-              <div class="spell-metric-val">${escapeHtml(String(save))}</div>
-            </div>
-            <div class="spell-metric">
-              <div class="spell-metric-label">Бонус атаки</div>
-              <div class="spell-metric-val">${escapeHtml(String(mod))}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="sheet-card fullwidth" style="margin-top:10px;">
-          <h4>Ячейки</h4>
-          ${renderSlots(vm)}
-          <div class="sheet-note" style="margin-top:6px;">
-            Формат: <b>кол-во заклинаний</b> / <b>доступно ячеек</b> (второе число редактируемое, max 12). Кружки показывают доступные ячейки.
-          </div>
-        </div>
-
-        <div class="sheet-section" style="margin-top:10px;">
-          <h3>Список заклинаний</h3>
-          ${renderSpellsByLevel(vm)}
-          <div class="sheet-note" style="margin-top:8px;">
-            Подсказка: если в твоём .json ссылки на dnd.su — они кликабельны.
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  // ================== OTHER TABS ==================
-  
-function renderCombatTab(vm) {
-  const statModByKey = {};
-  (vm?.stats || []).forEach(s => { statModByKey[s.k] = safeInt(s.mod, 0); });
-
-  const profBonus = safeInt(vm?.profBonus, 2);
-
-  const abilityOptions = [
-    { k: "str", label: "Сила" },
-    { k: "dex", label: "Ловкость" },
-    { k: "con", label: "Телосложение" },
-    { k: "int", label: "Интеллект" },
-    { k: "wis", label: "Мудрость" },
-    { k: "cha", label: "Харизма" }
-  ];
-
-  const diceOptions = ["к4","к6","к8","к10","к12","к20"];
-
-  const calcAtk = (w) => {
-    const statMod = safeInt(statModByKey[w.ability] ?? 0, 0);
-    const prof = w.prof ? profBonus : 0;
-    const extra = safeInt(w.extraAtk, 0);
-    return statMod + prof + extra;
-  };
-
-  const dmgText = (w) => {
-    const n = Math.max(0, safeInt(w.dmgNum, 1));
-    const dice = String(w.dmgDice || "к6");
-    const type = String(w.dmgType || "").trim();
-    return `${n}${dice}${type ? ` ${type}` : ""}`.trim();
-  };
-
-  const d20Svg = `
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-      <path d="M12 2 20.5 7v10L12 22 3.5 17V7L12 2Z" fill="currentColor" opacity="0.95"></path>
-      <path d="M12 2v20M3.5 7l8.5 5 8.5-5M3.5 17l8.5-5 8.5 5" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="1.2"></path>
-    </svg>
-  `;
-
-  const weapons = Array.isArray(vm?.weapons) ? vm.weapons : [];
-
-  const listHtml = weapons.length
-    ? weapons.map(w => {
-        if (w.kind === "legacy") {
-          // на всякий случай
-          return `
-            <div class="sheet-card weapon-card legacy">
-              <div class="sheet-note">Оружие legacy. Перезагрузи json или добавь оружие через кнопку «Добавить оружие».</div>
-            </div>
-          `;
-        }
-
-        const atk = calcAtk(w);
-        const collapsed = !!w.collapsed;
-        const title = String(w.name || "");
-
-        return `
-          <div class="sheet-card weapon-card" data-weapon-idx="${w.idx}">
-            <div class="weapon-head ${collapsed ? "is-collapsed" : "is-expanded"}">
-              <input class="weapon-title-input"
-                     type="text"
-                     value="${escapeHtml(title)}"
-                     title="${escapeHtml(title)}"
-                     placeholder="Название"
-                     data-weapon-field="name">
-
-              <div class="weapon-actions">
-                <button class="weapon-btn" type="button" data-weapon-toggle-desc>${collapsed ? "Показать" : "Скрыть"}</button>
-                <button class="weapon-btn danger" type="button" data-weapon-del>Удалить</button>
-              </div>
-            </div>
-
-            <!-- рамка под названием: Бонус атаки + Урон (всегда видима) -->
-            <div class="weapon-summary">
-              <div class="weapon-sum-item">
-                <div class="weapon-sum-label">
-                  <span>Атака</span>
-                  <button class="weapon-dice-btn" type="button" data-weapon-roll-atk title="Бросок атаки">${d20Svg}</button>
-                </div>
-                <div class="weapon-sum-val" data-weapon-atk>${escapeHtml(formatMod(atk))}</div>
-              </div>
-
-              <div class="weapon-sum-item">
-                <div class="weapon-sum-label">
-                  <span>Урон</span>
-                  <button class="weapon-dice-btn" type="button" data-weapon-roll-dmg title="Бросок урона">${d20Svg}</button>
-                </div>
-                <div class="weapon-sum-val" data-weapon-dmg>${escapeHtml(dmgText(w))}</div>
-              </div>
-            </div>
-
-            <!-- всё ниже скрывается кнопкой Скрыть -->
-            <div class="weapon-details ${collapsed ? "collapsed" : ""}">
-              <div class="weapon-details-grid">
-                <div class="weapon-fieldbox">
-                  <div class="weapon-fieldlabel">Характеристика</div>
-                  <select class="weapon-select" data-weapon-field="ability">
-                    ${abilityOptions.map(o => `<option value="${o.k}" ${o.k === w.ability ? "selected" : ""}>${escapeHtml(o.label)}</option>`).join("")}
-                  </select>
-                </div>
-
-                <div class="weapon-fieldbox weapon-fieldbox-inline">
-                  <div class="weapon-fieldlabel">Бонус владения</div>
-                  <button class="weapon-prof-dot ${w.prof ? "active" : ""}" type="button" data-weapon-prof title="Владение: +${profBonus} к бонусу атаки"></button>
-                </div>
-
-                <div class="weapon-fieldbox">
-                  <div class="weapon-fieldlabel">Доп. модификатор</div>
-                  <input class="weapon-num weapon-extra" type="number" step="1"
-                         value="${escapeHtml(String(safeInt(w.extraAtk, 0)))}"
-                         data-weapon-field="extraAtk">
-                </div>
-
-                <div class="weapon-fieldbox weapon-dmg-edit">
-                  <div class="weapon-fieldlabel">Урон (редакт.)</div>
-                  <div class="weapon-dmg-mini">
-                    <input class="weapon-num weapon-dmg-num" type="number" min="0" step="1"
-                           value="${escapeHtml(String(Math.max(0, safeInt(w.dmgNum, 1))))}"
-                           data-weapon-field="dmgNum">
-                    <select class="weapon-select weapon-dice" data-weapon-field="dmgDice">
-                      ${diceOptions.map(d => `<option value="${d}" ${d === w.dmgDice ? "selected" : ""}>${escapeHtml(d)}</option>`).join("")}
-                    </select>
-                  </div>
-                  <input class="weapon-text weapon-dmg-type weapon-dmg-type-full" type="text"
-                         value="${escapeHtml(String(w.dmgType || ""))}"
-                         placeholder="вид урона (колющий/рубящий/...)"
-                         data-weapon-field="dmgType">
-                </div>
-              </div>
-
-              <div class="weapon-desc">
-                <textarea class="sheet-textarea weapon-desc-text" rows="4"
-                          placeholder="Описание оружия..."
-                          data-weapon-field="desc">${escapeHtml(String(w.desc || ""))}</textarea>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join("")
-    : `<div class="sheet-note">Оружие пока не добавлено. Нажми «Добавить оружие».</div>`;
-
-  return `
-    <div class="sheet-section" data-combat-root>
-      <div class="combat-toolbar">
-        <h3>Бой</h3>
-        <button class="weapon-add-btn" type="button" data-weapon-add>Добавить оружие</button>
-      </div>
-
-      <div class="weapons-list">
-        ${listHtml}
-      </div>
-
-      <div class="sheet-card combat-skills-card">
-        <h4>Умения и способности</h4>
-        <textarea class="sheet-textarea combat-skills-text" rows="6"
-                  data-sheet-path="combat.skillsAbilities.value"
-                  placeholder="Сюда можно вписать умения/способности, особенности боя, заметки..."></textarea>
-      </div>
-    </div>
-  `;
+/* ===== Info modal: textareas & notes ===== */
+.sheet-textarea{
+  width: 100%;
+  background: #111;
+  color: #eee;
+  border: 1px solid #666;
+  border-radius: 8px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 16px;
 }
 
-  function renderInventoryTab(vm) {
-    const coins = vm.coins
-      ? `
-        <div class="kv"><div class="k">CP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.cp.value" style="width:110px"></div></div>
-        <div class="kv"><div class="k">SP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.sp.value" style="width:110px"></div></div>
-        <div class="kv"><div class="k">EP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.ep.value" style="width:110px"></div></div>
-        <div class="kv"><div class="k">GP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.gp.value" style="width:110px"></div></div>
-        <div class="kv"><div class="k">PP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.pp.value" style="width:110px"></div></div>
-      `
-      : `<div class="sheet-note">Нет данных</div>`;
+.notes-toolbar{
+  display:flex;
+  justify-content:flex-end;
+  margin-bottom: 10px;
+}
 
-    return `
-      <div class="sheet-section">
-        <h3>Инвентарь</h3>
-        <div class="sheet-grid-2">
-          <div class="sheet-card">
-            <h4>Монеты (редактируемые)</h4>
-            ${coins}
-          </div>
-          <div class="sheet-card">
-            <h4>Предметы</h4>
-            <div class="sheet-note">Пока не редактируются в UI.</div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
+.note-add-btn{
+  padding: 5px 10px;
+  font-size: 12px;
+}
 
-  function renderPersonalityTab(vm) {
-    return `
-      <div class="sheet-section">
-        <h3>Личность</h3>
+.notes-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
 
-        <div class="sheet-grid-2">
-          <div class="sheet-card">
-            <h4>Внешность</h4>
-            <div class="notes-details-grid">
-              <div class="kv"><div class="k">Рост</div><div class="v"><input type="text" data-sheet-path="notes.details.height.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Вес</div><div class="v"><input type="text" data-sheet-path="notes.details.weight.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Возраст</div><div class="v"><input type="text" data-sheet-path="notes.details.age.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Глаза</div><div class="v"><input type="text" data-sheet-path="notes.details.eyes.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Кожа</div><div class="v"><input type="text" data-sheet-path="notes.details.skin.value" style="width:140px"></div></div>
-              <div class="kv"><div class="k">Волосы</div><div class="v"><input type="text" data-sheet-path="notes.details.hair.value" style="width:140px"></div></div>
-            </div>
-          </div>
+.note-card{
+  border: 1px solid #333;
+  background: #171717;
+  border-radius: 10px;
+  padding: 8px;
+}
 
-          <div class="sheet-card">
-            <h4>Предыстория персонажа</h4>
-            <textarea class="sheet-textarea" rows="6" data-sheet-path="personality.backstory.value" placeholder="Кратко опиши предысторию..."></textarea>
-          </div>
+.note-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom: 8px;
+}
 
-          <div class="sheet-card">
-            <h4>Союзники и организации</h4>
-            <textarea class="sheet-textarea" rows="6" data-sheet-path="personality.allies.value" placeholder="Союзники, контакты, гильдии..."></textarea>
-          </div>
+.note-title{
+  flex:1 1 auto;
+  min-width: 0;
+  background:#111;
+  color:#fff;
+  border: 1px solid #555;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
 
-          <div class="sheet-card">
-            <h4>Черты характера</h4>
-            <textarea class="sheet-textarea" rows="5" data-sheet-path="personality.traits.value"></textarea>
-          </div>
+.note-actions{
+  display:flex;
+  gap:6px;
+  flex:0 0 auto;
+}
 
-          <div class="sheet-card">
-            <h4>Идеалы</h4>
-            <textarea class="sheet-textarea" rows="5" data-sheet-path="personality.ideals.value"></textarea>
-          </div>
+.note-btn{
+  padding: 3px 8px;
+  font-size: 12px;
+}
 
-          <div class="sheet-card">
-            <h4>Привязанности</h4>
-            <textarea class="sheet-textarea" rows="5" data-sheet-path="personality.bonds.value"></textarea>
-          </div>
+.note-btn.danger{
+  border-color: rgba(255,0,0,0.45);
+}
 
-          <div class="sheet-card">
-            <h4>Слабости</h4>
-            <textarea class="sheet-textarea" rows="5" data-sheet-path="personality.flaws.value"></textarea>
-          </div>
-        </div>
-      </div>
-    `;
-  }
+.note-body.collapsed{
+  display:none;
+}
 
-  function renderNotesTab(vm) {
-    const entries = Array.isArray(vm?.notesEntries) ? vm.notesEntries : [];
-    const renderEntry = (e, idx) => {
-      const title = (e && typeof e.title === "string" && e.title) ? e.title : `Заметка-${idx + 1}`;
-      const text = (e && typeof e.text === "string") ? e.text : "";
-      const collapsed = !!(e && e.collapsed);
-      return `
-        <div class="note-card" data-note-idx="${idx}">
-          <div class="note-header">
-            <input class="note-title" type="text" value="${escapeHtml(title)}" data-note-title="${idx}" />
-            <div class="note-actions">
-              <button class="note-btn" data-note-toggle="${idx}">${collapsed ? "Показать" : "Скрыть"}</button>
-              <button class="note-btn danger" data-note-del="${idx}">Удалить</button>
-            </div>
-          </div>
-          <div class="note-body ${collapsed ? "collapsed" : ""}">
-            <textarea class="sheet-textarea note-text" rows="6" data-note-text="${idx}" placeholder="Текст заметки...">${escapeHtml(text)}</textarea>
-          </div>
-        </div>
-      `;
-    };
+.note-text{
+  border: 1px solid #666;
+}
 
-    return `
-      <div class="sheet-section">
-        <h3>Заметки</h3>
+.notes-details-grid .kv{
+  border-bottom: 1px dashed rgba(255,255,255,0.08);
+}
 
-        <div class="sheet-card notes-fullwidth">
-          <h4>Быстрые заметки</h4>
-          <div class="notes-toolbar">
-            <button class="note-add-btn" data-note-add>Добавить заметку</button>
-          </div>
-          <div class="notes-list">
-            ${entries.length ? entries.map(renderEntry).join("") : `<div class="sheet-note">Пока нет заметок. Нажми «Добавить заметку».</div>`}
-          </div>
-        </div>
-      </div>
-    `;
-  }
+/* Серый контур для блока "прочие владения и заклинания" (textarea) */
+.lss-prof-text,
+textarea[data-sheet-path="text.profPlain.value"]{
+  border: 1px solid #666 !important;
+}
 
 
-  function renderActiveTab(tabId, vm) {
-    if (tabId === "basic") return renderBasicTab(vm);
-    if (tabId === "spells") return renderSpellsTab(vm);
-    if (tabId === "combat") return renderCombatTab(vm);
-    if (tabId === "inventory") return renderInventoryTab(vm);
-    if (tabId === "personality") return renderPersonalityTab(vm);
-    if (tabId === "notes") return renderNotesTab(vm);
-    return `<div class="sheet-note">Раздел в разработке</div>`;
-  }
+/* ===== Notes full width ===== */
+.sheet-card.notes-fullwidth { width: 100%; }
 
-  // ================== RENDER MODAL ==================
-  function renderSheetModal(player, opts = {}) {
-    if (!sheetTitle || !sheetSubtitle || !sheetActions || !sheetContent) return;
-    if (!ctx) return;
+/* ===== Spells: metrics & slots ===== */
+.sheet-card.fullwidth { width: 100%; }
 
-    const force = !!opts.force;
-    // Если пользователь сейчас редактирует что-то внутри модалки — не перерисовываем, чтобы не прыгал скролл/вкладка.
-    if (!force && player?.id && isModalBusy(player.id)) {
-      return;
-    }
+.spells-metrics-card { padding: 10px 12px; }
+.spell-metrics {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.spell-metric {
+  flex: 1 1 220px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+.spell-metric-label {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.spell-metric-val {
+  font-size: 18px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 10px;
+  min-width: 44px;
+  text-align: center;
+  line-height: 1;
+}
 
-    // сохраняем текущую вкладку/скролл перед любым ререндером
-    captureUiStateFromDom(player);
+/* Slots grid (1..9) in 3 rows */
+.slots-frame {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 14px;
+  padding: 10px;
+}
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.slot-cell {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+.slot-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.slot-level {
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.slot-nums {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.slot-current-input {
+  width: 56px;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.slot-dots {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 14px;
+}
+.slot-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.10);
+  cursor: pointer;
+}
+.slot-dot.is-available {
+  background: rgba(0, 170, 255, 0.85);
+  border-color: rgba(0, 200, 255, 0.95);
+  box-shadow: 0 0 0 2px rgba(0, 170, 255, 0.15);
+}
+.slot-dot:hover {
+  border-color: rgba(0, 200, 255, 0.75);
+}
+.slot-dots-empty {
+  opacity: 0.5;
+  font-size: 12px;
+}
+@media (max-width: 820px) {
+  .slots-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .slots-grid { grid-template-columns: 1fr; }
+}
 
-    const myRole = ctx.getMyRole?.();
-    const myId = ctx.getMyId?.();
-    const canEdit = (myRole === "GM" || player.ownerId === myId);
+/* ===== Spells list editors ===== */
+.spells-level-editor{
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+}
+.spells-level-pills{
+  margin-top: 8px;
+}
 
-    sheetTitle.textContent = `Инфа: ${player.name}`;
-    sheetSubtitle.textContent = `Владелец: ${player.ownerName || 'Unknown'} • Тип: ${player.isBase ? 'Основа' : '-'}`;
+/* ===== Combat / Weapons UI ===== */
+.combat-toolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
 
-    ensurePlayerSheetWrapper(player);
+.weapon-add-btn{
+  padding:8px 12px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.08);
+  color:#fff;
+  cursor:pointer;
+}
+.weapon-add-btn:disabled{opacity:.5; cursor:not-allowed;}
 
-    sheetActions.innerHTML = '';
-    const note = document.createElement('div');
-    note.className = 'sheet-note';
-    note.textContent = canEdit
-      ? "Можно загрузить .json (Long Story Short/Charbox) или редактировать поля вручную — всё сохраняется."
-      : "Просмотр. Редактировать может только владелец или GM.";
-    sheetActions.appendChild(note);
+.weapons-list{ display:flex; flex-direction:column; gap:10px; }
 
-    if (canEdit) {
-      const fileInput = document.createElement('input');
-      fileInput.type = 'file';
-      fileInput.accept = '.json,application/json';
+.weapon-card{ padding:12px; }
+.weapon-card.legacy{ opacity:.9; }
 
-      fileInput.addEventListener('change', async () => {
-        const file = fileInput.files?.[0];
-        if (!file) return;
+.weapon-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.weapon-title-input{
+  width:100%;
+  max-width: 360px;
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  color:#fff;
+  font-weight:600;
+}
+.weapon-title{
+  font-weight:700;
+}
 
-        try {
-          const text = await file.text();
-          const sheet = parseCharboxFileText(text);
-          player.sheet = sheet;
-          ctx.sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
+.weapon-actions{ display:flex; align-items:center; gap:8px; }
+.weapon-btn{
+  padding:6px 10px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color:#fff;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.weapon-btn:disabled{opacity:.5; cursor:not-allowed;}
+.weapon-btn.danger{ border-color: rgba(255,80,80,.35); background: rgba(255,80,80,.10); }
 
-          // Мгновенно обновляем UI (не ждём round-trip через сервер)
-          // и при этом не сбрасываем вкладку/скролл.
-          markModalInteracted(player.id);
-          renderSheetModal(player, { force: true });
+.weapon-badge{
+  font-size:12px;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.18);
+  background: rgba(0,0,0,.18);
+  opacity:.85;
+}
 
-          const tmp = document.createElement('div');
-          tmp.className = 'sheet-note';
-          tmp.textContent = "Файл отправлен. Сейчас обновится состояние…";
-          sheetActions.appendChild(tmp);
-        } catch (err) {
-          alert("Не удалось прочитать/распарсить файл .json");
-          console.error(err);
-        } finally {
-          fileInput.value = '';
-        }
-      });
+.weapon-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:10px 12px;
+}
+@media (max-width: 860px){
+  .weapon-grid{ grid-template-columns: 1fr; }
+}
 
-      sheetActions.appendChild(fileInput);
-    }
+.weapon-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.weapon-label{
+  font-size:12px;
+  opacity:.85;
+  white-space:nowrap;
+}
 
-    const sheet = player.sheet?.parsed || createEmptySheet(player.name);
-    const vm = toViewModel(sheet, player.name);
+.weapon-select, .weapon-num, .weapon-text{
+  padding:7px 10px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  color:#fff;
+}
+.weapon-num{ width:90px; }
+.weapon-text{ width: 100%; max-width: 260px; }
 
-    const tabs = [
-      { id: "basic", label: "Основное" },
-      { id: "spells", label: "Заклинания" },
-      { id: "combat", label: "Бой" },
-      { id: "inventory", label: "Инвентарь" },
-      { id: "personality", label: "Личность" },
-      { id: "notes", label: "Заметки" }
-    ];
+.weapon-prof-dot{
+  width:18px; height:18px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.08);
+  cursor:pointer;
+}
+.weapon-prof-dot.active{
+  background: rgba(255,165,0,.75);
+  border-color: rgba(255,165,0,.95);
+  box-shadow: 0 0 0 2px rgba(255,165,0,.18);
+}
+.weapon-prof-dot:disabled{opacity:.5; cursor:not-allowed;}
 
-    // восстановление вкладки (если была)
-    const st = player?.id ? getUiState(player.id) : null;
-    if (!player._activeSheetTab) player._activeSheetTab = (st?.activeTab || "basic");
-    let activeTab = player._activeSheetTab;
+.weapon-atk{
+  font-weight:700;
+  letter-spacing:.2px;
+}
 
-    const hero = `
-      <div class="sheet-hero">
-        <div class="sheet-hero-top">
-          <div>
-            <div class="sheet-hero-title">${escapeHtml(vm.name)}</div>
-            <div class="sheet-hero-sub">
-              ${escapeHtml(vm.cls)} • lvl ${escapeHtml(vm.lvl)} • ${escapeHtml(vm.race)}
-            </div>
-          </div>
-          <div class="sheet-chips">
-            <div class="sheet-chip" data-hero="ac"><div class="k">AC</div><div class="v" data-hero-val="ac">${escapeHtml(String(vm.ac))}</div></div>
-            <div class="sheet-chip" data-hero="hp"><div class="k">HP</div><div class="v" data-hero-val="hp">${escapeHtml(String(vm.hpCur))}/${escapeHtml(String(vm.hp))}</div></div>
-            <div class="sheet-chip" data-hero="speed"><div class="k">Speed</div><div class="v" data-hero-val="speed">${escapeHtml(String(vm.spd))}</div></div>
-          </div>
-          </div>
-        </div>
-      </div>
-    `;
+.weapon-dmg-row{ align-items:flex-start; }
+.weapon-dmg-controls{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.weapon-dmg-num{ width:80px; }
+.weapon-dice{ width:90px; }
+.weapon-dmg-type{ max-width: 240px; }
 
-    const sidebarHtml = `
-      <div class="sheet-sidebar">
-        ${tabs.map(t => `
-          <button class="sheet-tab ${t.id === activeTab ? "active" : ""}" data-tab="${t.id}">
-            ${escapeHtml(t.label)}
-          </button>
-        `).join("")}
-      </div>
-    `;
+.weapon-dmg-preview{
+  font-weight:600;
+  opacity:.95;
+}
 
-    const mainHtml = `
-      <div class="sheet-main" id="sheet-main">
-        ${renderActiveTab(activeTab, vm)}
-      </div>
-    `;
+.weapon-desc{ margin-top:10px; }
+.weapon-desc.collapsed{ display:none; }
+.weapon-desc-text{ width:100%; resize:vertical; }
 
-    sheetContent.innerHTML = `
-      ${hero}
-      <div class="sheet-layout">
-        ${sidebarHtml}
-        ${mainHtml}
-      </div>
-    `;
+/* ================== DICE VISUALIZER (bottom-left) ================== */
+.dice-viz{
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  width: 270px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(20,20,20,0.92);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  z-index: 9998;
+  user-select: none;
+}
 
-    // восстанавливаем скролл после рендера
-    restoreUiStateToDom(player);
+.dice-viz-title{
+  font-weight: 900;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
 
-    // отмечаем взаимодействие, чтобы state-обновления не ломали скролл
-    const mainEl = sheetContent.querySelector('#sheet-main');
-    mainEl?.addEventListener('scroll', () => {
-      markModalInteracted(player.id);
-      // и сохраняем текущий скролл в uiState
-      captureUiStateFromDom(player);
-    }, { passive: true });
+.dice-viz-controls{
+  display: flex;
+  flex-wrap: wrap;            /* разрешаем перенос строки */
+  gap: 8px;
+  align-items: flex-start;     /* чтобы “Инициатива” не тянула высоту */
+  margin-bottom: 8px;
+}
 
-    sheetContent.addEventListener('pointerdown', () => markModalInteracted(player.id), { passive: true });
-    sheetContent.addEventListener('keydown', () => markModalInteracted(player.id), { passive: true });
+/* Инициатива — отдельной строкой, влезает в рамку */
+.dice-viz-btn--initiative{
+  order: 0;
+  flex: 1 0 100%;     /* занимает всю ширину */
+  width: 100%;
+  margin-bottom: 0;
+}
 
-    bindEditableInputs(sheetContent, player, canEdit);
-    bindSkillBoostDots(sheetContent, player, canEdit);
-    bindAbilityAndSkillEditors(sheetContent, player, canEdit);
-    bindNotesEditors(sheetContent, player, canEdit);
-    bindSlotEditors(sheetContent, player, canEdit);
-    bindSpellsListEditors(sheetContent, player, canEdit);
-   bindCombatEditors(sheetContent, player, canEdit);
+/* Селект, количество, “Бросить” — следующей строкой */
+.dice-viz-select{ order: 1; }
+.dice-viz-count{ order: 2; }
 
-    const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
-    const main = sheetContent.querySelector("#sheet-main");
+#roll{
+  order: 3;
+  flex: 1 1 auto;     /* занимает остаток строки */
+  min-width: 88px;    /* чтобы не схлопывалась */
+}
 
-    tabButtons.forEach(btn => {
-      btn.addEventListener("click", () => {
-        const tabId = btn.dataset.tab;
-        if (!tabId) return;
+.dice-viz-select,
+.dice-viz-count{
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  color: #fff;
+  padding: 7px 10px;
+  outline: none;
+}
 
-        activeTab = tabId;
-        player._activeSheetTab = tabId;
+.dice-viz-select{ width: 88px; }
+.dice-viz-count{ width: 70px; }
 
-        tabButtons.forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
+/* Кнопка Инициатива — отдельной строкой внутри панели */
+.dice-viz-btn--initiative{
+  width: 100%;
+  display: block;
+  margin-bottom: 8px;
+}
 
-        if (main) {
-          const freshSheet = player.sheet?.parsed || createEmptySheet(player.name);
-          const freshVm = toViewModel(freshSheet, player.name);
-          main.innerHTML = renderActiveTab(activeTab, freshVm);
+.dice-viz-btn{
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  padding: 8px 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
 
-          bindEditableInputs(sheetContent, player, canEdit);
-          bindSkillBoostDots(sheetContent, player, canEdit);
-          bindAbilityAndSkillEditors(sheetContent, player, canEdit);
-          bindNotesEditors(sheetContent, player, canEdit);
-          bindSlotEditors(sheetContent, player, canEdit);
-          bindSpellsListEditors(sheetContent, player, canEdit);
-           bindCombatEditors(sheetContent, player, canEdit);
-        }
-      });
-    });
+/* Инициатива — отдельной строкой, внутри панели */
+.dice-viz-btn--initiative{
+  width: 100%;
+  display: block;
+  margin-bottom: 8px;
+}
 
-    // (скролл/взаимодействия уже повешены выше)
-  }
+/* Строка броска — строго в одну линию */
+.dice-viz-controls{
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;     /* важно */
+}
 
-  // ================== PUBLIC API ==================
-  function init(context) {
-    ctx = context || null;
-    ensureWiredCloseHandlers();
-  }
+/* Кнопка "Бросить" занимает остаток строки после количества */
+.dice-viz-btn--roll{
+  flex: 1 1 auto;
+  min-width: 88px;
+  padding: 7px 10px;     /* чуть компактнее, чтобы точно влезала */
+}
 
-  function open(player) {
-    if (!player) return;
-    openedSheetPlayerId = player.id;
-    renderSheetModal(player);
-    openModal();
-  }
+/* ===== Dark dropdown (options list) ===== */
+.weapon-select,
+.dice-viz-select{
+  color-scheme: dark;            /* важно: делает нативную шторку тёмной (где поддерживается) */
+}
 
-  function refresh(players) {
-    if (!openedSheetPlayerId) return;
-    if (!Array.isArray(players)) return;
-    const pl = players.find(x => x.id === openedSheetPlayerId);
-    if (pl) renderSheetModal(pl);
-  }
+.weapon-select option,
+.dice-viz-select option,
+.weapon-select optgroup,
+.dice-viz-select optgroup{
+  background: #1e1e1e;           /* тёмно-серый фон шторки */
+  color: #ffffff;                /* белый текст */
+}
 
-  window.InfoModal = { init, open, refresh, close: closeModal };
-})();
+.dice-viz-btn:disabled{ opacity: .55; cursor: not-allowed; }
+
+#dice-canvas{
+  width: 250px;
+  height: 140px;
+  display: block;
+  margin: 0 auto;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.dice-viz-rolls{
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.dice-chip{
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  font-size: 12px;
+  font-weight: 800;
+  opacity: .95;
+}
+
+.dice-chip.active{
+  border-color: rgba(255,165,0,.55);
+  box-shadow: 0 0 0 2px rgba(255,165,0,.14);
+}
+
+.dice-viz-meta{
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 900;
+}
+
+/* ===== Dice Panel (bottom-left) ===== */
+.dice-panel{
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  width: 270px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #444;
+  background: rgba(20,20,20,0.92);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  z-index: 9998;
+  user-select: none;
+}
+
+.dice-panel__title{
+  font-weight: 900;
+  font-size: 13px;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.dice-panel__row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dice-panel__label{
+  width: 54px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.dice-panel__select,
+.dice-panel__count{
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  padding: 6px 8px;
+  outline: none;
+}
+
+.dice-panel__count{
+  flex: 0 0 70px;
+}
+
+.dice-panel__btn{
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  padding: 7px 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+#dice-canvas{
+  width: 250px;
+  height: 170px;
+  display: block;
+  margin: 4px auto 0;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.dice-panel__meta{
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  font-weight: 900;
+}
+
+
+
+/* ===== Combat / Weapons (v2 compact) ===== */
+.weapons-list{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 860px){
+  .weapons-list{ grid-template-columns: 1fr; }
+}
+
+.weapon-card{ overflow: hidden; }
+.weapon-head{
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.weapon-head.is-expanded{
+  grid-template-columns: 1fr auto;
+}
+.weapon-head.is-expanded .weapon-title-input{
+  grid-column: 1 / -1;
+  margin-top: 6px;
+}
+.weapon-title-input{
+  min-width: 0;
+  width: 100%;
+}
+.weapon-actions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  flex-wrap:nowrap;
+}
+
+.weapon-summary{
+  margin-top: 8px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  border-radius: 12px;
+  padding: 8px 10px;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.weapon-sum-item{
+  display:flex;
+  align-items:center;
+
+  /* ✅ гарантированный зазор между лейблом и значением */
+  gap: 10px;
+
+  /* чтобы ничего не прилипало к краям */
+  padding: 2px 0;
+
+  min-width: 0;
+}
+
+.weapon-sum-label{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size: 12px;
+  opacity: .9;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.weapon-dice-btn{
+  width: 22px;
+  height: 22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius: 8px;
+  border: 1px solid rgba(255,165,0,.38);
+  background: rgba(255,165,0,.12);
+  color: rgba(255,165,0,.95);
+  cursor: pointer;
+  padding: 0;
+
+  /* ✅ ключевое: SVG не вылезает и кнопка не сжимается */
+  overflow: hidden;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.weapon-dice-btn svg{
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.weapon-dice-btn:hover{
+  background: rgba(255,165,0,.18);
+}
+.weapon-dice-btn:active{
+  transform: translateY(1px);
+}
+
+.weapon-sum-val{
+  font-size: 14px;
+  font-weight: 800;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.18);
+  border-radius: 10px;
+  padding: 4px 10px;
+  min-width: 56px;
+  text-align: center;
+  margin-left: 6px; /* ⬅️ сдвиг рамки бонуса атаки вправо */
+}
+
+/* Второй элемент в summary — Урон */
+.weapon-summary .weapon-sum-item:last-child{
+  margin-left: 10px; /* ⬅️ двигаем весь блок "Урон" вправо */
+  gap: 4px;          /* ⬅️ кубик ближе к рамке значения */
+}
+
+.weapon-summary .weapon-sum-item:last-child .weapon-sum-val{
+  margin-left: 6px; /* ⬅️ меньше отступ, чем у бонуса атаки */
+}
+
+.weapon-details.collapsed{ display:none; }
+
+.weapon-details-grid{
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 860px){
+  .weapon-details-grid{ grid-template-columns: 1fr; }
+}
+
+.weapon-fieldbox{
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+  border-radius: 12px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.weapon-fieldlabel{
+  font-size: 12px;
+  opacity: .8;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.weapon-fieldbox-inline{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+}
+.weapon-fieldbox-inline .weapon-fieldlabel{ margin-bottom: 0; }
+
+.weapon-dmg-edit{ grid-column: 1 / -1; }
+.weapon-dmg-mini{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  margin-bottom: 8px;
+}
+.weapon-dmg-mini .weapon-dmg-num{ width: 64px; }
+.weapon-dmg-mini .weapon-dice{ width: 86px; }
+.weapon-extra{ width: 86px; }
+
+.weapon-dmg-type-full{ width: 100%; }
+
+.weapon-desc{ margin-top: 10px; }
+.weapon-desc-text{ width: 100%; }
+
+.combat-skills-card{ margin-top: 10px; }
+.combat-skills-text{ width: 100%; resize: vertical; }
+
+/* Атака — кубик ближе к левому краю */
+.weapon-summary .weapon-sum-item:first-child{
+  gap: 6px; /* было больше — теперь компактно */
+}
+
+/* ===== d20 crit highlight (only pure d20) ===== */
+#dice-viz-value.crit-fail,
+.dice-chip.crit-fail{
+  color: #ff4d4d;
+  font-weight: 900;
+}
+
+#dice-viz-value.crit-success,
+.dice-chip.crit-success{
+  color: #ffa500;
+  font-weight: 900;
+}
+
+/* ===== Other players dice feed (right of dice panel) ===== */
+.dice-others{
+  position: fixed;
+  left: 300px;      /* 14px + ~270px + зазор */
+  bottom: 14px;
+  width: 240px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(20,20,20,0.88);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  z-index: 9997;
+  pointer-events: none;
+}
+
+.dice-others__title{
+  font-weight: 900;
+  font-size: 12px;
+  margin-bottom: 8px;
+  opacity: .9;
+}
+
+.dice-others__item{
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.18);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  opacity: .98;
+  transition: opacity .9s ease, transform .9s ease;
+}
+
+.dice-others__head{
+  font-weight: 900;
+  font-size: 12px;
+  margin-bottom: 4px;
+  opacity: .95;
+}
+
+.dice-others__body{
+  font-weight: 800;
+  font-size: 12px;
+  opacity: .9;
+}
+
+.dice-others__item.fade{
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* крит подсветка */
+.dice-others__item.crit-fail{ border-color: rgba(255,77,77,0.55); }
+.dice-others__item.crit-success{ border-color: rgba(255,165,0,0.60); }
+
+/* если экран узкий — прячем, чтобы не мешало */
+@media (max-width: 700px){
+  .dice-others{ display:none; }
+}
+
+/* ===== Dice panel: actions column ===== */
+.dice-viz-actions{
+  position: absolute;     /* ⬅️ ВАЖНО: больше не влияет на ширину панели */
+  right: 10px;
+  top: -12px;             /* ⬅️ чуть заезжает над полем количества */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 2;
+}
+
+/* Initiative button: same as roll button, but can glow when active */
+.dice-viz-btn--initiative.is-active{
+  border-color: rgba(80, 200, 120, .55);
+  background: rgba(80, 200, 120, .18);
+  box-shadow: 0 0 0 2px rgba(80, 200, 120, .10) inset;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+
+
+
 
 
 
