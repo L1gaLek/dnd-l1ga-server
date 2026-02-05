@@ -483,6 +483,39 @@ const diceCtx = diceCanvas?.getContext?.("2d");
 let diceAnimFrame = null;
 let diceAnimBusy = false;
 
+function clearCritUI() {
+  if (diceVizValue) {
+    diceVizValue.classList.remove("crit-fail", "crit-success");
+  }
+  if (diceRolls) {
+    diceRolls.querySelectorAll(".dice-chip").forEach(ch =>
+      ch.classList.remove("crit-fail", "crit-success")
+    );
+  }
+}
+
+function applyPureD20CritUI(finalValue) {
+  // крит только для "чистого" d20 (без бонуса), поэтому сюда передаём значение когда условия уже проверены
+  clearCritUI();
+
+  if (finalValue === 1) {
+    if (diceVizValue) diceVizValue.classList.add("crit-fail");
+    const chip = diceRolls?.querySelector(".dice-chip");
+    if (chip) chip.classList.add("crit-fail");
+    return " — КРИТИЧЕСКИЙ ПРОВАЛ (1)";
+  }
+
+  if (finalValue === 20) {
+    if (diceVizValue) diceVizValue.classList.add("crit-success");
+    const chip = diceRolls?.querySelector(".dice-chip");
+    if (chip) chip.classList.add("crit-success");
+    return " — КРИТИЧЕСКИЙ УСПЕХ (20)";
+  }
+
+  return "";
+}
+
+
 function clampInt(v, min, max, fallback) {
   const n = parseInt(v, 10);
   if (!Number.isFinite(n)) return fallback;
@@ -614,6 +647,8 @@ window.DicePanel.roll = async ({ sides = 20, count = 1, bonus = 0, kindText = nu
   if (dice) dice.value = String(S);
   if (diceCountInput) diceCountInput.value = String(C);
 
+  clearCritUI();
+
   const finals = Array.from({ length: C }, () => rollDie(S));
   const shown = Array.from({ length: C }, () => null);
 
@@ -629,17 +664,29 @@ window.DicePanel.roll = async ({ sides = 20, count = 1, bonus = 0, kindText = nu
     renderRollChips(shown, Math.min(i + 1, C - 1));
   }
 
-  const sum = finals.reduce((a, b) => a + b, 0);
-  const total = sum + B;
+const sum = finals.reduce((a, b) => a + b, 0);
+const total = sum + B;
 
-  if (diceVizValue) diceVizValue.textContent = String(total);
-  renderRollChips(shown, -1);
+// Показ значения
+if (diceVizValue) diceVizValue.textContent = String(total);
+renderRollChips(shown, -1);
+
+// ✅ крит-подсветка ТОЛЬКО для чистого d20 (без бонуса)
+let critNote = "";
+if (S === 20 && C === 1 && B === 0) {
+  critNote = applyPureD20CritUI(finals[0]);
+} else {
+  clearCritUI();
+}
 
   // в лог — тоже отправим
   try {
     if (typeof sendMessage === "function") {
       const bonusTxt = B ? ` ${B >= 0 ? "+" : "-"} ${Math.abs(B)}` : "";
-      sendMessage({ type: 'log', text: `${kindText || `Бросок d${S} × ${C}`}: ${finals.join(' + ')} = ${sum}${bonusTxt} => ${total}` });
+      sendMessage({
+  type: 'log',
+  text: `${kindText || `Бросок d${S} × ${C}`}: ${finals.join(' + ')} = ${sum}${bonusTxt} => ${total}${critNote}`
+});
     }
   } catch {}
 
@@ -654,6 +701,8 @@ rollBtn?.addEventListener('click', async () => {
 
   const sides = clampInt(dice?.value, 2, 100, 20);
   const count = clampInt(diceCountInput?.value, 1, 20, 1);
+
+  clearCritUI();
 
   // Итоговые значения заранее
   const finals = Array.from({ length: count }, () => rollDie(sides));
@@ -672,17 +721,25 @@ rollBtn?.addEventListener('click', async () => {
     renderRollChips(shown, Math.min(i + 1, count - 1));
   }
 
-  const sum = finals.reduce((a, b) => a + b, 0);
+const sum = finals.reduce((a, b) => a + b, 0);
 
-  // без "Результат:" — только число
-  if (diceVizValue) diceVizValue.textContent = String(sum);
+// без "Результат:" — только число
+if (diceVizValue) diceVizValue.textContent = String(sum);
 
-  renderRollChips(shown, -1);
+renderRollChips(shown, -1);
 
-  sendMessage({
-    type: 'log',
-    text: `Бросок d${sides} × ${count}: ${finals.join(' + ')} = ${sum}`
-  });
+// ✅ крит-подсветка ТОЛЬКО для чистого d20
+let critNote = "";
+if (sides === 20 && count === 1) {
+  critNote = applyPureD20CritUI(finals[0]);
+} else {
+  clearCritUI();
+}
+
+sendMessage({
+  type: 'log',
+  text: `Бросок d${sides} × ${count}: ${finals.join(' + ')} = ${sum}${critNote}`
+});
 
   diceAnimBusy = false;
   rollBtn.disabled = false;
@@ -796,4 +853,5 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
