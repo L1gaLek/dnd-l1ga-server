@@ -2112,12 +2112,12 @@ async function openSpellDbPopup({ root, player, sheet, canEdit }) {
 
 function bindSpellAddAndDesc(root, player, canEdit) {
   if (!root || !player?.sheet?.parsed) return;
-  const sheet = player.sheet.parsed;
-
   if (root.__spellAddBound) return;
   root.__spellAddBound = true;
 
   root.addEventListener("click", async (e) => {
+    const sheet = player?.sheet?.parsed;
+    if (!sheet) return;
     const addBtn = e.target?.closest?.("[data-spell-add][data-spell-level]");
     if (addBtn) {
       if (!canEdit) return;
@@ -2159,6 +2159,8 @@ const delBtn = e.target?.closest?.("[data-spell-delete]");
 
   // редактирование описания (textarea внутри раскрывашки)
   root.addEventListener("input", (e) => {
+    const sheet = player?.sheet?.parsed;
+    if (!sheet) return;
     const ta = e.target?.closest?.("[data-spell-desc-editor]");
     if (!ta) return;
     if (!canEdit) return;
