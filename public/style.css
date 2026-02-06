@@ -2328,3 +2328,65 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 .spell-item-title{font-weight:700;}
 
+
+/* ===== Spells DB (site-like cards) ===== */
+.db-site-spell{
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(0,0,0,0.18);
+  border-radius:14px;
+  padding:10px;
+  margin:10px 0;
+}
+
+.db-site-card{
+  border:1px solid rgba(255,255,255,0.10);
+  background:rgba(255,255,255,0.03);
+  border-radius:12px;
+  padding:8px;
+  overflow:hidden;
+}
+
+/* links inside copied markup */
+.db-site-card a{
+  color: rgba(0,200,255,0.95);
+  text-decoration:none;
+}
+.db-site-card a:hover{ text-decoration: underline; }
+
+/* fallback */
+.db-site-card-fallback{
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.db-site-actions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+
+.db-site-desc{
+  margin-top:10px;
+  padding:10px;
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:12px;
+  background:rgba(0,0,0,0.22);
+  font-size:13px;
+  line-height:1.25;
+  white-space:pre-wrap;
+}
+
+/* try to make dnd.su card pieces readable if they come with classes */
+.db-site-card .card-title,
+.db-site-card .card__title,
+.db-site-card .card-title a{
+  font-weight: 800;
+  font-size: 14px;
+}
+.db-site-card .params,
+.db-site-card .card__article-body{
+  font-size: 12px;
+  line-height: 1.25;
+}
