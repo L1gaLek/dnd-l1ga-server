@@ -2328,3 +2328,25 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 .spell-item-title{font-weight:700;}
 
+
+/* ===== PATCH: Spells actions (Описание + Удалить) ===== */
+.spell-item-actions{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  flex:0 0 auto;
+}
+
+.spell-del-btn{
+  padding: 5px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,0,0,0.35);
+  background: rgba(255,0,0,0.10);
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+.spell-del-btn:hover{
+  border-color: rgba(255,0,0,0.55);
+  background: rgba(255,0,0,0.14);
+}
