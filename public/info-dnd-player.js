@@ -108,6 +108,16 @@
     return Number.isFinite(n) ? n : fallback;
   }
 
+
+  // Спелл-метрики: авто-формула бонуса атаки (проф. + модификатор выбранной характеристики)
+  function computeSpellAttack(sheet) {
+    const base = String(sheet?.spellsInfo?.base?.code || sheet?.spellsInfo?.base?.value || "int").trim() || "int";
+    const prof = numLike(sheet?.proficiency, 0);
+    const score = safeInt(sheet?.stats?.[base]?.score, 10);
+    const mod = scoreToModifier(score);
+    return prof + mod;
+  }
+
 // ================== MODAL HELPERS ==================
   function openModal() {
     if (!sheetModal) return;
@@ -1448,33 +1458,40 @@ function bindSlotEditors(root, player, canEdit) {
       const sheet = getSheet();
       if (!sheet) return;
 
-      // desired = доступные ячейки, редактируемое значение (0..12)
-      const desired = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
+      // desired = итоговое число ячеек (0..12)
+      // Требование: если уменьшаем число — лишние ячейки должны удаляться целиком (а не просто "разряжаться").
+      // Если увеличиваем — новые ячейки считаем заряженными.
+      const desiredTotal = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
 
       const key = `slots-${lvl}`;
       if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
         sheet.spells[key] = { value: 0, filled: 0 };
       }
 
-      // total slots (value) keep, but ensure it is at least desired and not more than 12
       const totalPrev = numLike(sheet.spells[key].value, 0);
-      const total = Math.max(desired, Math.min(12, totalPrev));
-      setMaybeObjField(sheet.spells[key], "value", total);
+      const filledPrev = numLike(sheet.spells[key].filled, 0);
+      const currentPrev = Math.max(0, totalPrev - filledPrev);
 
-      // filled = total - desired
-      setMaybeObjField(sheet.spells[key], "filled", Math.max(0, total - desired));
+      // total slots = desiredTotal (уменьшение удаляет лишние)
+      const total = desiredTotal;
+
+      // current (заряжено): при увеличении — полностью заряжаем, при уменьшении — не больше total
+      const current = (total > totalPrev) ? total : Math.min(currentPrev, total);
+
+      setMaybeObjField(sheet.spells[key], "value", total);
+      setMaybeObjField(sheet.spells[key], "filled", Math.max(0, total - current));
 
       // update dots in UI without full rerender
       const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
       if (dotsWrap) {
         const totalForUi = Math.max(0, Math.min(12, numLike(sheet.spells[key].value, 0)));
         const dots = Array.from({ length: totalForUi })
-          .map((_, i) => `<span class="slot-dot${i < desired ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
+          .map((_, i) => `<span class="slot-dot${i < current ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
           .join("");
         dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
       }
 
-      inp.value = String(desired);
+      inp.value = String(total);
       const { player: curPlayer } = getState();
       scheduleSheetSave(curPlayer);
     };
@@ -2252,12 +2269,21 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       if (!sheet.spellsInfo.mod || typeof sheet.spellsInfo.mod !== "object") sheet.spellsInfo.mod = { customModifier: "" };
 
       const v = String(atk.value || "").trim();
+      const computed = computeSpellAttack(sheet);
+
       if (v === "") {
         // пусто = вернуть авто-расчет
         delete sheet.spellsInfo.mod.customModifier;
         if ("value" in sheet.spellsInfo.mod) delete sheet.spellsInfo.mod.value;
       } else {
-        sheet.spellsInfo.mod.customModifier = v;
+        const n = parseModInput(v, computed);
+        // если ввели ровно авто-значение — не фиксируем "ручной" модификатор, чтобы формула продолжала работать
+        if (n === computed) {
+          delete sheet.spellsInfo.mod.customModifier;
+          if ("value" in sheet.spellsInfo.mod) delete sheet.spellsInfo.mod.value;
+        } else {
+          sheet.spellsInfo.mod.customModifier = String(n);
+        }
       }
 
       scheduleSheetSave(curPlayer);
@@ -2463,7 +2489,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     const cells = slots.slice(0, 9).map(s => {
       const total = Math.max(0, Math.min(12, numLike(s.total, 0)));
       const filled = Math.max(0, Math.min(total, numLike(s.filled, 0)));
-      const current = Math.max(0, total - filled); // доступные
+      const current = Math.max(0, total - filled); // доступные (для кружков)
       const spellsCount = countByLevel[s.level] || 0;
 
       const dots = Array.from({ length: total })
@@ -2480,7 +2506,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             <div class="slot-nums">
               <span class="slot-spells" title="Кол-во заклинаний уровня">${spellsCount}</span>
               <span class="slot-sep">/</span>
-              <input class="slot-current slot-current-input" type="number" min="0" max="12" value="${escapeHtml(String(current))}" data-slot-level="${s.level}" title="Доступно ячеек (редактируемое)">
+              <input class="slot-current slot-current-input" type="number" min="0" max="12" value="${escapeHtml(String(total))}" data-slot-level="${s.level}" title="Всего ячеек (редактируемое)">
             </div>
           </div>
           <div class="slot-dots" data-slot-dots="${s.level}">
@@ -2596,7 +2622,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
           <h4>Ячейки</h4>
           ${renderSlots(vm)}
           <div class="sheet-note" style="margin-top:6px;">
-            Формат: <b>кол-во заклинаний</b> / <b>доступно ячеек</b> (второе число редактируемое, max 12). Кружки показывают доступные ячейки.
+            Формат: <b>кол-во заклинаний</b> / <b>всего ячеек</b> (второе число редактируемое, max 12). Кружки показывают доступные (неиспользованные) ячейки.
           </div>
         </div>
 
