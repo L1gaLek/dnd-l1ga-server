@@ -752,7 +752,10 @@ function escapeHtmlLocal(s) {
 
 // ===== API: programmatic dice rolls (used by InfoModal weapons) =====
 window.DicePanel = window.DicePanel || {};
-window.DicePanel.roll = async ({ sides = 20, count = 1, bonus = 0, kindText = null } = {}) => {
+// Programmatic dice roll used by InfoModal etc.
+// If silent=true, it will only animate/update the local dice panel UI and will NOT send log/diceEvent.
+// Returns: {sides,count,bonus,rolls,sum,total}
+window.DicePanel.roll = async ({ sides = 20, count = 1, bonus = 0, kindText = null, silent = false } = {}) => {
   if (diceAnimBusy) return;
   diceAnimBusy = true;
 
@@ -781,8 +784,8 @@ window.DicePanel.roll = async ({ sides = 20, count = 1, bonus = 0, kindText = nu
     renderRollChips(shown, Math.min(i + 1, C - 1), S);
   }
 
-const sum = finals.reduce((a, b) => a + b, 0);
-const total = sum + B;
+  const sum = finals.reduce((a, b) => a + b, 0);
+  const total = sum + B;
 
 // Показ значения
 if (diceVizValue) diceVizValue.textContent = String(total);
@@ -796,34 +799,37 @@ if (S === 20 && C === 1 && B === 0) {
   clearCritUI();
 }
 
-  // в лог — тоже отправим
-  try {
-    if (typeof sendMessage === "function") {
-      const bonusTxt = B ? ` ${B >= 0 ? "+" : "-"} ${Math.abs(B)}` : "";
-      sendMessage({
-  type: 'log',
-  text: `${kindText || `Бросок d${S} × ${C}`}: ${finals.join(' + ')} = ${sum}${bonusTxt} => ${total}${critNote}`
-});
+  // в лог — тоже отправим (если не silent)
+  if (!silent) {
+    try {
+      if (typeof sendMessage === "function") {
+        const bonusTxt = B ? ` ${B >= 0 ? "+" : "-"} ${Math.abs(B)}` : "";
+        sendMessage({
+          type: 'log',
+          text: `${kindText || `Бросок d${S} × ${C}`}: ${finals.join(' + ')} = ${sum}${bonusTxt} => ${total}${critNote}`
+        });
 
-      sendMessage({
-  type: "diceEvent",
-  event: {
-    kindText: kindText ? String(kindText) : `d${S} × ${C}`,
-    sides: S,
-    count: C,
-    bonus: B,
-    rolls: finals,
-    total: total,
-    crit: (S === 20 && C === 1 && B === 0)
-      ? (finals[0] === 1 ? "crit-fail" : finals[0] === 20 ? "crit-success" : "")
-      : ""
+        sendMessage({
+          type: "diceEvent",
+          event: {
+            kindText: kindText ? String(kindText) : `d${S} × ${C}`,
+            sides: S,
+            count: C,
+            bonus: B,
+            rolls: finals,
+            total: total,
+            crit: (S === 20 && C === 1 && B === 0)
+              ? (finals[0] === 1 ? "crit-fail" : finals[0] === 20 ? "crit-success" : "")
+              : ""
+          }
+        });
+      }
+    } catch {}
   }
-});
-      
-    }
-  } catch {}
 
   diceAnimBusy = false;
+
+  return { sides: S, count: C, bonus: B, rolls: finals, sum, total };
 };
 
 // ================== DICE (from the bottom-left panel) ==================
