@@ -61,6 +61,13 @@
     return x >= 0 ? `+${x}` : `${x}`;
   }
 
+  function abilityModFromScore(score) {
+    const s = Number(score);
+    if (!Number.isFinite(s)) return 0;
+    // D&D 5e: modifier = floor((score - 10) / 2)
+    return Math.floor((s - 10) / 2);
+  }
+
   function safeInt(x, fallback = 0) {
     const n = Number(x);
     return Number.isFinite(n) ? n : fallback;
@@ -2507,11 +2514,12 @@ function bindSpellAddAndDesc(root, player, canEdit) {
   function renderSpellsTab(vm) {
     const base = (vm?.spellsInfo?.base || "").trim() || "int";
 
-    const statModByKey = {};
-    (vm?.stats || []).forEach(s => { statModByKey[s.k] = safeInt(s.mod, 0); });
+    const statScoreByKey = {};
+    (vm?.stats || []).forEach(s => { statScoreByKey[s.k] = safeInt(s.score, 10); });
 
-    const prof = safeInt(vm?.profBonus, 2);
-    const abilMod = safeInt(statModByKey[base], 0);
+    const prof = safeInt(vm?.profBonus, 0);
+    const abilScore = safeInt(statScoreByKey[base], 10);
+    const abilMod = abilityModFromScore(abilScore);
 
     const computedAttack = prof + abilMod;
     const computedSave = 8 + prof + abilMod;
@@ -2519,8 +2527,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     const rawSave = (vm?.spellsInfo?.save ?? "").toString().trim();
     const rawAtk  = (vm?.spellsInfo?.mod ?? "").toString().trim();
 
-    const saveVal = rawSave !== "" ? rawSave : String(computedSave);
-    const atkVal  = rawAtk  !== "" ? rawAtk  : formatMod(computedAttack);
+    const saveVal = rawSave !== "" ? String(numLike(rawSave, computedSave)) : String(computedSave);
+    const atkVal  = rawAtk  !== "" ? String(numLike(rawAtk, computedAttack)) : String(computedAttack);
 
     const abilityOptions = [
       ["str","Сила"],
@@ -2554,7 +2562,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             <div class="spell-metric">
               <div class="spell-metric-label">Бонус атаки</div>
               <div class="spell-metric-val spell-metric-control">
-                <input class="spell-attack-input" data-spell-attack-bonus type="text" value="${escapeHtml(String(atkVal))}" />
+                <input class="spell-attack-input" data-spell-attack-bonus type="number" step="1" min="-20" max="30" value="${escapeHtml(String(atkVal))}" />
               </div>
             </div>
           </div>
