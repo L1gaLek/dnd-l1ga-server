@@ -300,36 +300,6 @@ wss.on("connection", ws => {
         }
         break;
       }
-
-  case 'diceEvent': {
-  const user = getUserByWS(ws);
-  if (!user) return;
-
-  const ev = (data.event && typeof data.event === 'object') ? data.event : null;
-  if (!ev) return;
-
-  // лёгкая нормализация/валидация
-  const safe = {
-    fromId: user.id,
-    fromName: user.name,
-    kindText: typeof ev.kindText === 'string' ? ev.kindText : '',
-    sides: Number(ev.sides) || 20,
-    count: Number(ev.count) || 1,
-    bonus: Number(ev.bonus) || 0,
-    rolls: Array.isArray(ev.rolls) ? ev.rolls.map(n => Number(n) || 0) : [],
-    total: Number(ev.total) || 0,
-    crit: (ev.crit === 'crit-fail' || ev.crit === 'crit-success') ? ev.crit : ''
-  };
-
-  const msg = JSON.stringify({ type: 'diceEvent', event: safe });
-
-  wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) c.send(msg);
-  });
-
-  break;
-}      
-
 case "diceEvent": {
   const user = getUserByWS(ws);
   if (!user) return;
