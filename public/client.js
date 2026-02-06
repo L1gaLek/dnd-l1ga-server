@@ -647,12 +647,17 @@ function drawDieFace(ctx, w, h, sides, value, t) {
   ctx.restore();
 }
 
-function renderRollChips(values, activeIndex) {
+function renderRollChips(values, activeIndex, sides = null) {
   if (!diceRolls) return;
   diceRolls.innerHTML = "";
   values.forEach((v, i) => {
     const chip = document.createElement("span");
     chip.className = "dice-chip" + (i === activeIndex ? " active" : "");
+    // ✅ Подсветка 1 и 20 для любого количества одновременно брошенных d20
+    if (Number(sides) === 20 && v !== null) {
+      if (v === 1) chip.classList.add('crit-fail');
+      if (v === 20) chip.classList.add('crit-success');
+    }
     chip.textContent = (v === null ? "…" : String(v));
     diceRolls.appendChild(chip);
   });
@@ -764,16 +769,16 @@ window.DicePanel.roll = async ({ sides = 20, count = 1, bonus = 0, kindText = nu
   const finals = Array.from({ length: C }, () => rollDie(S));
   const shown = Array.from({ length: C }, () => null);
 
-  renderRollChips(shown, 0);
+  renderRollChips(shown, 0, S);
 
   if (diceVizKind) diceVizKind.textContent = kindText ? String(kindText) : `d${S} × ${C}`;
   if (diceVizValue) diceVizValue.textContent = "…";
 
   for (let i = 0; i < C; i++) {
-    renderRollChips(shown, i);
+    renderRollChips(shown, i, S);
     await animateSingleRoll(S, finals[i]);
     shown[i] = finals[i];
-    renderRollChips(shown, Math.min(i + 1, C - 1));
+    renderRollChips(shown, Math.min(i + 1, C - 1), S);
   }
 
 const sum = finals.reduce((a, b) => a + b, 0);
@@ -781,7 +786,7 @@ const total = sum + B;
 
 // Показ значения
 if (diceVizValue) diceVizValue.textContent = String(total);
-renderRollChips(shown, -1);
+renderRollChips(shown, -1, S);
 
 // ✅ крит-подсветка ТОЛЬКО для чистого d20 (без бонуса)
 let critNote = "";
@@ -836,17 +841,17 @@ rollBtn?.addEventListener('click', async () => {
   const finals = Array.from({ length: count }, () => rollDie(sides));
   const shown = Array.from({ length: count }, () => null);
 
-  renderRollChips(shown, 0);
+  renderRollChips(shown, 0, sides);
 
   if (diceVizKind) diceVizKind.textContent = `d${sides} × ${count}`;
   if (diceVizValue) diceVizValue.textContent = "…";
 
   // Анимация: по одному кубику (видно процесс)
   for (let i = 0; i < count; i++) {
-    renderRollChips(shown, i);
+    renderRollChips(shown, i, sides);
     await animateSingleRoll(sides, finals[i]);
     shown[i] = finals[i];
-    renderRollChips(shown, Math.min(i + 1, count - 1));
+    renderRollChips(shown, Math.min(i + 1, count - 1), sides);
   }
 
 const sum = finals.reduce((a, b) => a + b, 0);
@@ -854,7 +859,7 @@ const sum = finals.reduce((a, b) => a + b, 0);
 // без "Результат:" — только число
 if (diceVizValue) diceVizValue.textContent = String(sum);
 
-renderRollChips(shown, -1);
+renderRollChips(shown, -1, sides);
 
 // ✅ крит-подсветка ТОЛЬКО для чистого d20
 let critNote = "";
