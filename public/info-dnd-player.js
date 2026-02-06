@@ -923,35 +923,6 @@ function updateWeaponsBonuses(root, sheet) {
   });
 }
 
-// Обновляем метрики заклинаний без полного ререндера (СЛ спасброска / Бонус атаки)
-function updateSpellsMetrics(root, sheet) {
-  if (!root || !sheet) return;
-
-  const base = String(sheet?.spellsInfo?.base?.code || sheet?.spellsInfo?.base?.value || 'int').trim() || 'int';
-  const prof = getProfBonus(sheet);
-  const score = safeInt(sheet?.stats?.[base]?.score, 10);
-  const mod = scoreToModifier(score);
-  const computedAttack = prof + mod;
-  const computedSave = 8 + prof + mod;
-
-  // СЛ спасброска (только отображение)
-  const saveEl = root.querySelector('[data-spell-save-dc]');
-  if (saveEl) saveEl.textContent = String(computedSave);
-
-  // Бонус атаки (input)
-  const atkInput = root.querySelector('[data-spell-attack-bonus]');
-  if (atkInput) {
-    const hasCustom = !!sheet?.spellsInfo?.mod && typeof sheet.spellsInfo.mod === 'object' && (sheet.spellsInfo.mod.customModifier ?? '').toString().trim() !== '';
-    if (!hasCustom) atkInput.value = String(computedAttack);
-  }
-
-  // Подсказка под метриками
-  const noteEl = root.querySelector('[data-spell-attack-note]');
-  if (noteEl) {
-    noteEl.innerHTML = `Бонус атаки по умолчанию: <b>Владение</b> (${prof}) + <b>модификатор выбранной характеристики</b> (${formatMod(mod)}).`;
-  }
-}
-
 
 function rerenderCombatTabInPlace(root, player, canEdit) {
   const main = root?.querySelector('#sheet-main');
@@ -967,9 +938,6 @@ function rerenderCombatTabInPlace(root, player, canEdit) {
   bindNotesEditors(root, player, canEdit);
   bindSlotEditors(root, player, canEdit);
   bindCombatEditors(root, player, canEdit);
-
-  // после перерендера — синхронизируем авто-формулу бонуса атаки/СЛ
-  updateSpellsMetrics(root, sheet);
 
   updateWeaponsBonuses(root, player.sheet?.parsed);
 }
@@ -1163,16 +1131,18 @@ function bindEditableInputs(root, player, canEdit) {
         if (path === "name.value") player.name = val || player.name;
 
         // live updates
-if (path === "proficiency" || path === "proficiencyCustom") {
+if (path === "proficiency") {
   updateSkillsAndPassives(root, player.sheet.parsed);
   updateWeaponsBonuses(root, player.sheet.parsed);
-  // если открыта вкладка "Заклинания" — обновляем формулу бонуса атаки/СЛ без перерендера
-  if (player?._activeSheetTab === "spells") {
-    updateSpellsMetrics(root, player.sheet.parsed);
-  }
 }
         if (path === "vitality.ac.value" || path === "vitality.hp-max.value" || path === "vitality.hp-current.value" || path === "vitality.speed.value") {
           updateHeroChips(root, player.sheet.parsed);
+        }
+
+        // Если мы сейчас на вкладке "Заклинания" — пересчитываем метрики при изменении владения
+        if (player?._activeSheetTab === "spells" && (path === "proficiency" || path === "proficiencyCustom")) {
+          const s = player.sheet?.parsed;
+          if (s) rerenderSpellsTabInPlace(root, player, s, canEdit);
         }
 
         scheduleSheetSave(player);
@@ -1260,11 +1230,6 @@ if (path === "proficiency" || path === "proficiencyCustom") {
         updateDerivedForStat(root, sheet, statKey);
         updateSkillsAndPassives(root, sheet);
          updateWeaponsBonuses(root, sheet);
-
-        // если открыта вкладка "Заклинания" — пересчитаем формулу бонуса атаки/СЛ
-        if (player?._activeSheetTab === "spells") {
-          updateSpellsMetrics(root, sheet);
-        }
 
         scheduleSheetSave(player);
       };
@@ -1543,6 +1508,64 @@ function bindSlotEditors(root, player, canEdit) {
       if (!dot) return;
 
       const { player: curPlayer, canEdit: curCanEdit } = getState();
+
+    // 🎲 бросок атаки заклинанием (d20 + бонус атаки)
+    const rollHeaderBtn = e.target?.closest?.("[data-spell-roll-header]");
+    const rollSpellBtn = e.target?.closest?.("[data-spell-roll]");
+
+    if (rollHeaderBtn || rollSpellBtn) {
+      const sheet = getSheet();
+      if (!sheet) return;
+
+      const bonus = computeSpellAttack(sheet);
+
+      let kindText = `Заклинание: d20 ${formatMod(bonus)}`;
+
+      let lvl = 0;
+      if (rollSpellBtn) {
+        const item = rollSpellBtn.closest(".spell-item");
+        lvl = safeInt(item?.getAttribute?.("data-spell-level"), 0);
+        const title = (item?.querySelector?.(".spell-item-link")?.textContent || item?.querySelector?.(".spell-item-title")?.textContent || "").trim();
+        if (title) kindText = `${title}: d20 ${formatMod(bonus)}`;
+      }
+
+      if (window.DicePanel?.roll) {
+        window.DicePanel.roll({ sides: 20, count: 1, bonus, kindText });
+      }
+
+      // если бросок был из конкретного заклинания — тратим 1 ячейку соответствующего уровня (кроме заговоров)
+      if (rollSpellBtn && lvl > 0) {
+        if (!curCanEdit) return;
+
+        if (!sheet.spells || typeof sheet.spells !== "object") sheet.spells = {};
+        const key = `slots-${lvl}`;
+        if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") sheet.spells[key] = { value: 0, filled: 0 };
+
+        const total = Math.max(0, Math.min(12, numLike(sheet.spells[key].value, 0)));
+        const filled = Math.max(0, Math.min(total, numLike(sheet.spells[key].filled, 0)));
+        const available = Math.max(0, total - filled);
+
+        if (available > 0) {
+          setMaybeObjField(sheet.spells[key], "filled", Math.min(total, filled + 1));
+
+          // обновим UI кружков конкретного уровня без полного ререндера
+          const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
+          if (dotsWrap) {
+            const filled2 = Math.max(0, Math.min(total, numLike(sheet.spells[key].filled, 0)));
+            const available2 = Math.max(0, total - filled2);
+            const dots = Array.from({ length: total })
+              .map((_, i) => `<span class="slot-dot${i < available2 ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
+              .join("");
+            dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
+          }
+
+          scheduleSheetSave(curPlayer);
+        }
+      }
+
+      return;
+    }
+
       if (!curCanEdit) return;
 
       const sheet = getSheet();
@@ -2481,20 +2504,30 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
   // ================== RENDER: SPELLS ==================
 
-  function renderSpellCard({ name, href, desc }) {
+  
+function renderSpellCard({ level, name, href, desc }) {
     const safeHref = escapeHtml(href || "");
     const safeName = escapeHtml(name || href || "(без названия)");
     const text = cleanupSpellDesc(desc || "");
+    const lvl = safeInt(level, 0);
 
     const isHttp = /^https?:\/\//i.test(String(href || ""));
     const titleHtml = isHttp
       ? `<a class="spell-item-link" href="${safeHref}" target="_blank" rel="noopener noreferrer">${safeName}</a>`
       : `<span class="spell-item-title">${safeName}</span>`;
 
+    const diceSvg = `
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <path d="M12 2 20.5 7v10L12 22 3.5 17V7L12 2Z" fill="currentColor" opacity="0.95"></path>
+        <path d="M12 2v20M3.5 7l8.5 5 8.5-5M3.5 17l8.5-5 8.5 5" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="1.2"></path>
+      </svg>
+    `;
+
     return `
-      <div class="spell-item" data-spell-url="${safeHref}">
+      <div class="spell-item" data-spell-url="${safeHref}" data-spell-level="${lvl}">
         <div class="spell-item-head">
           ${titleHtml}
+          <button class="spell-dice-btn" type="button" data-spell-roll title="Бросок атаки">${diceSvg}</button>
           <div class="spell-item-actions">
             <button class="spell-desc-btn" type="button" data-spell-desc-toggle>Описание</button>
             <button class="spell-del-btn" type="button" data-spell-delete>Удалить</button>
@@ -2507,8 +2540,6 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       </div>
     `;
   }
-
-
 
   function renderSlots(vm) {
     const slots = Array.isArray(vm?.slots) ? vm.slots : [];
@@ -2571,7 +2602,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
         if (it.href) {
           const name = spellNameByHref[it.href] || it.text;
           const desc = spellDescByHref[it.href] || "";
-          return renderSpellCard({ name, href: it.href, desc });
+          return renderSpellCard({ level: lvl, name, href: it.href, desc });
         }
         return `<span class="sheet-pill">${escapeHtml(it.text)}</span>`;
       }).join("");
@@ -2601,17 +2632,17 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
     const prof = safeInt(vm?.profBonus, 0);
     const abilScore = safeInt(statScoreByKey[base], 10);
-    // модификатор характеристики по таблице (1..30) => -5..+10
-    const abilMod = scoreToModifier(abilScore);
+    const abilMod = abilityModFromScore(abilScore);
 
     const computedAttack = prof + abilMod;
     const computedSave = 8 + prof + abilMod;
 
     const rawSave = (vm?.spellsInfo?.save ?? "").toString().trim();
-    const rawAtk  = (vm?.spellsInfo?.mod ?? "").toString().trim();
-
     const saveVal = rawSave !== "" ? String(numLike(rawSave, computedSave)) : String(computedSave);
-    const atkVal  = rawAtk  !== "" ? String(numLike(rawAtk, computedAttack)) : String(computedAttack);
+
+    // Бонус атаки: всегда по формуле Владение + модификатор выбранной характеристики
+    // (ручной оверрайд хранится в sheet.spellsInfo.mod.customModifier и применяется в updateSpellsMetrics)
+    const atkVal = String(computedAttack);
 
     const abilityOptions = [
       ["str","Сила"],
@@ -2639,17 +2670,24 @@ function bindSpellAddAndDesc(root, player, canEdit) {
           <div class="spell-metrics">
             <div class="spell-metric">
               <div class="spell-metric-label">СЛ спасброска</div>
-              <div class="spell-metric-val" data-spell-save-dc>${escapeHtml(String(saveVal))}</div>
+              <div class="spell-metric-val">${escapeHtml(String(saveVal))}</div>
             </div>
 
             <div class="spell-metric">
-              <div class="spell-metric-label">Бонус атаки</div>
+              <div class="spell-metric-label spell-metric-label-row">Бонус атаки
+  <button class="spell-dice-btn spell-dice-btn--header" type="button" data-spell-roll-header title="Бросок атаки">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M12 2 20.5 7v10L12 22 3.5 17V7L12 2Z" fill="currentColor" opacity="0.95"></path>
+      <path d="M12 2v20M3.5 7l8.5 5 8.5-5M3.5 17l8.5-5 8.5 5" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="1.2"></path>
+    </svg>
+  </button>
+</div>
               <div class="spell-metric-val spell-metric-control">
                 <input class="spell-attack-input" data-spell-attack-bonus type="number" step="1" min="-20" max="30" value="${escapeHtml(String(atkVal))}" />
               </div>
             </div>
           </div>
-          <div class="sheet-note" style="margin-top:8px;" data-spell-attack-note>
+          <div class="sheet-note" style="margin-top:8px;">
             Бонус атаки по умолчанию: <b>Владение</b> (${prof}) + <b>модификатор выбранной характеристики</b> (${formatMod(abilMod)}).
           </div>
         </div>
