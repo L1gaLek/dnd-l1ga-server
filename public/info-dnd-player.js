@@ -353,7 +353,7 @@
         ac: { value: 0 },
         speed: { value: 0 }
       },
-      proficiency: 2,
+      proficiency: 0,
       stats: {
         str: { score: 10, modifier: 0, label: "Сила", check: 0 },
         dex: { score: 10, modifier: 0, label: "Ловкость", check: 0 },
@@ -991,6 +991,12 @@ function bindCombatEditors(root, player, canEdit) {
         w[field] = val;
 
         updateWeaponsBonuses(root, sheet);
+        // Авто-пересчёт метрик заклинаний при изменении бонуса мастерства
+        if (player?._activeSheetTab === "spells" && (path === "proficiency" || path === "proficiencyCustom")) {
+          const s = player.sheet?.parsed;
+          if (s) rerenderSpellsTabInPlace(root, player, s, canEdit);
+        }
+
         scheduleSheetSave(player);
       };
 
@@ -1114,6 +1120,12 @@ if (path === "proficiency") {
 }
         if (path === "vitality.ac.value" || path === "vitality.hp-max.value" || path === "vitality.hp-current.value" || path === "vitality.speed.value") {
           updateHeroChips(root, player.sheet.parsed);
+        }
+
+        // Если мы сейчас на вкладке "Заклинания" — пересчитываем метрики при изменении владения
+        if (player?._activeSheetTab === "spells" && (path === "proficiency" || path === "proficiencyCustom")) {
+          const s = player.sheet?.parsed;
+          if (s) rerenderSpellsTabInPlace(root, player, s, canEdit);
         }
 
         scheduleSheetSave(player);
@@ -1399,9 +1411,14 @@ if (path === "proficiency") {
   }
   // ===== Slots (spell slots) editors =====
 function bindSlotEditors(root, player, canEdit) {
-  if (!root || !player?.sheet?.parsed) return;
-  const sheet = player.sheet.parsed;
-  if (!sheet.spells || typeof sheet.spells !== "object") sheet.spells = {};
+  if (!root || !player?.sheet) return;
+
+  const getSheet = () => {
+    const s = player.sheet?.parsed;
+    if (!s || typeof s !== "object") return null;
+    if (!s.spells || typeof s.spells !== "object") s.spells = {};
+    return s;
+  };
 
   const inputs = root.querySelectorAll(".slot-current-input[data-slot-level]");
   inputs.forEach(inp => {
@@ -1411,6 +1428,9 @@ function bindSlotEditors(root, player, canEdit) {
     if (!canEdit) { inp.disabled = true; return; }
 
     const handler = () => {
+      const sheet = getSheet();
+      if (!sheet) return;
+
       // desired = доступные ячейки, редактируемое значение (0..12)
       const desired = Math.max(0, Math.min(12, safeInt(inp.value, 0)));
 
@@ -1452,6 +1472,9 @@ function bindSlotEditors(root, player, canEdit) {
       const dot = e.target?.closest?.(".slot-dot[data-slot-level]");
       if (!dot) return;
       if (!canEdit) return;
+
+      const sheet = getSheet();
+      if (!sheet) return;
 
       const lvl = safeInt(dot.getAttribute("data-slot-level"), 0);
       if (!lvl) return;
@@ -2350,7 +2373,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             <div class="kv"><div class="k">HP max</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">HP current</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">Speed</div><div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Владение</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
+            <div class="kv"><div class="k">Владение (Бонус мастерства)</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
           </div>
         </div>
 
@@ -2513,16 +2536,16 @@ function bindSpellAddAndDesc(root, player, canEdit) {
         <h3>Заклинания</h3>
 
         <div class="sheet-card spells-metrics-card fullwidth">
-          <div class="spell-metrics">
-            <div class="spell-metric">
-              <div class="spell-metric-label">Характеристика</div>
-              <div class="spell-metric-val spell-metric-control">
-                <select class="spell-ability-select" data-spell-base-ability>
-                  ${abilityOptions.map(([k,l]) => `<option value="${k}" ${k===base?'selected':''}>${l}</option>`).join("")}
-                </select>
-              </div>
+          <div class="spell-metric spell-metric-full">
+            <div class="spell-metric-label">Характеристика</div>
+            <div class="spell-metric-val spell-metric-control">
+              <select class="spell-ability-select" data-spell-base-ability>
+                ${abilityOptions.map(([k,l]) => `<option value="${k}" ${k===base?'selected':''}>${l}</option>`).join("")}
+              </select>
             </div>
+          </div>
 
+          <div class="spell-metrics">
             <div class="spell-metric">
               <div class="spell-metric-label">СЛ спасброска</div>
               <div class="spell-metric-val">${escapeHtml(String(saveVal))}</div>
@@ -3010,6 +3033,7 @@ function renderCombatTab(vm) {
 
         activeTab = tabId;
         player._activeSheetTab = tabId;
+        if (player?.id) { const st = getUiState(player.id); st.activeTab = tabId; }
 
         tabButtons.forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
