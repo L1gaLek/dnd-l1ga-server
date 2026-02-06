@@ -1328,8 +1328,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   line-height: 1;
 }
 .spell-metric-control{ padding: 0; border: none; background: transparent; }
-.spell-ability-select,
-.spell-attack-input{
+.spell-ability-select{
   width: 100%;
   min-width: 120px;
   padding: 6px 10px;
@@ -1340,7 +1339,20 @@ textarea[data-sheet-path="text.profPlain.value"]{
   font-size: 13px;
   line-height: 1.1;
 }
-.spell-attack-input{ text-align: center; font-weight: 700; }
+
+.spell-attack-input{
+  width: 64px;          /* как у "СЛ спасброска" по компактности */
+  min-width: 64px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.18);
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  text-align: center;
+  font-weight: 700;
+}
 
 
 /* Slots grid (1..9) in 3 rows */
