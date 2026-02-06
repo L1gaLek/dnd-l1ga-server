@@ -1327,6 +1327,21 @@ textarea[data-sheet-path="text.profPlain.value"]{
   text-align: center;
   line-height: 1;
 }
+.spell-metric-control{ padding: 0; border: none; background: transparent; }
+.spell-ability-select,
+.spell-attack-input{
+  width: 100%;
+  min-width: 120px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(0,0,0,0.25);
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.1;
+}
+.spell-attack-input{ text-align: center; font-weight: 700; }
+
 
 /* Slots grid (1..9) in 3 rows */
 .slots-frame {
@@ -1541,6 +1556,9 @@ textarea[data-sheet-path="text.profPlain.value"]{
   line-height: 1.35;
   opacity: 0.95;
 }
+
+.hidden{ display:none !important; }
+.spell-item-desc.hidden{ display:none !important; }
 
 .spell-desc-editor{
   width: 100%;
