@@ -1728,78 +1728,6 @@ function parseSpellsFromClassHtml(html) {
   return spells;
 }
 
-
-
-function extractSpellBracketLevel(text) {
-  // Ищем уровень в квадратных скобках, как на dnd.su (например: "[1]" или "[Заговор]")
-  const t = String(text || "");
-  const m = t.match(/\[(.*?)\]/);
-  if (!m) return null;
-  const inside = String(m[1] || "").trim().toLowerCase();
-  if (!inside) return null;
-  if (inside.includes("заговор")) return 0;
-  const n = parseInt(inside.replace(/[^0-9]/g, ""), 10);
-  if (Number.isFinite(n) && n >= 0 && n <= 9) return n;
-  return null;
-}
-
-function parseSpellsCardsFromHtml(html) {
-  // Парсим список заклинаний ровно по разметке dnd.su/spells/
-  // Имя:  span.cards_list__item-name
-  // Ссылка: a.cards_list__item-wrapper[href]
-  // Уровень: span.cards_list__item-prefix span  (число внутри квадратных скобок)
-  const spells = [];
-  const seen = new Set();
-
-  try {
-    const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
-    const scope = doc.querySelector("main") || doc.body || doc;
-
-    const anchors = Array.from(scope.querySelectorAll('a.cards_list__item-wrapper[href]'));
-
-    for (const a of anchors) {
-      const rawHref = a.getAttribute("href") || "";
-      if (!rawHref) continue;
-
-      const abs = normalizeAnyUrlToAbs(rawHref);
-      if (!abs || !abs.includes("/spells/")) continue;
-
-      if (seen.has(abs)) continue;
-
-      // имя берём строго из span.cards_list__item-name
-      const nameEl = a.querySelector('span.cards_list__item-name');
-      const name = (nameEl?.textContent || "").trim();
-      if (!name) continue;
-
-      // уровень берём строго из span.cards_list__item-prefix span
-      let level = null;
-      const lvlEl = a.querySelector('span.cards_list__item-prefix span');
-      if (lvlEl) {
-        const t = (lvlEl.textContent || "").trim();
-        if (/^\d+$/.test(t)) level = parseInt(t, 10);
-      }
-
-      // HTML карточки — максимально близко к сайту (вся "строка" элемента)
-      const card = a.closest(".cards_list__item") || a.closest("li") || a;
-      const cardHtml = card ? String(card.outerHTML || "") : String(a.outerHTML || "");
-
-      seen.add(abs);
-      spells.push({ name, href: abs, level, cardHtml });
-    }
-  } catch (e) {
-    console.error("parseSpellsCardsFromHtml failed:", e);
-  }
-
-  const lvlKey = (x) => (x.level == null ? 99 : x.level);
-  spells.sort((a, b) => {
-    const da = lvlKey(a), db = lvlKey(b);
-    if (da !== db) return da - db;
-    return String(a.name || "").localeCompare(String(b.name || ""), "ru");
-  });
-
-  return spells;
-}
-
 async function ensureDbSpellDesc(href) {
   if (spellDbCache.descByHref.has(href)) return spellDbCache.descByHref.get(href);
   const html = await fetchSpellHtml(href);
@@ -1921,21 +1849,7 @@ function openAddSpellPopup({ root, player, sheet, canEdit, level }) {
   });
 }
 
-
-
 async function openSpellDbPopup({ root, player, sheet, canEdit }) {
-  const FIXED_CLASS_LABELS = [
-    "Волшебник",
-    "Бард",
-    "Друид",
-    "Жрец",
-    "Изобретатель",
-    "Колдун",
-    "Паладин",
-    "Следопыт",
-    "Чародей"
-  ];
-
   const { overlay, close } = openPopup({
     title: "Выбор из базы dnd.su",
     bodyHtml: `
@@ -1958,7 +1872,7 @@ async function openSpellDbPopup({ root, player, sheet, canEdit }) {
       </div>
 
       <div style="margin-top:10px;" data-db-list>
-        <div class="sheet-note">Загрузка базы…</div>
+        <div class="sheet-note">Загрузка классов…</div>
       </div>
     `
   });
@@ -1970,100 +1884,42 @@ async function openSpellDbPopup({ root, player, sheet, canEdit }) {
 
   if (!classSel || !listBox) return;
 
-  // 1) тянем классы с dnd.su, но отображаем строго заданный список
-  let classMap = new Map(); // label -> value
+  // 1) classes
   try {
     if (!spellDbCache.classes) {
       const html = await fetchSpellHtml("https://dnd.su/spells/");
       spellDbCache.classes = parseSpellClassesFromHtml(html);
     }
-    (spellDbCache.classes || []).forEach(c => {
-      const label = String(c?.label || "").trim();
-      const val = String(c?.value || "").trim();
-      if (label && val) classMap.set(label.toLowerCase(), val);
-    });
+    const classes = spellDbCache.classes || [];
+    classSel.innerHTML = classes.map(c => `<option value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</option>`).join("");
+    if (!classes.length) {
+      listBox.innerHTML = `<div class="sheet-note">Не удалось получить список классов с dnd.su.</div>`;
+      return;
+    }
   } catch (err) {
     console.error(err);
+    listBox.innerHTML = `<div class="sheet-note">Не удалось загрузить базу (проверь соединение / прокси /api/fetch).</div>`;
+    return;
   }
 
-  // ВАЖНО: добавляем "Все" для просмотра всей базы
-  const options = [
-    { value: "all", label: "Все" },
-    ...FIXED_CLASS_LABELS.map(l => ({ value: classMap.get(l.toLowerCase()) || l, label: l }))
-  ];
-
-  classSel.innerHTML = options
-    .map(o => `<option value="${escapeHtml(String(o.value))}">${escapeHtml(String(o.label))}</option>`)
-    .join("");
-
-  // ---- helpers ----
-  function getUrlForSelectedClass() {
-    const rawVal = String(classSel.value || "");
-    if (rawVal === "all") return "https://dnd.su/spells/";
-
-    // если похоже на число — это class id
-    if (/^\d+$/.test(rawVal)) return `https://dnd.su/spells/?class=${encodeURIComponent(rawVal)}`;
-
-    // иначе fallback: не фильтруем по классу (чтобы всегда работало)
-    return "https://dnd.su/spells/";
-  }
-
-  function buildSpellRowHtml(s) {
-    const safeHref = escapeHtml(String(s.href || ""));
-    const safeName = escapeHtml(String(s.name || "(без названия)"));
-    const lvlAttr = (s.level == null ? "" : String(s.level));
-
-    // Карточка из базы: пытаемся максимально сохранить HTML с сайта,
-    // но обязательно делаем ссылки абсолютными и открывающимися в новой вкладке.
-    let cardHtml = String(s.cardHtml || "");
-    if (cardHtml) {
-      try {
-        const doc = new DOMParser().parseFromString(cardHtml, "text/html");
-        doc.querySelectorAll('a[href]').forEach(a => {
-          a.setAttribute('target', '_blank');
-          const abs = normalizeAnyUrlToAbs(a.getAttribute('href'));
-          if (abs) a.setAttribute('href', abs);
-        });
-        cardHtml = (doc.body?.firstElementChild?.outerHTML) || cardHtml;
-      } catch {}
-    }
-
-    if (!cardHtml) {
-      cardHtml = `<div class="db-site-card-fallback"><a href="${safeHref}" target="_blank" class="db-site-link">${safeName}</a></div>`;
-    }
-
-    return `
-      <div class="db-site-spell" data-db-href="${safeHref}" data-db-level="${escapeHtml(lvlAttr)}">
-        <div class="db-site-card">${cardHtml}</div>
-        <div class="db-site-actions">
-          <button class="popup-btn" type="button" data-db-toggle-desc>Описание</button>
-          <button class="popup-btn primary" type="button" data-db-learn>Выучить</button>
-        </div>
-        <div class="db-site-desc hidden" data-db-desc>Загрузка описания…</div>
-      </div>
-    `;
-  }
-
-  async function loadAndRender() {
-    const url = getUrlForSelectedClass();
+  async function loadAndRenderClass() {
+    const classVal = classSel.value;
     const search = (searchInp?.value || "").trim().toLowerCase();
     const forceLevel = (levelSel?.value || "auto");
 
     listBox.innerHTML = `<div class="sheet-note">Загрузка заклинаний…</div>`;
 
-    // key для кэша: all / class:21 / etc
-    const cacheKey = String(classSel.value || "all");
-
-    let spells = spellDbCache.byClass.get(cacheKey);
+    let spells = spellDbCache.byClass.get(classVal);
     try {
       if (!spells) {
+        const url = `https://dnd.su/spells/?class=${encodeURIComponent(classVal)}`;
         const html = await fetchSpellHtml(url);
-        spells = parseSpellsCardsFromHtml(html);
-        spellDbCache.byClass.set(cacheKey, spells);
+        spells = parseSpellsFromClassHtml(html);
+        spellDbCache.byClass.set(classVal, spells);
       }
     } catch (err) {
       console.error(err);
-      listBox.innerHTML = `<div class="sheet-note">Не удалось загрузить список заклинаний (проверь прокси /api/fetch).</div>`;
+      listBox.innerHTML = `<div class="sheet-note">Не удалось загрузить список заклинаний этого класса.</div>`;
       return;
     }
 
@@ -2072,83 +1928,123 @@ async function openSpellDbPopup({ root, player, sheet, canEdit }) {
       return String(s.name || "").toLowerCase().includes(search);
     });
 
-    // Рендерим одной лентой (как на сайте): карточка + действия + раскрывашка описания
-    listBox.innerHTML = (filtered.length
-      ? `<div class="db-site-grid">${filtered.map(buildSpellRowHtml).join("")}</div>`
-      : `<div class="sheet-note">Ничего не найдено.</div>`);
+    // group by level (0..9, null)
+    const groups = new Map();
+    for (const s of filtered) {
+      const lvl = (s.level == null ? "?" : String(s.level));
+      if (!groups.has(lvl)) groups.set(lvl, []);
+      groups.get(lvl).push(s);
+    }
 
-    // Делегирование событий (чтобы не привязывать 1000+ слушателей)
-    listBox.onclick = async (ev) => {
-      const descBtn = ev.target?.closest?.('[data-db-toggle-desc]');
-      const learnBtn = ev.target?.closest?.('[data-db-learn]');
+    const order = ["0","1","2","3","4","5","6","7","8","9","?"];
+    const htmlGroups = order
+      .filter(k => groups.has(k) && groups.get(k).length)
+      .map(k => {
+        const title = (k === "0") ? "Заговоры (0)" : (k === "?" ? "Уровень не определён" : `Уровень ${k}`);
+        const rows = groups.get(k).map(s => {
+          const safeHref = escapeHtml(s.href);
+          const safeName = escapeHtml(s.name);
+          return `
+            <div class="db-spell-row" data-db-href="${safeHref}" data-db-level="${escapeHtml(String(s.level ?? ""))}">
+              <div class="db-spell-head">
+                <button class="popup-btn" type="button" data-db-toggle style="padding:6px 10px;">${safeName}</button>
+                <div class="db-spell-controls">
+                  <button class="popup-btn primary" type="button" data-db-learn>Выучить</button>
+                </div>
+              </div>
+              <div class="db-spell-desc hidden" data-db-desc>Загрузка описания…</div>
+            </div>
+          `;
+        }).join("");
+        return `
+          <div class="sheet-card" style="margin:10px 0;">
+            <h4 style="margin:0 0 6px 0;">${escapeHtml(title)}</h4>
+            ${rows}
+          </div>
+        `;
+      }).join("");
 
-      if (!descBtn && !learnBtn) return;
+    listBox.innerHTML = htmlGroups || `<div class="sheet-note">Ничего не найдено.</div>`;
 
-      const row = ev.target?.closest?.('[data-db-href]');
-      if (!row) return;
-      const href = row.getAttribute('data-db-href') || "";
-      if (!href) return;
+    // click handling inside listBox
+    listBox.querySelectorAll("[data-db-toggle]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const row = btn.closest("[data-db-href]");
+        const descEl = row?.querySelector("[data-db-desc]");
+        if (!row || !descEl) return;
 
-      if (descBtn) {
-        const descEl = row.querySelector('[data-db-desc]');
-        if (!descEl) return;
-        const wasHidden = descEl.classList.contains('hidden');
-        descEl.classList.toggle('hidden');
-        if (!wasHidden) return;
+        const href = row.getAttribute("data-db-href");
+        if (!href) return;
 
+        const isHidden = descEl.classList.contains("hidden");
+        // toggle
+        descEl.classList.toggle("hidden");
+        if (!isHidden) return;
+
+        // load desc if needed
         try {
-          const { desc } = await ensureDbSpellDesc(href);
-          descEl.textContent = (desc || "(описание пустое)");
+          const { name, desc } = await ensureDbSpellDesc(href);
+          descEl.textContent = desc || "(описание пустое)";
+          // обновим кнопку названием (если на странице оно отличается)
+          btn.textContent = name || btn.textContent;
         } catch (err) {
           console.error(err);
           descEl.textContent = "Не удалось загрузить описание.";
         }
-        return;
-      }
+      });
+    });
 
-      if (learnBtn) {
+    listBox.querySelectorAll("[data-db-learn]").forEach(btn => {
+      btn.addEventListener("click", async () => {
         if (!canEdit) return;
+        const row = btn.closest("[data-db-href]");
+        if (!row) return;
+        const href = row.getAttribute("data-db-href");
+        if (!href) return;
 
         // decide level
         let lvl = null;
-        if (forceLevel !== "auto") {
-          lvl = safeInt(forceLevel, 0);
-        } else {
-          const raw = row.getAttribute('data-db-level');
+        if (forceLevel !== "auto") lvl = safeInt(forceLevel, 0);
+        else {
+          const raw = row.getAttribute("data-db-level");
           lvl = (raw != null && raw !== "") ? safeInt(raw, 0) : null;
         }
-        if (lvl == null || lvl < 0 || lvl > 9) lvl = 0;
+        if (lvl == null || lvl < 0 || lvl > 9) {
+          // fallback: спросим у пользователя через подсказку
+          lvl = 0;
+        }
 
-        learnBtn.disabled = true;
+        btn.disabled = true;
         try {
           const { name, desc } = await ensureDbSpellDesc(href);
           ensureSpellSaved(sheet, lvl, name, href, desc);
           scheduleSheetSave(player);
           rerenderSpellsTabInPlace(root, player, sheet, canEdit);
 
-          learnBtn.textContent = "Выучено";
-          learnBtn.classList.remove('primary');
-          learnBtn.disabled = true;
+          // визуально отметим "выучено"
+          btn.textContent = "Выучено";
+          btn.classList.remove("primary");
+          btn.disabled = true;
         } catch (err) {
           console.error(err);
-          alert("Не удалось выучить (ошибка загрузки/парсинга).\nПроверь ссылку и доступность dnd.su.");
-          learnBtn.disabled = false;
+          alert("Не удалось выучить (ошибка загрузки/парсинга).");
+          btn.disabled = false;
         }
-      }
-    };
+      });
+    });
   }
 
-  classSel.addEventListener('change', loadAndRender);
-  levelSel?.addEventListener('change', loadAndRender);
-  searchInp?.addEventListener('input', () => {
+  classSel.addEventListener("change", loadAndRenderClass);
+  levelSel?.addEventListener("change", loadAndRenderClass);
+  searchInp?.addEventListener("input", () => {
+    // лёгкий debounce
     clearTimeout(searchInp.__t);
-    searchInp.__t = setTimeout(loadAndRender, 140);
+    searchInp.__t = setTimeout(loadAndRenderClass, 120);
   });
 
-  // first render
-  await loadAndRender();
+  // initial render
+  await loadAndRenderClass();
 }
-
 
 function bindSpellAddAndDesc(root, player, canEdit) {
   if (!root || !player?.sheet?.parsed) return;
