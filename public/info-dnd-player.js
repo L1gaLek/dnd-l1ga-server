@@ -1456,6 +1456,12 @@ function bindSlotEditors(root, player, canEdit) {
       const lvl = safeInt(dot.getAttribute("data-slot-level"), 0);
       if (!lvl) return;
 
+      // Берём актуальный sheet на момент клика (после импорта .json объект sheet может заменяться)
+      const sheetNow = player?.sheet?.parsed;
+      if (!sheetNow || typeof sheetNow !== "object") return;
+      if (!sheetNow.spells || typeof sheetNow.spells !== "object") sheetNow.spells = {};
+      const sheet = sheetNow;
+
       const key = `slots-${lvl}`;
       if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
         sheet.spells[key] = { value: 0, filled: 0 };
@@ -2788,6 +2794,12 @@ function renderCombatTab(vm) {
         const file = fileInput.files?.[0];
         if (!file) return;
 
+        // ВАЖНО: если ранее были отложенные автосейвы (debounce),
+        // они могут перезаписать только что загруженный .json старым состоянием.
+        // Поэтому перед импортом очищаем таймер сохранения.
+        const prevSave = sheetSaveTimers.get(player.id);
+        if (prevSave) { clearTimeout(prevSave); sheetSaveTimers.delete(player.id); }
+
         try {
           const text = await file.text();
           const sheet = parseCharboxFileText(text);
@@ -2895,6 +2907,8 @@ function renderCombatTab(vm) {
     bindSlotEditors(sheetContent, player, canEdit);
     bindSpellAddAndDesc(sheetContent, player, canEdit);
    bindCombatEditors(sheetContent, player, canEdit);
+          // восстановим скролл для выбранной вкладки
+          restoreUiStateToDom(player);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -2904,8 +2918,13 @@ function renderCombatTab(vm) {
         const tabId = btn.dataset.tab;
         if (!tabId) return;
 
+        // сохраняем скролл предыдущей вкладки
+        captureUiStateFromDom(player);
+
         activeTab = tabId;
         player._activeSheetTab = tabId;
+        // фиксируем выбранную вкладку в uiState (переживёт закрытие модалки и обновления state)
+        if (player?.id) { const st = getUiState(player.id); st.activeTab = tabId; }
 
         tabButtons.forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
