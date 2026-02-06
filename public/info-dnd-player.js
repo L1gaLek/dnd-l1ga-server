@@ -1503,7 +1503,7 @@ function bindSlotEditors(root, player, canEdit) {
   // кликабельные кружки: синий = доступно, пустой = использовано
   if (!root.__spellSlotsDotsBound) {
     root.__spellSlotsDotsBound = true;
-    root.addEventListener("click", (e) => {
+    root.addEventListener("click", async (e) => {
       const { player: curPlayer, canEdit: curCanEdit } = getState();
 
       // ===== 🎲 Атака заклинанием (d20 + бонус атаки) =====
@@ -1525,14 +1525,49 @@ function bindSlotEditors(root, player, canEdit) {
           title = (item?.querySelector?.(".spell-item-link")?.textContent || item?.querySelector?.(".spell-item-title")?.textContent || "").trim();
         }
 
-        // В журнале и панели: всегда "Атака заклинанием" (+ название при наличии)
-        const kindText = title
-          ? `Атака заклинанием (${title})`
-          : `Атака заклинанием`;
+        // Бонус для броска берём из видимого поля "Бонус атаки" (если есть),
+        // чтобы итог в панели "Бросок" совпадал с тем, что видит игрок.
+        const atkInput = root.querySelector('[data-spell-attack-bonus]');
+        const uiBonus = atkInput ? safeInt(atkInput.value, bonus) : bonus;
 
+        // В панели "Бросок" не показываем текст "Атака заклинанием" — только число.
+        // А в журнал/другим игрокам отправляем отдельное событие с понятным названием.
+        let rollRes = null;
         if (window.DicePanel?.roll) {
-          window.DicePanel.roll({ sides: 20, count: 1, bonus, kindText });
+          rollRes = await window.DicePanel.roll({
+            sides: 20,
+            count: 1,
+            bonus: uiBonus,
+            kindText: null,
+            silent: true
+          });
         }
+
+        try {
+          if (typeof sendMessage === 'function' && rollRes) {
+            const r = rollRes.rolls?.[0];
+            const b = Number(rollRes.bonus) || 0;
+            const bonusTxt = b ? ` ${b >= 0 ? '+' : '-'} ${Math.abs(b)}` : '';
+            const nameTxt = title ? ` (${title})` : '';
+            sendMessage({
+              type: 'log',
+              text: `Атака заклинанием${nameTxt}: d20(${r})${bonusTxt} => ${rollRes.total}`
+            });
+
+            sendMessage({
+              type: 'diceEvent',
+              event: {
+                kindText: `Атака заклинанием${nameTxt}`,
+                sides: 20,
+                count: 1,
+                bonus: b,
+                rolls: [r],
+                total: rollRes.total,
+                crit: (r === 1 ? 'crit-fail' : r === 20 ? 'crit-success' : '')
+              }
+            });
+          }
+        } catch {}
 
         // если бросок был из конкретного заклинания — тратим 1 ячейку соответствующего уровня (кроме заговоров)
         if (rollSpellBtn && lvl > 0) {
