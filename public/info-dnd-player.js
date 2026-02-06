@@ -1420,8 +1420,18 @@ if (path === "proficiency") {
 function bindSlotEditors(root, player, canEdit) {
   if (!root || !player?.sheet) return;
 
+  // IMPORTANT:
+  // sheetContent (root) переиспользуется между открытиями модалки и при импорте .json.
+  // Если повесить обработчики один раз и замкнуть player в closure — появится рассинхрон:
+  // клики/правки будут менять sheet старого игрока, а UI будет рендериться по новому.
+  // Поэтому храним актуальные ссылки на player/canEdit прямо на root и берём их в момент события.
+  root.__spellSlotsState = { player, canEdit };
+
+  const getState = () => root.__spellSlotsState || { player, canEdit };
+
   const getSheet = () => {
-    const s = player.sheet?.parsed;
+    const { player: curPlayer } = getState();
+    const s = curPlayer?.sheet?.parsed;
     if (!s || typeof s !== "object") return null;
     if (!s.spells || typeof s.spells !== "object") s.spells = {};
     return s;
@@ -1465,7 +1475,8 @@ function bindSlotEditors(root, player, canEdit) {
       }
 
       inp.value = String(desired);
-      scheduleSheetSave(player);
+      const { player: curPlayer } = getState();
+      scheduleSheetSave(curPlayer);
     };
 
     inp.addEventListener("input", handler);
@@ -1478,7 +1489,9 @@ function bindSlotEditors(root, player, canEdit) {
     root.addEventListener("click", (e) => {
       const dot = e.target?.closest?.(".slot-dot[data-slot-level]");
       if (!dot) return;
-      if (!canEdit) return;
+
+      const { player: curPlayer, canEdit: curCanEdit } = getState();
+      if (!curCanEdit) return;
 
       const sheet = getSheet();
       if (!sheet) return;
@@ -1512,7 +1525,7 @@ function bindSlotEditors(root, player, canEdit) {
         dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
       }
 
-      scheduleSheetSave(player);
+      scheduleSheetSave(curPlayer);
     });
   }
 }
@@ -2137,30 +2150,35 @@ async function openSpellDbPopup({ root, player, sheet, canEdit }) {
 function bindSpellAddAndDesc(root, player, canEdit) {
   if (!root || !player?.sheet?.parsed) return;
 
-  // ВАЖНО: после импорта .json player.sheet.parsed заменяется целиком,
-  // поэтому нельзя держать ссылку на sheet в замыкании — берем "свежий" sheet на каждый event.
-  const getSheet = () => player?.sheet?.parsed;
+  // IMPORTANT:
+  // sheetContent (root) переиспользуется между открытиями модалки.
+  // Нельзя один раз повесить обработчики с замыканием на player/canEdit,
+  // иначе при открытии "Инфы" другого игрока (или после импорта .json, который меняет объект)
+  // события будут применяться к старому sheet.
+  // Поэтому храним актуальный контекст на root и читаем его в момент события.
+  root.__spellAddState = { player, canEdit };
 
-  if (root.__spellAddBound) return;
-  root.__spellAddBound = true;
+  const getState = () => root.__spellAddState || { player, canEdit };
+  const getSheet = () => getState().player?.sheet?.parsed;
 
-  // disable controls in read-only mode
-  if (!canEdit) {
-    root.querySelectorAll("[data-spell-base-ability], [data-spell-attack-bonus]").forEach(el => {
-      try { el.disabled = true; } catch {}
-      el.setAttribute("aria-disabled", "true");
-    });
+  // listeners вешаем один раз
+  if (root.__spellAddInit) {
+    // контекст обновили выше
+    return;
   }
+  root.__spellAddInit = true;
 
   root.addEventListener("click", async (e) => {
+    const { player: curPlayer, canEdit: curCanEdit } = getState();
+
     const addBtn = e.target?.closest?.("[data-spell-add][data-spell-level]");
     if (addBtn) {
-      if (!canEdit) return;
+      if (!curCanEdit) return;
       const sheet = getSheet();
       if (!sheet) return;
 
       const lvl = safeInt(addBtn.getAttribute("data-spell-level"), 0);
-      openAddSpellPopup({ root, player, sheet, canEdit, level: lvl });
+      openAddSpellPopup({ root, player: curPlayer, sheet, canEdit: curCanEdit, level: lvl });
       return;
     }
 
@@ -2168,13 +2186,13 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     if (dbBtn) {
       const sheet = getSheet();
       if (!sheet) return;
-      await openSpellDbPopup({ root, player, sheet, canEdit });
+      await openSpellDbPopup({ root, player: curPlayer, sheet, canEdit: curCanEdit });
       return;
     }
 
     const delBtn = e.target?.closest?.("[data-spell-delete]");
     if (delBtn) {
-      if (!canEdit) return;
+      if (!curCanEdit) return;
       const sheet = getSheet();
       if (!sheet) return;
 
@@ -2184,8 +2202,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       if (!confirm("Удалить это заклинание?")) return;
 
       deleteSpellSaved(sheet, href);
-      scheduleSheetSave(player);
-      rerenderSpellsTabInPlace(root, player, sheet, canEdit);
+      scheduleSheetSave(curPlayer);
+      rerenderSpellsTabInPlace(root, curPlayer, sheet, curCanEdit);
       return;
     }
 
@@ -2204,7 +2222,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
   root.addEventListener("change", (e) => {
     const sel = e.target?.closest?.("[data-spell-base-ability]");
     if (!sel) return;
-    if (!canEdit) return;
+    const { player: curPlayer, canEdit: curCanEdit } = getState();
+    if (!curCanEdit) return;
 
     const sheet = getSheet();
     if (!sheet) return;
@@ -2215,15 +2234,16 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     sheet.spellsInfo.base.code = String(sel.value || "").trim();
 
     // если пользователь не задал ручной бонус атаки — просто перерисуем, чтобы пересчитать формулу
-    scheduleSheetSave(player);
-    rerenderSpellsTabInPlace(root, player, sheet, canEdit);
+    scheduleSheetSave(curPlayer);
+    rerenderSpellsTabInPlace(root, curPlayer, sheet, curCanEdit);
   });
 
   // ручное редактирование бонуса атаки
   root.addEventListener("input", (e) => {
     const atk = e.target?.closest?.("[data-spell-attack-bonus]");
     if (atk) {
-      if (!canEdit) return;
+      const { player: curPlayer, canEdit: curCanEdit } = getState();
+      if (!curCanEdit) return;
 
       const sheet = getSheet();
       if (!sheet) return;
@@ -2240,7 +2260,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
         sheet.spellsInfo.mod.customModifier = v;
       }
 
-      scheduleSheetSave(player);
+      scheduleSheetSave(curPlayer);
       // не перерисовываем на каждый ввод — чтобы курсор не прыгал
       return;
     }
@@ -2248,7 +2268,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     // редактирование описания (textarea внутри раскрывашки)
     const ta = e.target?.closest?.("[data-spell-desc-editor]");
     if (!ta) return;
-    if (!canEdit) return;
+    const { player: curPlayer, canEdit: curCanEdit } = getState();
+    if (!curCanEdit) return;
 
     const sheet = getSheet();
     if (!sheet) return;
@@ -2261,7 +2282,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     const key = `spell-desc:${href}`;
     if (!sheet.text[key] || typeof sheet.text[key] !== "object") sheet.text[key] = { value: "" };
     sheet.text[key].value = cleanupSpellDesc(String(ta.value || ""));
-    scheduleSheetSave(player);
+    scheduleSheetSave(curPlayer);
   });
 }
   function updateDerivedForStat(root, sheet, statKey) {
