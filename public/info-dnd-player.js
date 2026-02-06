@@ -1504,67 +1504,72 @@ function bindSlotEditors(root, player, canEdit) {
   if (!root.__spellSlotsDotsBound) {
     root.__spellSlotsDotsBound = true;
     root.addEventListener("click", (e) => {
-      const dot = e.target?.closest?.(".slot-dot[data-slot-level]");
-      if (!dot) return;
-
       const { player: curPlayer, canEdit: curCanEdit } = getState();
 
-    // 🎲 бросок атаки заклинанием (d20 + бонус атаки)
-    const rollHeaderBtn = e.target?.closest?.("[data-spell-roll-header]");
-    const rollSpellBtn = e.target?.closest?.("[data-spell-roll]");
+      // ===== 🎲 Атака заклинанием (d20 + бонус атаки) =====
+      // (должно работать независимо от клика по слотам)
+      const rollHeaderBtn = e.target?.closest?.("[data-spell-roll-header]");
+      const rollSpellBtn = e.target?.closest?.("[data-spell-roll]");
 
-    if (rollHeaderBtn || rollSpellBtn) {
-      const sheet = getSheet();
-      if (!sheet) return;
+      if (rollHeaderBtn || rollSpellBtn) {
+        const sheet = getSheet();
+        if (!sheet) return;
 
-      const bonus = computeSpellAttack(sheet);
+        const bonus = computeSpellAttack(sheet);
 
-      let kindText = `Заклинание: d20 ${formatMod(bonus)}`;
-
-      let lvl = 0;
-      if (rollSpellBtn) {
-        const item = rollSpellBtn.closest(".spell-item");
-        lvl = safeInt(item?.getAttribute?.("data-spell-level"), 0);
-        const title = (item?.querySelector?.(".spell-item-link")?.textContent || item?.querySelector?.(".spell-item-title")?.textContent || "").trim();
-        if (title) kindText = `${title}: d20 ${formatMod(bonus)}`;
-      }
-
-      if (window.DicePanel?.roll) {
-        window.DicePanel.roll({ sides: 20, count: 1, bonus, kindText });
-      }
-
-      // если бросок был из конкретного заклинания — тратим 1 ячейку соответствующего уровня (кроме заговоров)
-      if (rollSpellBtn && lvl > 0) {
-        if (!curCanEdit) return;
-
-        if (!sheet.spells || typeof sheet.spells !== "object") sheet.spells = {};
-        const key = `slots-${lvl}`;
-        if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") sheet.spells[key] = { value: 0, filled: 0 };
-
-        const total = Math.max(0, Math.min(12, numLike(sheet.spells[key].value, 0)));
-        const filled = Math.max(0, Math.min(total, numLike(sheet.spells[key].filled, 0)));
-        const available = Math.max(0, total - filled);
-
-        if (available > 0) {
-          setMaybeObjField(sheet.spells[key], "filled", Math.min(total, filled + 1));
-
-          // обновим UI кружков конкретного уровня без полного ререндера
-          const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
-          if (dotsWrap) {
-            const filled2 = Math.max(0, Math.min(total, numLike(sheet.spells[key].filled, 0)));
-            const available2 = Math.max(0, total - filled2);
-            const dots = Array.from({ length: total })
-              .map((_, i) => `<span class="slot-dot${i < available2 ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
-              .join("");
-            dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
-          }
-
-          scheduleSheetSave(curPlayer);
+        let lvl = 0;
+        let title = "";
+        if (rollSpellBtn) {
+          const item = rollSpellBtn.closest(".spell-item");
+          lvl = safeInt(item?.getAttribute?.("data-spell-level"), 0);
+          title = (item?.querySelector?.(".spell-item-link")?.textContent || item?.querySelector?.(".spell-item-title")?.textContent || "").trim();
         }
+
+        // В журнале и панели: всегда "Атака заклинанием" (+ название при наличии)
+        const kindText = title
+          ? `Атака заклинанием (${title})`
+          : `Атака заклинанием`;
+
+        if (window.DicePanel?.roll) {
+          window.DicePanel.roll({ sides: 20, count: 1, bonus, kindText });
+        }
+
+        // если бросок был из конкретного заклинания — тратим 1 ячейку соответствующего уровня (кроме заговоров)
+        if (rollSpellBtn && lvl > 0) {
+          if (!curCanEdit) return;
+
+          if (!sheet.spells || typeof sheet.spells !== "object") sheet.spells = {};
+          const key = `slots-${lvl}`;
+          if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") sheet.spells[key] = { value: 0, filled: 0 };
+
+          const total = Math.max(0, Math.min(12, numLike(sheet.spells[key].value, 0)));
+          const filled = Math.max(0, Math.min(total, numLike(sheet.spells[key].filled, 0)));
+          const available = Math.max(0, total - filled);
+
+          if (available > 0) {
+            setMaybeObjField(sheet.spells[key], "filled", Math.min(total, filled + 1));
+
+            // обновим UI кружков конкретного уровня без полного ререндера
+            const dotsWrap = root.querySelector(`.slot-dots[data-slot-dots="${lvl}"]`);
+            if (dotsWrap) {
+              const filled2 = Math.max(0, Math.min(total, numLike(sheet.spells[key].filled, 0)));
+              const available2 = Math.max(0, total - filled2);
+              const dots = Array.from({ length: total })
+                .map((_, i) => `<span class="slot-dot${i < available2 ? " is-available" : ""}" data-slot-level="${lvl}"></span>`)
+                .join("");
+              dotsWrap.innerHTML = dots || `<span class="slot-dots-empty">—</span>`;
+            }
+
+            scheduleSheetSave(curPlayer);
+          }
+        }
+
+        return;
       }
 
-      return;
-    }
+      // ===== слоты =====
+      const dot = e.target?.closest?.(".slot-dot[data-slot-level]");
+      if (!dot) return;
 
       if (!curCanEdit) return;
 
