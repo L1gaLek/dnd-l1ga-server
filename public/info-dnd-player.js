@@ -1538,7 +1538,9 @@ function bindSlotEditors(root, player, canEdit) {
             sides: 20,
             count: 1,
             bonus: uiBonus,
-            kindText: null,
+            // Показываем в панели "Бросок" так же, как атака оружием:
+            // "Заклинания: d20+X" (X берётся из поля "Бонус атаки" в разделе Заклинаний)
+            kindText: `Заклинания: d20${formatMod(uiBonus)}`,
             silent: true
           });
         }
