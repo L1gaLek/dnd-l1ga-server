@@ -1456,12 +1456,6 @@ function bindSlotEditors(root, player, canEdit) {
       const lvl = safeInt(dot.getAttribute("data-slot-level"), 0);
       if (!lvl) return;
 
-      // Берём актуальный sheet на момент клика (после импорта .json объект sheet может заменяться)
-      const sheetNow = player?.sheet?.parsed;
-      if (!sheetNow || typeof sheetNow !== "object") return;
-      if (!sheetNow.spells || typeof sheetNow.spells !== "object") sheetNow.spells = {};
-      const sheet = sheetNow;
-
       const key = `slots-${lvl}`;
       if (!sheet.spells[key] || typeof sheet.spells[key] !== "object") {
         sheet.spells[key] = { value: 0, filled: 0 };
@@ -2112,15 +2106,29 @@ async function openSpellDbPopup({ root, player, sheet, canEdit }) {
 
 function bindSpellAddAndDesc(root, player, canEdit) {
   if (!root || !player?.sheet?.parsed) return;
+
+  // ВАЖНО: после импорта .json player.sheet.parsed заменяется целиком,
+  // поэтому нельзя держать ссылку на sheet в замыкании — берем "свежий" sheet на каждый event.
+  const getSheet = () => player?.sheet?.parsed;
+
   if (root.__spellAddBound) return;
   root.__spellAddBound = true;
 
+  // disable controls in read-only mode
+  if (!canEdit) {
+    root.querySelectorAll("[data-spell-base-ability], [data-spell-attack-bonus]").forEach(el => {
+      try { el.disabled = true; } catch {}
+      el.setAttribute("aria-disabled", "true");
+    });
+  }
+
   root.addEventListener("click", async (e) => {
-    const sheet = player?.sheet?.parsed;
-    if (!sheet) return;
     const addBtn = e.target?.closest?.("[data-spell-add][data-spell-level]");
     if (addBtn) {
       if (!canEdit) return;
+      const sheet = getSheet();
+      if (!sheet) return;
+
       const lvl = safeInt(addBtn.getAttribute("data-spell-level"), 0);
       openAddSpellPopup({ root, player, sheet, canEdit, level: lvl });
       return;
@@ -2128,13 +2136,18 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
     const dbBtn = e.target?.closest?.("[data-spell-db]");
     if (dbBtn) {
+      const sheet = getSheet();
+      if (!sheet) return;
       await openSpellDbPopup({ root, player, sheet, canEdit });
       return;
     }
 
-const delBtn = e.target?.closest?.("[data-spell-delete]");
+    const delBtn = e.target?.closest?.("[data-spell-delete]");
     if (delBtn) {
       if (!canEdit) return;
+      const sheet = getSheet();
+      if (!sheet) return;
+
       const item = delBtn.closest(".spell-item");
       const href = item?.getAttribute?.("data-spell-url") || "";
       if (!href) return;
@@ -2146,7 +2159,7 @@ const delBtn = e.target?.closest?.("[data-spell-delete]");
       return;
     }
 
-        const descBtn = e.target?.closest?.("[data-spell-desc-toggle]");
+    const descBtn = e.target?.closest?.("[data-spell-desc-toggle]");
     if (descBtn) {
       const item = descBtn.closest(".spell-item");
       const desc = item?.querySelector?.(".spell-item-desc");
@@ -2157,13 +2170,58 @@ const delBtn = e.target?.closest?.("[data-spell-delete]");
     }
   });
 
-  // редактирование описания (textarea внутри раскрывашки)
-  root.addEventListener("input", (e) => {
-    const sheet = player?.sheet?.parsed;
+  // выбор базовой характеристики (STR/DEX/CON/INT/WIS/CHA)
+  root.addEventListener("change", (e) => {
+    const sel = e.target?.closest?.("[data-spell-base-ability]");
+    if (!sel) return;
+    if (!canEdit) return;
+
+    const sheet = getSheet();
     if (!sheet) return;
+
+    if (!sheet.spellsInfo || typeof sheet.spellsInfo !== "object") sheet.spellsInfo = {};
+    if (!sheet.spellsInfo.base || typeof sheet.spellsInfo.base !== "object") sheet.spellsInfo.base = { code: "" };
+
+    sheet.spellsInfo.base.code = String(sel.value || "").trim();
+
+    // если пользователь не задал ручной бонус атаки — просто перерисуем, чтобы пересчитать формулу
+    scheduleSheetSave(player);
+    rerenderSpellsTabInPlace(root, player, sheet, canEdit);
+  });
+
+  // ручное редактирование бонуса атаки
+  root.addEventListener("input", (e) => {
+    const atk = e.target?.closest?.("[data-spell-attack-bonus]");
+    if (atk) {
+      if (!canEdit) return;
+
+      const sheet = getSheet();
+      if (!sheet) return;
+
+      if (!sheet.spellsInfo || typeof sheet.spellsInfo !== "object") sheet.spellsInfo = {};
+      if (!sheet.spellsInfo.mod || typeof sheet.spellsInfo.mod !== "object") sheet.spellsInfo.mod = { customModifier: "" };
+
+      const v = String(atk.value || "").trim();
+      if (v === "") {
+        // пусто = вернуть авто-расчет
+        delete sheet.spellsInfo.mod.customModifier;
+        if ("value" in sheet.spellsInfo.mod) delete sheet.spellsInfo.mod.value;
+      } else {
+        sheet.spellsInfo.mod.customModifier = v;
+      }
+
+      scheduleSheetSave(player);
+      // не перерисовываем на каждый ввод — чтобы курсор не прыгал
+      return;
+    }
+
+    // редактирование описания (textarea внутри раскрывашки)
     const ta = e.target?.closest?.("[data-spell-desc-editor]");
     if (!ta) return;
     if (!canEdit) return;
+
+    const sheet = getSheet();
+    if (!sheet) return;
 
     const item = ta.closest(".spell-item");
     const href = item?.getAttribute?.("data-spell-url") || "";
@@ -2424,8 +2482,31 @@ const delBtn = e.target?.closest?.("[data-spell-delete]");
   }
 
   function renderSpellsTab(vm) {
-    const save = vm.spellsInfo?.save || "-";
-    const mod = vm.spellsInfo?.mod || "-";
+    const base = (vm?.spellsInfo?.base || "").trim() || "int";
+
+    const statModByKey = {};
+    (vm?.stats || []).forEach(s => { statModByKey[s.k] = safeInt(s.mod, 0); });
+
+    const prof = safeInt(vm?.profBonus, 2);
+    const abilMod = safeInt(statModByKey[base], 0);
+
+    const computedAttack = prof + abilMod;
+    const computedSave = 8 + prof + abilMod;
+
+    const rawSave = (vm?.spellsInfo?.save ?? "").toString().trim();
+    const rawAtk  = (vm?.spellsInfo?.mod ?? "").toString().trim();
+
+    const saveVal = rawSave !== "" ? rawSave : String(computedSave);
+    const atkVal  = rawAtk  !== "" ? rawAtk  : formatMod(computedAttack);
+
+    const abilityOptions = [
+      ["str","Сила"],
+      ["dex","Ловкость"],
+      ["con","Телосложение"],
+      ["int","Интеллект"],
+      ["wis","Мудрость"],
+      ["cha","Харизма"],
+    ];
 
     return `
       <div class="sheet-section">
@@ -2434,13 +2515,28 @@ const delBtn = e.target?.closest?.("[data-spell-delete]");
         <div class="sheet-card spells-metrics-card fullwidth">
           <div class="spell-metrics">
             <div class="spell-metric">
-              <div class="spell-metric-label">СЛ спасброска</div>
-              <div class="spell-metric-val">${escapeHtml(String(save))}</div>
+              <div class="spell-metric-label">Характеристика</div>
+              <div class="spell-metric-val spell-metric-control">
+                <select class="spell-ability-select" data-spell-base-ability>
+                  ${abilityOptions.map(([k,l]) => `<option value="${k}" ${k===base?'selected':''}>${l}</option>`).join("")}
+                </select>
+              </div>
             </div>
+
+            <div class="spell-metric">
+              <div class="spell-metric-label">СЛ спасброска</div>
+              <div class="spell-metric-val">${escapeHtml(String(saveVal))}</div>
+            </div>
+
             <div class="spell-metric">
               <div class="spell-metric-label">Бонус атаки</div>
-              <div class="spell-metric-val">${escapeHtml(String(mod))}</div>
+              <div class="spell-metric-val spell-metric-control">
+                <input class="spell-attack-input" data-spell-attack-bonus type="text" value="${escapeHtml(String(atkVal))}" />
+              </div>
             </div>
+          </div>
+          <div class="sheet-note" style="margin-top:8px;">
+            Бонус атаки по умолчанию: <b>Владение</b> (${prof}) + <b>модификатор выбранной характеристики</b> (${formatMod(abilMod)}).
           </div>
         </div>
 
@@ -2796,12 +2892,6 @@ function renderCombatTab(vm) {
         const file = fileInput.files?.[0];
         if (!file) return;
 
-        // ВАЖНО: если ранее были отложенные автосейвы (debounce),
-        // они могут перезаписать только что загруженный .json старым состоянием.
-        // Поэтому перед импортом очищаем таймер сохранения.
-        const prevSave = sheetSaveTimers.get(player.id);
-        if (prevSave) { clearTimeout(prevSave); sheetSaveTimers.delete(player.id); }
-
         try {
           const text = await file.text();
           const sheet = parseCharboxFileText(text);
@@ -2909,8 +2999,6 @@ function renderCombatTab(vm) {
     bindSlotEditors(sheetContent, player, canEdit);
     bindSpellAddAndDesc(sheetContent, player, canEdit);
    bindCombatEditors(sheetContent, player, canEdit);
-          // восстановим скролл для выбранной вкладки
-          restoreUiStateToDom(player);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -2920,13 +3008,8 @@ function renderCombatTab(vm) {
         const tabId = btn.dataset.tab;
         if (!tabId) return;
 
-        // сохраняем скролл предыдущей вкладки
-        captureUiStateFromDom(player);
-
         activeTab = tabId;
         player._activeSheetTab = tabId;
-        // фиксируем выбранную вкладку в uiState (переживёт закрытие модалки и обновления state)
-        if (player?.id) { const st = getUiState(player.id); st.activeTab = tabId; }
 
         tabButtons.forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
