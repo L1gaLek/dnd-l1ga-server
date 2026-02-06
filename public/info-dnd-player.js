@@ -112,7 +112,7 @@
   // Спелл-метрики: авто-формула бонуса атаки (проф. + модификатор выбранной характеристики)
   function computeSpellAttack(sheet) {
     const base = String(sheet?.spellsInfo?.base?.code || sheet?.spellsInfo?.base?.value || "int").trim() || "int";
-    const prof = numLike(sheet?.proficiency, 0);
+    const prof = getProfBonus(sheet);
     const score = safeInt(sheet?.stats?.[base]?.score, 10);
     const mod = scoreToModifier(score);
     return prof + mod;
@@ -923,6 +923,35 @@ function updateWeaponsBonuses(root, sheet) {
   });
 }
 
+// Обновляем метрики заклинаний без полного ререндера (СЛ спасброска / Бонус атаки)
+function updateSpellsMetrics(root, sheet) {
+  if (!root || !sheet) return;
+
+  const base = String(sheet?.spellsInfo?.base?.code || sheet?.spellsInfo?.base?.value || 'int').trim() || 'int';
+  const prof = getProfBonus(sheet);
+  const score = safeInt(sheet?.stats?.[base]?.score, 10);
+  const mod = scoreToModifier(score);
+  const computedAttack = prof + mod;
+  const computedSave = 8 + prof + mod;
+
+  // СЛ спасброска (только отображение)
+  const saveEl = root.querySelector('[data-spell-save-dc]');
+  if (saveEl) saveEl.textContent = String(computedSave);
+
+  // Бонус атаки (input)
+  const atkInput = root.querySelector('[data-spell-attack-bonus]');
+  if (atkInput) {
+    const hasCustom = !!sheet?.spellsInfo?.mod && typeof sheet.spellsInfo.mod === 'object' && (sheet.spellsInfo.mod.customModifier ?? '').toString().trim() !== '';
+    if (!hasCustom) atkInput.value = String(computedAttack);
+  }
+
+  // Подсказка под метриками
+  const noteEl = root.querySelector('[data-spell-attack-note]');
+  if (noteEl) {
+    noteEl.innerHTML = `Бонус атаки по умолчанию: <b>Владение</b> (${prof}) + <b>модификатор выбранной характеристики</b> (${formatMod(mod)}).`;
+  }
+}
+
 
 function rerenderCombatTabInPlace(root, player, canEdit) {
   const main = root?.querySelector('#sheet-main');
@@ -938,6 +967,9 @@ function rerenderCombatTabInPlace(root, player, canEdit) {
   bindNotesEditors(root, player, canEdit);
   bindSlotEditors(root, player, canEdit);
   bindCombatEditors(root, player, canEdit);
+
+  // после перерендера — синхронизируем авто-формулу бонуса атаки/СЛ
+  updateSpellsMetrics(root, sheet);
 
   updateWeaponsBonuses(root, player.sheet?.parsed);
 }
@@ -1131,18 +1163,16 @@ function bindEditableInputs(root, player, canEdit) {
         if (path === "name.value") player.name = val || player.name;
 
         // live updates
-if (path === "proficiency") {
+if (path === "proficiency" || path === "proficiencyCustom") {
   updateSkillsAndPassives(root, player.sheet.parsed);
   updateWeaponsBonuses(root, player.sheet.parsed);
+  // если открыта вкладка "Заклинания" — обновляем формулу бонуса атаки/СЛ без перерендера
+  if (player?._activeSheetTab === "spells") {
+    updateSpellsMetrics(root, player.sheet.parsed);
+  }
 }
         if (path === "vitality.ac.value" || path === "vitality.hp-max.value" || path === "vitality.hp-current.value" || path === "vitality.speed.value") {
           updateHeroChips(root, player.sheet.parsed);
-        }
-
-        // Если мы сейчас на вкладке "Заклинания" — пересчитываем метрики при изменении владения
-        if (player?._activeSheetTab === "spells" && (path === "proficiency" || path === "proficiencyCustom")) {
-          const s = player.sheet?.parsed;
-          if (s) rerenderSpellsTabInPlace(root, player, s, canEdit);
         }
 
         scheduleSheetSave(player);
@@ -1230,6 +1260,11 @@ if (path === "proficiency") {
         updateDerivedForStat(root, sheet, statKey);
         updateSkillsAndPassives(root, sheet);
          updateWeaponsBonuses(root, sheet);
+
+        // если открыта вкладка "Заклинания" — пересчитаем формулу бонуса атаки/СЛ
+        if (player?._activeSheetTab === "spells") {
+          updateSpellsMetrics(root, sheet);
+        }
 
         scheduleSheetSave(player);
       };
@@ -2566,7 +2601,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
     const prof = safeInt(vm?.profBonus, 0);
     const abilScore = safeInt(statScoreByKey[base], 10);
-    const abilMod = abilityModFromScore(abilScore);
+    // модификатор характеристики по таблице (1..30) => -5..+10
+    const abilMod = scoreToModifier(abilScore);
 
     const computedAttack = prof + abilMod;
     const computedSave = 8 + prof + abilMod;
@@ -2603,7 +2639,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
           <div class="spell-metrics">
             <div class="spell-metric">
               <div class="spell-metric-label">СЛ спасброска</div>
-              <div class="spell-metric-val">${escapeHtml(String(saveVal))}</div>
+              <div class="spell-metric-val" data-spell-save-dc>${escapeHtml(String(saveVal))}</div>
             </div>
 
             <div class="spell-metric">
@@ -2613,7 +2649,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
               </div>
             </div>
           </div>
-          <div class="sheet-note" style="margin-top:8px;">
+          <div class="sheet-note" style="margin-top:8px;" data-spell-attack-note>
             Бонус атаки по умолчанию: <b>Владение</b> (${prof}) + <b>модификатор выбранной характеристики</b> (${formatMod(abilMod)}).
           </div>
         </div>
