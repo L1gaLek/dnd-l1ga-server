@@ -515,7 +515,15 @@ function pushOtherDiceEvent(ev) {
     : "-";
 
   const head = `${ev.fromName || "Игрок"}: ${ev.kindText || `d${ev.sides} × ${ev.count}`}`;
-  const tail = `${rollsText} = ${ev.total}`;
+
+  // Для одиночного броска с бонусом показываем компактно: "12+4=16"
+  let tail = `${rollsText} = ${ev.total}`;
+  const bonusNum = Number(ev.bonus) || 0;
+  if (Number(ev.count) === 1 && bonusNum !== 0 && Array.isArray(ev.rolls) && ev.rolls.length === 1) {
+    const r = Number(ev.rolls[0]) || 0;
+    const sign = bonusNum >= 0 ? "+" : "-";
+    tail = `${r}${sign}${Math.abs(bonusNum)}=${ev.total}`;
+  }
 
   item.innerHTML = `
     <div class="dice-others__head">${escapeHtmlLocal(head)}</div>
@@ -725,7 +733,15 @@ function pushOtherDice(ev) {
 
   const head = `${ev.fromName || 'Игрок'}: ${ev.kindText || `d${ev.sides} × ${ev.count}`}`;
   const rollsText = (ev.rolls && ev.rolls.length) ? ev.rolls.join(' + ') : '-';
-  const body = `${rollsText} = ${ev.total}`;
+
+  // Для одиночного броска с бонусом показываем компактно: "12+4=16"
+  let body = `${rollsText} = ${ev.total}`;
+  const bonusNum = Number(ev.bonus) || 0;
+  if (Number(ev.count) === 1 && bonusNum !== 0 && Array.isArray(ev.rolls) && ev.rolls.length === 1) {
+    const r = Number(ev.rolls[0]) || 0;
+    const sign = bonusNum >= 0 ? '+' : '-';
+    body = `${r}${sign}${Math.abs(bonusNum)}=${ev.total}`;
+  }
 
   item.innerHTML = `
     <div class="dice-others__head">${escapeHtmlLocal(head)}</div>
