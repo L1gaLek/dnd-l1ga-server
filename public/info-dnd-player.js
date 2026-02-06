@@ -1512,43 +1512,79 @@ async function fetchSpellHtml(url) {
   return await r.text();
 }
 
-function extractSpellFromHtml(html) {
-  const txt = String(html || "");
-  // name
-  let name = "";
-  try {
-    const doc = new DOMParser().parseFromString(txt, "text/html");
-    name = (doc.querySelector('h2.card-title[itemprop="name"]')?.textContent || "").trim();
-  } catch { name = ""; }
 
-  // description block: from <ul class="params card__article-body"> ... to <section class="comments-block ...">
+function cleanupSpellDesc(raw) {
+  let s = String(raw || "");
+
+  // normalize newlines
+  s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // remove injected commentsAccess tail (sometimes прилетает из html)
+  s = s.replace(/window\.commentsAccess\s*=\s*\{[\s\S]*?\}\s*;?/g, "");
+  s = s.replace(/window\.commentsAccess[\s\S]*?;?/g, "");
+
+  // fix glued words like "вызовВремя" -> "вызов\nВремя"
+  s = s.replace(/([0-9a-zа-яё])([A-ZА-ЯЁ])/g, "$1\n$2");
+
+  // trim each line + collapse excessive blank lines
+  s = s
+    .split("\n")
+    .map(l => l.replace(/\s+$/g, ""))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return s;
+}
+
+function extractSpellFromHtml(html) {
+  const rawHtml = String(html || "");
+
+  let name = "";
   let desc = "";
-  const start = txt.indexOf('<ul class="params card__article-body"');
-  const end = txt.indexOf('<section class="comments-block');
-  if (start !== -1 && end !== -1 && end > start) {
-    const slice = txt.slice(start, end);
-    const wrap = document.createElement("div");
-    wrap.innerHTML = slice;
-    // innerText обычно сохраняет абзацы и списки достаточно близко к сайту
-    desc = (wrap.innerText || "").replaceAll("\r\n", "\n").replaceAll("\r", "\n");
-    // подчистим лишние пустые строки
-    desc = desc
-      .split("\n")
-      .map(l => l.replace(/\s+$/g, ""))
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
+
+  try {
+    const doc = new DOMParser().parseFromString(rawHtml, "text/html");
+
+    // name
+    name = (doc.querySelector('h2.card-title[itemprop="name"]')?.textContent || "").trim();
+
+    // main description: from <ul class="params card__article-body"> ... until comments block
+    const startEl = doc.querySelector('ul.params.card__article-body');
+    if (startEl) {
+      // best-effort: take text of this block (it usually contains all params + описание)
+      desc = (startEl.innerText || startEl.textContent || "");
+    }
+
+    // fallback: slice between markers if DOM layout changed
+    if (!desc) {
+      const start = rawHtml.indexOf('<ul class="params card__article-body"');
+      const end = rawHtml.indexOf('<section class="comments-block');
+      if (start !== -1 && end !== -1 && end > start) {
+        const slice = rawHtml.slice(start, end);
+        const wrap = document.createElement("div");
+        wrap.innerHTML = slice;
+        desc = (wrap.innerText || wrap.textContent || "");
+      }
+    }
+  } catch {
+    name = name || "";
+    desc = desc || "";
   }
+
+  desc = cleanupSpellDesc(desc);
 
   return { name: name || "(без названия)", desc: desc || "" };
 }
+
+
 
 function ensureSpellSaved(sheet, level, name, href, desc) {
   if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
 
   // store meta
   sheet.text[`spell-name:${href}`] = { value: String(name || "").trim() };
-  sheet.text[`spell-desc:${href}`] = { value: String(desc || "") };
+  sheet.text[`spell-desc:${href}`] = { value: cleanupSpellDesc(desc || "") };
 
   // append to plain list if absent
   const plainKey = `spells-level-${level}-plain`;
@@ -1559,6 +1595,28 @@ function ensureSpellSaved(sheet, level, name, href, desc) {
   sheet.text[plainKey] = { value: lines.join("\n") };
 }
 
+
+
+function deleteSpellSaved(sheet, href) {
+  if (!sheet || !href) return;
+
+  if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
+
+  // remove meta
+  delete sheet.text[`spell-name:${href}`];
+  delete sheet.text[`spell-desc:${href}`];
+
+  // remove from all plain lists
+  for (let lvl = 0; lvl <= 9; lvl++) {
+    const plainKey = `spells-level-${lvl}-plain`;
+    const cur = String(sheet.text?.[plainKey]?.value ?? "");
+    if (!cur) continue;
+    const lines = cur.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    const next = lines.filter(l => !l.includes(href));
+    if (next.length) sheet.text[plainKey] = { value: next.join("\n") };
+    else delete sheet.text[plainKey];
+  }
+}
 
 function makeManualHref() {
   // псевдо-ссылка для "ручных" заклинаний, чтобы хранить описание в sheet.text
@@ -2068,7 +2126,21 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       return;
     }
 
-    const descBtn = e.target?.closest?.("[data-spell-desc-toggle]");
+const delBtn = e.target?.closest?.("[data-spell-delete]");
+    if (delBtn) {
+      if (!canEdit) return;
+      const item = delBtn.closest(".spell-item");
+      const href = item?.getAttribute?.("data-spell-url") || "";
+      if (!href) return;
+      if (!confirm("Удалить это заклинание?")) return;
+
+      deleteSpellSaved(sheet, href);
+      scheduleSheetSave(player);
+      rerenderSpellsTabInPlace(root, player, sheet, canEdit);
+      return;
+    }
+
+        const descBtn = e.target?.closest?.("[data-spell-desc-toggle]");
     if (descBtn) {
       const item = descBtn.closest(".spell-item");
       const desc = item?.querySelector?.(".spell-item-desc");
@@ -2092,7 +2164,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
     const key = `spell-desc:${href}`;
     if (!sheet.text[key] || typeof sheet.text[key] !== "object") sheet.text[key] = { value: "" };
-    sheet.text[key].value = String(ta.value || "");
+    sheet.text[key].value = cleanupSpellDesc(String(ta.value || ""));
     scheduleSheetSave(player);
   });
 }
@@ -2234,8 +2306,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
   function renderSpellCard({ name, href, desc }) {
     const safeHref = escapeHtml(href || "");
     const safeName = escapeHtml(name || href || "(без названия)");
-    const text = String(desc || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-    const hasDesc = true; // кнопку "Описание" держим активной всегда (можно вписывать вручную)
+    const text = cleanupSpellDesc(desc || "");
 
     const isHttp = /^https?:\/\//i.test(String(href || ""));
     const titleHtml = isHttp
@@ -2246,7 +2317,10 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       <div class="spell-item" data-spell-url="${safeHref}">
         <div class="spell-item-head">
           ${titleHtml}
-          <button class="spell-desc-btn" type="button" data-spell-desc-toggle>Описание</button>
+          <div class="spell-item-actions">
+            <button class="spell-desc-btn" type="button" data-spell-desc-toggle>Описание</button>
+            <button class="spell-del-btn" type="button" data-spell-delete>Удалить</button>
+          </div>
         </div>
         <div class="spell-item-desc hidden">
           <textarea class="spell-desc-editor" data-spell-desc-editor rows="6" placeholder="Описание (можно редактировать)…">${escapeHtml(text)}</textarea>
@@ -2255,6 +2329,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       </div>
     `;
   }
+
+
 
   function renderSlots(vm) {
     const slots = Array.isArray(vm?.slots) ? vm.slots : [];
