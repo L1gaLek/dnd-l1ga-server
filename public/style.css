@@ -997,28 +997,6 @@ button:hover {
   gap:5px;
 }
 
-/* разделитель между ПРОВЕРКА/СПАСБРОСОК и списком навыков */
-.lss-stat-sep{
-  margin:8px 0 6px;
-  height:1px;
-  background:rgba(255,255,255,0.10);
-  position:relative;
-}
-.lss-stat-sep > span{
-  position:absolute;
-  top:50%;
-  left:50%;
-  transform:translate(-50%,-50%);
-  padding:0 8px;
-  font-size:11px;
-  font-weight:800;
-  letter-spacing:0.02em;
-  color:rgba(255,255,255,0.55);
-  background:rgba(20,20,20,0.92);
-  border:1px solid rgba(255,255,255,0.10);
-  border-radius:999px;
-}
-
 .lss-skill-row{
   display:flex;
   align-items:center;
@@ -2932,7 +2910,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .sheet-card--profile{ width: 100%; }
 .profile-grid{
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
 .profile-col{
@@ -2941,28 +2919,6 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 @media (max-width: 760px){
   .profile-grid{ grid-template-columns: 1fr; }
-}
-
-.profile-avatar-preview{
-  width: 74px;
-  height: 74px;
-  border-radius: 14px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.profile-avatar-preview img{
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display:block;
-}
-.profile-avatar-empty{
-  color: rgba(255,255,255,0.55);
-  font-weight: 800;
 }
 
 /* ===== Inspiration chip ===== */
