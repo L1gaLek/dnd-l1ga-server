@@ -2898,6 +2898,12 @@ textarea[data-sheet-path="text.profPlain.value"]{
   gap: 10px;
   margin: 6px 0 10px;
 }
+
+/* Чтобы клик по полю "Истощение/Состояние" открывал список (а не ставил курсор) */
+.sheet-chip--exh .sheet-chip-input,
+.sheet-chip--cond .sheet-chip-input{
+  pointer-events: none;
+}
 .sheet-chip-input--wide{
   width: 100%;
   text-align: left;
