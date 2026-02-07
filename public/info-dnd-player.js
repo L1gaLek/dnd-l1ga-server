@@ -413,6 +413,51 @@
     { name: "Без сознания", desc: "Бессознательное существо недееспособно (см. состояние), не может двигаться или говорить и не осознает своего окружения.\nСущество роняет то, что держало, и падает ничком, получая состояние \"Распластанное\".\nСущество автоматически проваливает спасброски по Силе и Ловкости.\nБроски атаки против существа совершаются с преимуществом.\nЛюбая атака, которая поражает существо, является критическим попаданием, если нападающий находится в пределах 5 футов от существа." }
   ];
 
+// ================== LANGUAGES (Learn popup) ==================
+const LANGUAGES_DB = {
+  common: [
+    { id: "giant", name: "Великаний", typical: "Огры, великаны", script: "Дварфская" },
+    { id: "gnomish", name: "Гномий", typical: "Гномы", script: "Дварфская" },
+    { id: "goblin", name: "Гоблинский", typical: "Гоблиноиды", script: "Дварфская" },
+    { id: "dwarvish", name: "Дварфский", typical: "Дварфы", script: "Дварфская" },
+    { id: "common", name: "Общий", typical: "Люди", script: "Общая" },
+    { id: "orc", name: "Орочий", typical: "Орки", script: "Дварфская" },
+    { id: "halfling", name: "Полуросликов", typical: "Полурослики", script: "Общая" },
+    { id: "elvish", name: "Эльфийский", typical: "Эльфы", script: "Эльфийская" }
+  ],
+  exotic: [
+    { id: "abyssal", name: "Бездны", typical: "Демоны", script: "Инфернальная" },
+    { id: "deep_speech", name: "Глубинная Речь", typical: "Иллитиды, бехолдеры", script: "-" },
+    { id: "draconic", name: "Драконий", typical: "Драконы, драконорождённые", script: "Драконья" },
+    { id: "infernal", name: "Инфернальный", typical: "Дьяволы", script: "Инфернальная" },
+    { id: "celestial", name: "Небесный", typical: "Небожители", script: "Небесная" },
+    { id: "primordial", name: "Первичный", typical: "Элементали", script: "Дварфская" },
+    { id: "undercommon", name: "Подземный", typical: "Купцы Подземья", script: "Эльфийская" },
+    { id: "sylvan", name: "Сильван", typical: "Фейские существа", script: "Эльфийская" }
+  ]
+};
+
+function extractLanguagesHint(profText) {
+  const t = String(profText || "");
+  const m = t.match(/Знание\s+языков\s*:\s*([^\n\r]+)/i);
+  return (m && m[1]) ? String(m[1]).trim() : "";
+}
+
+function normalizeLanguagesLearned(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(x => x && typeof x === "object")
+    .map(x => ({
+      id: String(x.id || ""),
+      name: String(x.name || ""),
+      typical: String(x.typical || ""),
+      script: String(x.script || ""),
+      category: String(x.category || "")
+    }))
+    .filter(x => x.name);
+}
+
+
   function parseCondList(s) {
     if (!s || typeof s !== "string") return [];
     return s.split(",").map(x => x.trim()).filter(Boolean);
@@ -899,6 +944,7 @@ function ensureWiredCloseHandlers() {
         level: { value: 1 },
         race: { value: "" },
         raceArchetype: { value: "" },
+        languagesLearned: [],
         background: { value: "" },
         alignment: { value: "" }
       },
@@ -1162,6 +1208,8 @@ function ensureWiredCloseHandlers() {
     const profText = (typeof profPlain === "string" && profPlain.length)
       ? profPlain
       : (profLines && profLines.length ? profLines.join("\n") : "");
+    const languagesHint = extractLanguagesHint(profText);
+    const languagesLearned = normalizeLanguagesLearned(sheet?.info?.languagesLearned);
 
     // personality (редактируемые поля)
     const personality = {
@@ -1340,7 +1388,7 @@ const weapons = weaponsRaw
 
     const coinsViewDenom = String(sheet?.coinsView?.denom || "gp").toLowerCase();
 
-    return { name, cls, lvl, race, hp, hpCur, hpTemp, ac, spd, inspiration, exhaustion, conditions, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins, coinsViewDenom };
+    return { name, cls, lvl, race, hp, hpCur, hpTemp, ac, spd, inspiration, exhaustion, conditions, stats, passive, profLines, profText, languagesHint, languagesLearned, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins, coinsViewDenom };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -1798,6 +1846,101 @@ if (path === "proficiency" || path === "proficiencyCustom") {
       inp.addEventListener("change", handler);
     });
   }
+
+function openLanguagesPopup(curPlayer) {
+  const { overlay, close } = createPopupOverlay();
+  const safeTitle = "Выбор языка";
+
+  const renderCol = (title, items, category) => {
+    const rows = items.map(l => `
+      <div class="lss-lang-row" data-lang-id="${escapeHtml(l.id)}">
+        <div class="lss-lang-row-head">
+          <div class="lss-lang-row-name">${escapeHtml(l.name)}</div>
+          <button class="popup-btn primary" type="button" data-lang-learn="${escapeHtml(l.id)}" data-lang-cat="${escapeHtml(category)}">Выучить</button>
+        </div>
+        <div class="lss-lang-row-meta">Типичный представитель — ${escapeHtml(l.typical)}; Письменность — ${escapeHtml(l.script)}</div>
+      </div>
+    `).join("");
+
+    return `
+      <div class="lss-lang-col">
+        <div class="lss-lang-col-title">${escapeHtml(title)}</div>
+        ${rows}
+      </div>
+    `;
+  };
+
+  overlay.innerHTML = `
+    <div class="popup-card lss-lang-popup-card">
+      <div class="popup-head">
+        <div class="popup-title">${safeTitle}</div>
+        <button class="popup-close" type="button" data-popup-close>Закрыть</button>
+      </div>
+
+      <div class="popup-grid lss-lang-popup-grid">
+        ${renderCol("Обычные языки", LANGUAGES_DB.common, "common")}
+        ${renderCol("Экзотические языки", LANGUAGES_DB.exotic, "exotic")}
+      </div>
+    </div>
+  `;
+
+  overlay.addEventListener("click", (e) => {
+    const btn = e.target?.closest?.("[data-lang-learn]");
+    if (!btn) return;
+
+    const { player: p, canEdit } = getState();
+    if (!canEdit) return;
+
+    const sheet = getSheet();
+    if (!sheet) return;
+
+    if (!sheet.info || typeof sheet.info !== "object") sheet.info = {};
+    if (!Array.isArray(sheet.info.languagesLearned)) sheet.info.languagesLearned = [];
+
+    const id = String(btn.getAttribute("data-lang-learn") || "").trim();
+    const cat = String(btn.getAttribute("data-lang-cat") || "").trim();
+
+    const all = [
+      ...LANGUAGES_DB.common.map(x => ({ ...x, category: "common" })),
+      ...LANGUAGES_DB.exotic.map(x => ({ ...x, category: "exotic" }))
+    ];
+    const found = all.find(x => x.id === id);
+    if (!found) return;
+
+    const already = sheet.info.languagesLearned.some(x => String(x?.id || "") === id || String(x?.name || "") === found.name);
+    if (!already) {
+      sheet.info.languagesLearned.push({
+        id: found.id,
+        name: found.name,
+        typical: found.typical,
+        script: found.script,
+        category: cat || found.category || ""
+      });
+    }
+
+    scheduleSheetSave(p);
+    markModalInteracted(p?.id);
+    close();
+
+    // перерисуем модалку, чтобы "Языки" сразу обновились
+    if (p) renderSheetModal(p);
+  });
+}
+
+function bindLanguagesUi(root, player, canEdit) {
+  if (!root) return;
+
+  root.addEventListener("click", (e) => {
+    const openBtn = e.target?.closest?.("[data-lang-popup-open]");
+    if (!openBtn) return;
+
+    const { player: curPlayer, canEdit: curCanEdit } = getState();
+    if (!curCanEdit) return;
+
+    openLanguagesPopup(curPlayer);
+  });
+}
+
 
   // ===== clickable dots binding (skills boost) =====
   function bindSkillBoostDots(root, player, canEdit) {
@@ -3301,14 +3444,46 @@ function bindSpellAddAndDesc(root, player, canEdit) {
   }
 
   function renderProfBox(vm) {
-    // всегда показываем блок, даже без загруженного файла
-    return `
-      <div class="lss-profbox">
-        <div class="lss-passives-title">ПРОЧИЕ ВЛАДЕНИЯ И ЗАКЛИНАНИЯ</div>
-        <textarea class="lss-prof-text" rows="8" data-sheet-path="text.profPlain.value" placeholder="Например: владения, инструменты, языки, заклинания...">${escapeHtml(vm.profText || "")}</textarea>
+  const hint = String(vm.languagesHint || "").trim();
+  const learned = Array.isArray(vm.languagesLearned) ? vm.languagesLearned : [];
+
+  const learnedHtml = learned.length
+    ? learned.map(l => `
+        <div class="lss-lang-item">
+          <div class="lss-lang-item-name">${escapeHtml(l.name)}</div>
+          <div class="lss-lang-item-meta">Типичный представитель — ${escapeHtml(l.typical || "-")}; Письменность — ${escapeHtml(l.script || "-")}</div>
+        </div>
+      `).join("")
+    : `<div class="sheet-note">Пока языки не выбраны</div>`;
+
+  // всегда показываем блок, даже без загруженного файла
+  return `
+    <div class="lss-profbox">
+      <div class="lss-passives-title">ПРОЧИЕ ВЛАДЕНИЯ И ЗАКЛИНАНИЯ</div>
+
+      <div class="lss-prof-grid">
+        <div class="lss-langbox">
+          <div class="lss-langbox-head">
+            <div class="lss-langbox-title">ЯЗЫКИ</div>
+            <button class="lss-lang-learn-btn" type="button" data-lang-popup-open>Выучить язык</button>
+          </div>
+
+          <div class="lss-langbox-hint ${hint ? "" : "hidden"}">
+            <span class="lss-langbox-hint-label">Знание языков:</span>
+            <span class="lss-langbox-hint-val">${escapeHtml(hint)}</span>
+          </div>
+
+          <div class="lss-langbox-list">
+            ${learnedHtml}
+          </div>
+        </div>
+
+        <textarea class="lss-prof-text lss-prof-text--wide" rows="8" data-sheet-path="text.profPlain.value"
+          placeholder="Например: владения, инструменты, языки, заклинания...">${escapeHtml(vm.profText || "")}</textarea>
       </div>
-    `;
-  }
+    </div>
+  `;
+}
 
   function renderBasicTab(vm, canEdit) {
     return `
@@ -4187,6 +4362,7 @@ function renderCombatTab(vm) {
           bindSpellAddAndDesc(sheetContent, player, canEdit);
           bindCombatEditors(sheetContent, player, canEdit);
           bindInventoryEditors(sheetContent, player, canEdit);
+          bindLanguagesUi(sheetContent, player, canEdit);
           updateCoinsTotal(sheetContent, player.sheet?.parsed);
         }
       });
