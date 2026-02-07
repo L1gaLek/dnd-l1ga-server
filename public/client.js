@@ -72,7 +72,7 @@ joinBtn.addEventListener('click', () => {
 
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
 
-  const savedUserId = localStorage.getItem("dnd_user_id") || "";
+    const savedUserId = localStorage.getItem("dnd_user_id") || "";
 
   ws.onopen = () => ws.send(JSON.stringify({ type: "register", userId: savedUserId, name, role }));
 
@@ -1039,7 +1039,6 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
-
 
 
 
