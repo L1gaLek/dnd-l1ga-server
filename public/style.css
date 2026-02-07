@@ -641,45 +641,6 @@ button:hover {
   min-width: 86px;
 }
 
-.sheet-chip--clickable{
-  cursor:pointer;
-  user-select:none;
-}
-.sheet-chip--clickable:focus{
-  outline:2px solid rgba(0,200,255,0.45);
-  outline-offset:2px;
-}
-.sheet-chip--hp{
-  min-width: 132px; /* чтобы влезало "(10) 21/21" */
-}
-
-.popup-card.hp-popup{
-  width:min(520px, 100%);
-}
-
-.hp-delta-row{
-  display:flex;
-  align-items:center;
-  gap:10px;
-}
-.hp-delta-btn{
-  width:46px;
-  height:40px;
-  border-radius:12px;
-  background:rgba(255,255,255,0.10);
-  border:1px solid rgba(255,255,255,0.16);
-  color:inherit;
-  font-size:22px;
-  font-weight:800;
-  cursor:pointer;
-}
-.hp-delta-input{
-  flex:1;
-  text-align:center;
-}
-
-
-
 /* HP chip: "liquid" fill (shrinks right-to-left) */
 .sheet-chip--hp{
   position: relative;
@@ -2754,3 +2715,122 @@ textarea[data-sheet-path="text.profPlain.value"]{
   white-space: nowrap;
 }
 
+
+/* ===== HP popover (Здоровье) ===== */
+.hp-popover{
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+.hp-popover.hidden{ display:none; }
+
+.hp-popover__backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+}
+
+.hp-popover__panel{
+  position: absolute;
+  top: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100vw - 28px));
+  background: rgba(20,20,20,0.98);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55);
+  padding: 12px;
+}
+
+.hp-popover__head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+
+.hp-popover__title{
+  font-weight: 900;
+  font-size: 14px;
+  letter-spacing: 0.2px;
+}
+
+.hp-popover__x{
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: inherit;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor:pointer;
+}
+
+.hp-popover__grid{
+  padding-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.hp-row{
+  display:grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.hp-label{
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.hp-input{
+  width: 120px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: inherit;
+  outline: none;
+}
+
+.hp-divider{
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+  margin: 2px 0;
+}
+
+.hp-row--delta{
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.hp-delta{
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  gap: 8px;
+  align-items:center;
+}
+
+.hp-delta__btn{
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  color: inherit;
+  border-radius: 12px;
+  height: 38px;
+  cursor:pointer;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.hp-input--delta{
+  width: 100%;
+  text-align: center;
+  height: 38px;
+}
+
+.hp-note{
+  font-size: 11px;
+  opacity: 0.7;
+}
