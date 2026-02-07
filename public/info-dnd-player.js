@@ -1426,12 +1426,11 @@ const weapons = weaponsRaw
     }
 
 
-    // Inspiration star
+    // Inspiration star (SVG)
     const inspChip = root.querySelector('[data-hero="insp"] .insp-star');
     if (inspChip) {
       const on = !!safeInt(sheet?.inspiration, 0);
       inspChip.classList.toggle('on', on);
-      inspChip.textContent = on ? '★' : '☆';
     }
 
     const spdEl = root.querySelector('[data-hero-val="speed"]');
@@ -3926,7 +3925,9 @@ function renderCombatTab(vm) {
           <div class="sheet-chips">
             <div class="sheet-chip sheet-chip--insp" data-hero="insp" title="Вдохновение" ${canEdit ? "" : "data-readonly"}>
               <div class="k">Вдохновение</div>
-              <div class="insp-star ${vm.inspiration ? "on" : ""}" aria-label="Вдохновение">${vm.inspiration ? "★" : "☆"}</div>
+              <svg class="insp-star ${vm.inspiration ? "on" : ""}" viewBox="0 0 24 24" aria-label="Вдохновение" role="img">
+                <path d="M12 2.6l2.93 5.94 6.56.95-4.75 4.63 1.12 6.53L12 17.9l-5.86 3.08 1.12-6.53L2.5 9.49l6.56-.95L12 2.6z"></path>
+              </svg>
             </div>
             <div class="sheet-chip" data-hero="prof" title="Бонус мастерства">
               <div class="k">Владение</div>
