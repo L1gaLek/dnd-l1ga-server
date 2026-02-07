@@ -1537,6 +1537,9 @@ if (path === "proficiency") {
       updateCoinsTotal(root, sheet);
       scheduleSheetSave(player);
 
+    });
+  }
+
   // ===== HP popover (health chip) =====
   function bindHpPopover(root, player, canEdit) {
     if (!root || !player?.sheet?.parsed) return;
