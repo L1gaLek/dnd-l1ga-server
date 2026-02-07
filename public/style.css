@@ -648,16 +648,6 @@ button:hover {
   --hp-fill-pct: 100%;
 }
 
-.sheet-chip--hp .hp-liquid{
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: var(--hp-fill-pct);
-  background: rgba(137,21,21,0.55);
-  border-radius: 10px;
-  pointer-events: none;
-}
 
 /* small "wave" highlight */
 .sheet-chip--hp .hp-liquid::after{
@@ -2717,46 +2707,46 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 
 
-
 /* === HP chip clickable + popover === */
-.hp-chip-clickable{ cursor: pointer; }
-.sheet-chip--hp{ min-width: 150px; } /* enough for (10) 21/21 */
-
-.hp-popover-wrap{
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.hp-popover-backdrop{
+.sheet-chip.is-clickable{ cursor: pointer; user-select: none; }
+.sheet-chip--hp{ min-width: 170px; position: relative; overflow: hidden; }
+.sheet-chip--hp .hp-liquid{
   position:absolute;
   inset:0;
-  background: rgba(0,0,0,0.55);
+  background: rgba(137,21,21,0.55);
+  transform-origin: right center;
+  transform: scaleX(calc(var(--hp-fill-pct, 0) / 100));
+  transition: transform 220ms ease;
+  pointer-events:none;
 }
+.sheet-chip--hp .k, .sheet-chip--hp .v{ position: relative; z-index: 1; }
+
 .hp-popover{
-  position: relative;
-  width: min(420px, calc(100vw - 24px));
+  position:absolute;
+  width: 320px;
+  max-width: calc(100% - 16px);
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.18);
-  background: #141414;
-  color: #fff;
-  box-shadow: 0 12px 36px rgba(0,0,0,0.45);
+  background: rgba(25,25,25,0.95);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
   padding: 12px;
+  display:none;
+  z-index: 9999;
 }
-.hp-popover-head{
+.hp-popover.is-open{ display:block; }
+
+.hp-popover__head{
   display:flex;
   align-items:center;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap:10px;
+  margin-bottom:10px;
 }
-.hp-popover-title{
-  font-size: 14px;
+.hp-popover__title{
   font-weight: 900;
+  font-size: 14px;
 }
-.hp-popover-x{
+.hp-popover__close{
   width: 28px;
   height: 28px;
   border-radius: 10px;
@@ -2764,58 +2754,56 @@ textarea[data-sheet-path="text.profPlain.value"]{
   background: rgba(255,255,255,0.06);
   color:#fff;
   cursor:pointer;
-  font-size: 18px;
-  line-height: 0;
 }
-.hp-popover-grid{
+
+.hp-popover__grid{
   display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap:10px;
 }
+
 .hp-field{
   border: 1px solid rgba(255,255,255,0.14);
   background: rgba(255,255,255,0.05);
   border-radius: 12px;
   padding: 10px;
 }
-.hp-field--wide{ grid-column: 1 / -1; }
-.hp-field-label{
+.hp-field__label{
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 800;
   opacity: 0.85;
   margin-bottom: 6px;
 }
-.hp-field-input{
+.hp-field__input{
   width:100%;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.18);
   background: rgba(255,255,255,0.06);
   color:#fff;
-  padding: 8px 10px;
-  font-size: 14px;
+  padding: 7px 9px;
   font-weight: 900;
-  text-align: center;
-  outline: none;
+  outline:none;
 }
+.hp-field--wide{ padding-bottom: 12px; }
+
 .hp-adjust{
   display:flex;
   align-items:center;
-  gap: 8px;
+  gap:8px;
 }
-.hp-adjust-input{
-  flex: 1 1 auto;
+.hp-adjust__delta{
+  flex:1 1 auto;
   min-width: 80px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.18);
   background: rgba(255,255,255,0.06);
   color:#fff;
-  padding: 8px 10px;
-  font-size: 14px;
+  padding: 7px 9px;
   font-weight: 900;
-  text-align: center;
-  outline: none;
+  text-align:center;
+  outline:none;
 }
-.hp-adjust-btn{
+.hp-btn{
   width: 34px;
   height: 34px;
   border-radius: 10px;
@@ -2825,10 +2813,5 @@ textarea[data-sheet-path="text.profPlain.value"]{
   font-weight: 900;
   cursor:pointer;
 }
-.hp-adjust-btn--minus{ border-color: rgba(255,0,0,0.40); background: rgba(255,0,0,0.12); }
-.hp-adjust-btn--plus{ border-color: rgba(0,255,120,0.40); background: rgba(0,255,120,0.12); }
-.hp-field-hint{
-  margin-top: 6px;
-  font-size: 11px;
-  opacity: 0.7;
-}
+.hp-btn--minus{ border-color: rgba(255,0,0,0.45); background: rgba(255,0,0,0.12); }
+.hp-btn--plus{ border-color: rgba(0,255,120,0.45); background: rgba(0,255,120,0.12); }
