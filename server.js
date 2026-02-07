@@ -42,6 +42,18 @@ const server = http.createServer(app);
 // ================== WEBSOCKET ==================
 const wss = new WebSocket.Server({ server });
 
+// ===== WS HEARTBEAT (kills dead connections) =====
+setInterval(() => {
+  wss.clients.forEach(ws => {
+    if (ws.isAlive === false) {
+      try { ws.terminate(); } catch {}
+      return;
+    }
+    ws.isAlive = false;
+    try { ws.ping(); } catch {}
+  });
+}, 15000);
+
 // ================== GAME STATE ==================
 let gameState = {
   boardWidth: 10,
@@ -54,8 +66,12 @@ let gameState = {
   log: []
 };
 
-// ================== USERS ==================
-let users = []; // {id, name, role, ws}
+// ================== USERS (stable identities) ==================
+// userId -> { id, name, role, connections:Set<ws>, online:boolean, lastSeen:number }
+const usersById = new Map();
+
+// если пользователь оффлайн и у него нет персонажей — удалим через 10 минут
+const USER_CLEANUP_MS = 10 * 60 * 1000;
 
 // ================== HELPERS ==================
 function broadcast() {
@@ -65,11 +81,19 @@ function broadcast() {
   });
 }
 
+function makeUsersPayload() {
+  return Array.from(usersById.values()).map(u => ({
+    id: u.id,
+    name: u.name,
+    role: u.role,
+    online: !!u.online
+  }));
+}
+
 function broadcastUsers() {
-  const userList = users.map(u => ({ id: u.id, name: u.name, role: u.role }));
-  const msg = JSON.stringify({ type: "users", users: userList });
-  users.forEach(u => {
-    if (u.ws.readyState === WebSocket.OPEN) u.ws.send(msg);
+  const msg = JSON.stringify({ type: "users", users: makeUsersPayload() });
+  wss.clients.forEach(c => {
+    if (c.readyState === WebSocket.OPEN) c.send(msg);
   });
 }
 
@@ -80,23 +104,48 @@ function logEvent(text) {
 }
 
 function getUserByWS(ws) {
-  return users.find(u => u.ws === ws);
+  if (!ws || !ws.userId) return null;
+  return usersById.get(ws.userId) || null;
 }
 
 function isGM(ws) {
   const u = getUserByWS(ws);
-  return u && u.role === "GM";
+  return !!(u && u.role === "GM");
 }
 
 function ownsPlayer(ws, player) {
   const u = getUserByWS(ws);
-  return u && player.ownerId === u.id;
+  return !!(u && player && player.ownerId === u.id);
+}
+
+function hasAnyPlayersForUser(userId) {
+  return gameState.players.some(p => p.ownerId === userId);
+}
+
+function scheduleUserCleanupIfNeeded(userId) {
+  setTimeout(() => {
+    const u = usersById.get(userId);
+    if (!u) return;
+
+    // если снова онлайн — не трогаем
+    if (u.online) return;
+
+    // если у пользователя есть персонажи — НЕ удаляем (иначе потеряешь владельца)
+    if (hasAnyPlayersForUser(userId)) return;
+
+    usersById.delete(userId);
+    broadcastUsers();
+  }, USER_CLEANUP_MS);
 }
 
 // ================== WS HANDLERS ==================
 wss.on("connection", ws => {
   // Инициализация у нового клиента
   ws.send(JSON.stringify({ type: "init", state: gameState }));
+
+  // heartbeat flags
+  ws.isAlive = true;
+  ws.on("pong", () => { ws.isAlive = true; });
 
   ws.on("message", msg => {
     let data;
@@ -105,32 +154,57 @@ wss.on("connection", ws => {
     switch (data.type) {
 
       // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
-      case "register": {
-        const { name, role } = data;
+  case "register": {
+        const name = String(data.name || "").trim();
+        const role = String(data.role || "").trim();
+        const requestedId = String(data.userId || "").trim();
 
         if (!name || !role) {
           ws.send(JSON.stringify({ type: "error", message: "Имя и роль обязательны" }));
           return;
         }
 
-        // Только один GM
-        if (role === "GM" && users.some(u => u.role === "GM")) {
-          ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
-          return;
+        // если просят существующий id — переподключаем к тому же пользователю
+        let user = requestedId ? usersById.get(requestedId) : null;
+
+        if (!user) {
+          // проверка на единственного GM (но разрешаем если это тот же id)
+          const gmExists = Array.from(usersById.values()).some(u => u.role === "GM");
+          if (role === "GM" && gmExists) {
+            ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
+            return;
+          }
+
+          const id = uuidv4();
+          user = {
+            id,
+            name,
+            role,
+            connections: new Set(),
+            online: true,
+            lastSeen: Date.now()
+          };
+          usersById.set(id, user);
+        } else {
+          // обновим имя (чтобы при переподключении оно было актуальным)
+          user.name = name;
+          // роль лучше не менять на лету (иначе можно сломать права)
+          // но если хочешь — можно разрешить смену роли тут.
+          user.lastSeen = Date.now();
+          user.online = true;
         }
 
-        const id = uuidv4();
-        users.push({ id, name, role, ws });
+        ws.userId = user.id;
+        user.connections.add(ws);
 
-        ws.send(JSON.stringify({ type: "registered", id, role, name }));
+        ws.send(JSON.stringify({ type: "registered", id: user.id, role: user.role, name: user.name }));
 
-        // 🔑 ПОЛНАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЭТОМУ КЛИЕНТУ
+        // полная синхронизация только этому клиенту
         sendFullSync(ws);
 
-        // остальные — как и раньше
         broadcastUsers();
         broadcast();
-        logEvent(`${name} присоединился как ${role}`);
+        logEvent(`${user.name} присоединился как ${user.role}`);
         break;
       }
 
@@ -160,8 +234,8 @@ wss.on("connection", ws => {
       }
 
       case "addPlayer": {
-        const user = users.find(u => u.ws === ws);
-        if (!user) return;
+const user = getUserByWS(ws);
+if (!user) return;
 
         const isBase = !!data.player?.isBase;
 
@@ -473,13 +547,24 @@ case "diceEvent": {
   });
 
   ws.on("close", () => {
-    users = users.filter(u => u.ws !== ws);
-    broadcastUsers();
-    broadcast();
-  });
+  const user = getUserByWS(ws);
+  if (user) {
+    user.connections.delete(ws);
+    user.lastSeen = Date.now();
+
+    // если соединений больше нет — оффлайн
+    if (user.connections.size === 0) {
+      user.online = false;
+      scheduleUserCleanupIfNeeded(user.id);
+    }
+  }
+
+  broadcastUsers();
+  broadcast();
+});
 });
 
-function sendFullSync(ws) {
+unction sendFullSync(ws) {
   if (ws.readyState !== WebSocket.OPEN) return;
 
   ws.send(JSON.stringify({
@@ -489,11 +574,7 @@ function sendFullSync(ws) {
 
   ws.send(JSON.stringify({
     type: "users",
-    users: users.map(u => ({
-      id: u.id,
-      name: u.name,
-      role: u.role
-    }))
+    users: makeUsersPayload()
   }));
 }
 
@@ -518,5 +599,6 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
