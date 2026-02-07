@@ -557,6 +557,7 @@
 
     const hp = get(sheet, 'vitality.hp-max.value', '-');
     const hpCur = get(sheet, 'vitality.hp-current.value', '-');
+    const hpTemp = get(sheet, 'vitality.hp-temp.value', 0);
     const ac = get(sheet, 'vitality.ac.value', '-');
     const spd = get(sheet, 'vitality.speed.value', '-');
 
@@ -791,7 +792,7 @@ const weapons = weaponsRaw
 
     const coinsViewDenom = String(sheet?.coinsView?.denom || "gp").toLowerCase();
 
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins, coinsViewDenom };
+    return { name, cls, lvl, race, hp, hpCur, hpTemp, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins, coinsViewDenom };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -868,13 +869,14 @@ const weapons = weaponsRaw
     const ac = safeInt(sheet?.vitality?.ac?.value, 0);
     const hp = safeInt(sheet?.vitality?.["hp-max"]?.value, 0);
     const hpCur = safeInt(sheet?.vitality?.["hp-current"]?.value, 0);
+    const hpTemp = safeInt(sheet?.vitality?.["hp-temp"]?.value, 0);
     const spd = safeInt(sheet?.vitality?.speed?.value, 0);
 
     const acEl = root.querySelector('[data-hero-val="ac"]');
     if (acEl) acEl.textContent = String(ac);
 
     const hpEl = root.querySelector('[data-hero-val="hp"]');
-    if (hpEl) hpEl.textContent = `${hpCur}/${hp}`;
+    if (hpEl) hpEl.textContent = (hpTemp > 0) ? `(${hpTemp}) ${hpCur}/${hp}` : `${hpCur}/${hp}`;
 
     // HP "liquid" fill in chip (shrinks right-to-left)
     const hpChip = root.querySelector('[data-hero="hp"]');
@@ -1177,6 +1179,25 @@ function bindEditableInputs(root, player, canEdit) {
         else if (inp.type === "number") val = inp.value === "" ? "" : Number(inp.value);
         else val = inp.value;
 
+        // clamp HP changes to 0..hp-max
+        if (path === "vitality.hp-current.value") {
+          const maxHp = safeInt(player?.sheet?.parsed?.vitality?.["hp-max"]?.value, 0);
+          const n = safeInt(val, 0);
+          val = Math.max(0, Math.min(maxHp, n));
+          inp.value = String(val);
+        }
+        if (path === "vitality.hp-max.value") {
+          const nMax = Math.max(0, safeInt(val, 0));
+          val = nMax;
+          inp.value = String(val);
+          const curHp = safeInt(player?.sheet?.parsed?.vitality?.["hp-current"]?.value, 0);
+          if (curHp > nMax) {
+            setByPath(player.sheet.parsed, "vitality.hp-current.value", nMax);
+            const hpCurInput = root.querySelector('[data-sheet-path="vitality.hp-current.value"]');
+            if (hpCurInput && (hpCurInput.tagName === "INPUT" || hpCurInput.tagName === "TEXTAREA")) hpCurInput.value = String(nMax);
+          }
+        }
+
         setByPath(player.sheet.parsed, path, val);
 
         if (path === "name.value") player.name = val || player.name;
@@ -1186,7 +1207,7 @@ if (path === "proficiency") {
   updateSkillsAndPassives(root, player.sheet.parsed);
   updateWeaponsBonuses(root, player.sheet.parsed);
 }
-        if (path === "vitality.ac.value" || path === "vitality.hp-max.value" || path === "vitality.hp-current.value" || path === "vitality.speed.value") {
+        if (path === "vitality.ac.value" || path === "vitality.hp-max.value" || path === "vitality.hp-current.value" || path === "vitality.hp-temp.value" || path === "vitality.speed.value") {
           updateHeroChips(root, player.sheet.parsed);
         }
 
@@ -1515,6 +1536,120 @@ if (path === "proficiency") {
 
       updateCoinsTotal(root, sheet);
       scheduleSheetSave(player);
+
+  // ===== HP popover (health chip) =====
+  function bindHpPopover(root, player, canEdit) {
+    if (!root || !player?.sheet?.parsed) return;
+
+    // avoid duplicate handlers (root persists)
+    if (root.__hpPopoverBound) {
+      // keep latest refs
+      root.__hpPopoverState = { player, canEdit };
+      return;
+    }
+    root.__hpPopoverBound = true;
+    root.__hpPopoverState = { player, canEdit };
+
+    const getState = () => root.__hpPopoverState || { player, canEdit };
+
+    const getSheet = () => {
+      const { player: curPlayer } = getState();
+      const s = curPlayer?.sheet?.parsed;
+      if (!s || typeof s !== "object") return null;
+      if (!s.vitality || typeof s.vitality !== "object") s.vitality = {};
+      if (!s.vitality["hp-max"] || typeof s.vitality["hp-max"] !== "object") s.vitality["hp-max"] = { value: 0 };
+      if (!s.vitality["hp-current"] || typeof s.vitality["hp-current"] !== "object") s.vitality["hp-current"] = { value: 0 };
+      if (!s.vitality["hp-temp"] || typeof s.vitality["hp-temp"] !== "object") s.vitality["hp-temp"] = { value: 0 };
+      return s;
+    };
+
+    const backdrop = root.querySelector("[data-hp-popover-backdrop]");
+    const chip = root.querySelector("[data-hp-chip]");
+    const closeBtn = root.querySelector("[data-hp-popover-close]");
+
+    const open = () => {
+      const { canEdit: curCanEdit } = getState();
+      if (!backdrop) return;
+      backdrop.hidden = false;
+
+      // disable fields if cannot edit
+      backdrop.querySelectorAll("input[data-sheet-path]").forEach(inp => {
+        inp.disabled = !curCanEdit;
+      });
+
+      const deltaInput = backdrop.querySelector("[data-hp-delta-value]");
+      if (deltaInput) deltaInput.value = "0";
+
+      // focus first input
+      const first = backdrop.querySelector('input[data-sheet-path="vitality.hp-current.value"]') ||
+                    backdrop.querySelector('input[data-sheet-path="vitality.hp-max.value"]') ||
+                    backdrop.querySelector('input');
+      first?.focus?.();
+    };
+
+    const close = () => {
+      if (!backdrop) return;
+      backdrop.hidden = true;
+    };
+
+    if (chip) {
+      chip.classList.add("sheet-chip--clickable");
+      chip.addEventListener("click", () => open());
+      chip.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      });
+    }
+
+    closeBtn?.addEventListener("click", () => close());
+
+    backdrop?.addEventListener("click", (e) => {
+      // click outside popover closes
+      if (e.target === backdrop) close();
+    });
+
+    // ESC closes
+    root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && backdrop && !backdrop.hidden) close();
+    });
+
+    // +/- delta actions
+    root.addEventListener("click", (e) => {
+      const btn = e.target?.closest?.("[data-hp-delta]");
+      if (!btn) return;
+
+      const { player: curPlayer, canEdit: curCanEdit } = getState();
+      if (!curCanEdit) return;
+
+      const sheet = getSheet();
+      if (!sheet) return;
+
+      const maxHp = safeInt(sheet?.vitality?.["hp-max"]?.value, 0);
+      const curHp = safeInt(sheet?.vitality?.["hp-current"]?.value, 0);
+
+      const deltaInp = root.querySelector("[data-hp-delta-value]");
+      const delta = Math.max(0, safeInt(deltaInp?.value, 0));
+      const mode = btn.getAttribute("data-hp-delta");
+
+      let next = curHp;
+      if (mode === "+") next = curHp + delta;
+      if (mode === "-") next = curHp - delta;
+
+      next = Math.max(0, Math.min(maxHp, next));
+
+      setByPath(sheet, "vitality.hp-current.value", next);
+
+      // update input(s)
+      const hpCurInputs = root.querySelectorAll('input[data-sheet-path="vitality.hp-current.value"]');
+      hpCurInputs.forEach(inp => { inp.value = String(next); });
+
+      updateHeroChips(root, sheet);
+      scheduleSheetSave(curPlayer);
+    });
+  }
+
     });
   }
 
@@ -2616,8 +2751,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
           <div class="sheet-card">
             <h4>Базовые параметры</h4>
             <div class="kv"><div class="k">Класс брони</div><div class="v"><input type="number" min="0" max="40" data-sheet-path="vitality.ac.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Здоровье макс.</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Здоровья осталось</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div></div>
+            <div class="sheet-note" style="margin:6px 0 10px 0;">Здоровье редактируется кликом по рамке «Здоровье» вверху.</div>
             <div class="kv"><div class="k">Скорость</div><div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">Владение (Бонус мастерства)</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
           </div>
@@ -3350,15 +3484,52 @@ function renderCombatTab(vm) {
               <div class="k">Броня</div>
               <div class="v" data-hero-val="ac">${escapeHtml(String(vm.ac))}</div>
             </div>
-            <div class="sheet-chip sheet-chip--hp" data-hero="hp" style="--hp-fill-pct:${escapeHtml(String(vm.hp ? Math.max(0, Math.min(100, Math.round((Number(vm.hpCur) / Math.max(1, Number(vm.hp))) * 100))) : 0))}%">
+            <div class="sheet-chip sheet-chip--hp sheet-chip--clickable" data-hero="hp" data-hp-chip role="button" tabindex="0" style="--hp-fill-pct:${escapeHtml(String(vm.hp ? Math.max(0, Math.min(100, Math.round((Number(vm.hpCur) / Math.max(1, Number(vm.hp))) * 100))) : 0))}%">
               <div class="hp-liquid" aria-hidden="true"></div>
               <div class="k">Здоровье</div>
-              <div class="v" data-hero-val="hp">${escapeHtml(String(vm.hpCur))}/${escapeHtml(String(vm.hp))}</div>
+              <div class="v" data-hero-val="hp">${(Number(vm.hpTemp)||0)>0 ? `(${escapeHtml(String(vm.hpTemp))}) ` : ``}${escapeHtml(String(vm.hpCur))}/${escapeHtml(String(vm.hp))}</div>
             </div>
             <div class="sheet-chip" data-hero="speed">
               <div class="k">Скорость</div>
               <div class="v" data-hero-val="speed">${escapeHtml(String(vm.spd))}</div>
             </div>
+
+          <div class="hp-popover-backdrop" data-hp-popover-backdrop hidden>
+            <div class="hp-popover" role="dialog" aria-modal="true" aria-label="Здоровье">
+              <div class="hp-popover-head">
+                <div class="hp-popover-title">Здоровье</div>
+                <button type="button" class="hp-popover-close" data-hp-popover-close title="Закрыть">✕</button>
+              </div>
+
+              <div class="hp-popover-grid">
+                <div class="hp-field">
+                  <div class="hp-field-k">Здоровье макс.</div>
+                  <input class="hp-field-v" type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" />
+                </div>
+
+                <div class="hp-field">
+                  <div class="hp-field-k">Здоровья осталось</div>
+                  <input class="hp-field-v" type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" />
+                </div>
+
+                <div class="hp-field">
+                  <div class="hp-field-k">Временное здоровье</div>
+                  <input class="hp-field-v" type="number" min="0" max="999" data-sheet-path="vitality.hp-temp.value" />
+                </div>
+
+                <div class="hp-field hp-field--wide">
+                  <div class="hp-field-k">Изменить здоровье</div>
+                  <div class="hp-delta">
+                    <button type="button" class="hp-delta-btn hp-delta-btn--minus" data-hp-delta="-">−</button>
+                    <input class="hp-delta-input" type="number" min="0" max="999" value="0" data-hp-delta-value />
+                    <button type="button" class="hp-delta-btn hp-delta-btn--plus" data-hp-delta="+">+</button>
+                  </div>
+                  <div class="hp-delta-hint">Число прибавится/отнимется от «Здоровья осталось» (0…макс.)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           </div>
           </div>
         </div>
@@ -3411,6 +3582,7 @@ function renderCombatTab(vm) {
     bindSpellAddAndDesc(sheetContent, player, canEdit);
     bindCombatEditors(sheetContent, player, canEdit);
     bindInventoryEditors(sheetContent, player, canEdit);
+    bindHpPopover(sheetContent, player, canEdit);
     updateCoinsTotal(sheetContent, player.sheet?.parsed);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
@@ -3441,6 +3613,7 @@ function renderCombatTab(vm) {
           bindSpellAddAndDesc(sheetContent, player, canEdit);
           bindCombatEditors(sheetContent, player, canEdit);
           bindInventoryEditors(sheetContent, player, canEdit);
+          bindHpPopover(sheetContent, player, canEdit);
           updateCoinsTotal(sheetContent, player.sheet?.parsed);
         }
       });
