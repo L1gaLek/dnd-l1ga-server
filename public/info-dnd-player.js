@@ -20,6 +20,7 @@
 
   // состояние модалки
   let openedSheetPlayerId = null;
+  let lastCanEdit = false; // GM или владелец текущего открытого персонажа
 
   // UI-состояние модалки (чтобы обновления state не сбрасывали вкладку/скролл)
   // Map<playerId, { activeTab: string, scrollTopByTab: Record<string, number>, lastInteractAt: number }>
@@ -196,6 +197,7 @@
       </div>
     `;
     sheetModal?.appendChild(hpPopupEl);
+    setHpPopupEditable(!!lastCanEdit);
 
     // close / delta buttons
     hpPopupEl.addEventListener('click', (e) => {
@@ -226,6 +228,7 @@
 
       const f = el.getAttribute('data-hp-field');
       if (!f || f === 'delta') return;
+      if (!lastCanEdit) return;
 
       const player = getOpenedPlayerSafe();
       if (!player) return;
@@ -277,6 +280,23 @@
     if (tempEl) tempEl.value = String(temp);
   }
 
+  function setHpPopupEditable(can) {
+    if (!hpPopupEl) return;
+    const inputs = hpPopupEl.querySelectorAll('input.hp-input');
+    inputs.forEach(inp => {
+      const isDelta = inp.getAttribute('data-hp-field') === 'delta';
+      // delta input можно менять всем, но кнопки применения/изменения - только редактору
+      if (!can && !isDelta) inp.setAttribute('disabled', 'disabled');
+      else inp.removeAttribute('disabled');
+    });
+
+    const btns = hpPopupEl.querySelectorAll('.hp-delta__btn');
+    btns.forEach(b => {
+      if (!can) b.setAttribute('disabled', 'disabled');
+      else b.removeAttribute('disabled');
+    });
+  }
+
   function showHpPopup() {
     const el = ensureHpPopup();
     const player = getOpenedPlayerSafe();
@@ -290,6 +310,7 @@
     if (!sheet.vitality["hp-temp"]) sheet.vitality["hp-temp"] = { value: 0 };
 
     syncHpPopupInputs(sheet);
+    setHpPopupEditable(!!lastCanEdit);
     el.classList.remove('hidden');
 
     const first = el.querySelector('[data-hp-field="cur"]');
@@ -301,6 +322,7 @@
   }
 
   function applyHpDelta(mult) {
+    if (!lastCanEdit) return;
     const player = getOpenedPlayerSafe();
     if (!player) return;
     const sheet = player.sheet?.parsed;
@@ -2841,21 +2863,21 @@ function bindSpellAddAndDesc(root, player, canEdit) {
       <div class="sheet-section">
         <h3>Основное</h3>
 
-        <div class="sheet-grid-2">
-          <div class="sheet-card">
-            <h4>Профиль</h4>
+        <div class="sheet-card sheet-card--profile">
+          <h4>Профиль</h4>
 
-            <div class="kv"><div class="k">Имя</div><div class="v"><input type="text" data-sheet-path="name.value" style="width:180px"></div></div>
-            <div class="kv"><div class="k">Класс</div><div class="v"><input type="text" data-sheet-path="info.charClass.value" style="width:180px"></div></div>
-            <div class="kv"><div class="k">Уровень</div><div class="v"><input type="number" min="1" max="20" data-sheet-path="info.level.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Раса</div><div class="v"><input type="text" data-sheet-path="info.race.value" style="width:180px"></div></div>
-            <div class="kv"><div class="k">Предыстория</div><div class="v"><input type="text" data-sheet-path="info.background.value" style="width:180px"></div></div>
-            <div class="kv"><div class="k">Мировоззрение</div><div class="v"><input type="text" data-sheet-path="info.alignment.value" style="width:180px"></div></div>
-          </div>
+          <div class="profile-grid">
+            <div class="profile-col">
+              <div class="kv"><div class="k">Имя</div><div class="v"><input type="text" data-sheet-path="name.value" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Класс</div><div class="v"><input type="text" data-sheet-path="info.charClass.value" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Уровень</div><div class="v"><input type="number" min="1" max="20" data-sheet-path="info.level.value" style="width:90px"></div></div>
+            </div>
 
-          <div class="sheet-card">
-            <h4>Базовые параметры</h4>
-            <div class="kv"><div class="k">Владение (Бонус мастерства)</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
+            <div class="profile-col">
+              <div class="kv"><div class="k">Раса</div><div class="v"><input type="text" data-sheet-path="info.race.value" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Предыстория</div><div class="v"><input type="text" data-sheet-path="info.background.value" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Мировоззрение</div><div class="v"><input type="text" data-sheet-path="info.alignment.value" style="width:180px"></div></div>
+            </div>
           </div>
         </div>
 
@@ -3505,7 +3527,8 @@ function renderCombatTab(vm) {
 
     const myRole = ctx.getMyRole?.();
     const myId = ctx.getMyId?.();
-    const canEdit = (myRole === "GM" || player.ownerId === myId);
+    const canEdit = (myRole === "GM" || String(player.ownerId) === String(myId));
+    lastCanEdit = !!canEdit;
 
     sheetTitle.textContent = `Инфа: ${player.name}`;
     sheetSubtitle.textContent = `Владелец: ${player.ownerName || 'Unknown'} • Тип: ${player.isBase ? 'Основа' : '-'}`;
@@ -3582,6 +3605,10 @@ function renderCombatTab(vm) {
             </div>
           </div>
           <div class="sheet-chips">
+            <div class="sheet-chip" data-hero="prof" title="Бонус мастерства">
+              <div class="k">Владение</div>
+              <input class="sheet-chip-input" type="number" min="0" max="10" ${canEdit ? "" : "disabled"} data-sheet-path="proficiency" value="${escapeHtml(String(vm.profBonus))}">
+            </div>
             <div class="sheet-chip" data-hero="ac">
               <div class="k">Броня</div>
               <input class="sheet-chip-input" type="number" min="0" max="40" ${canEdit ? "" : "disabled"} data-sheet-path="vitality.ac.value" data-hero-val="ac" value="${escapeHtml(String(vm.ac))}">
