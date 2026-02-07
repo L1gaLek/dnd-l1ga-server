@@ -280,6 +280,23 @@ wss.on("connection", ws => {
         break;
       }
 
+      case "updatePlayerName": {
+        const p = gameState.players.find(pl => pl.id === data.id);
+        if (!p) return;
+
+        const newName = (typeof data.name === "string") ? data.name.trim() : "";
+        if (!newName) return;
+
+        const gm = isGM(ws);
+        const owner = ownsPlayer(ws, p);
+        if (!gm && !owner) return;
+
+        // Обновление имени не пишем в журнал (как и sheet), чтобы не спамить.
+        p.name = newName;
+        broadcast();
+        break;
+      }
+
       case "removePlayerFromBoard": {
         const p = gameState.players.find(p => p.id === data.id);
         if (!p) return;
