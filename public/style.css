@@ -3215,12 +3215,36 @@ textarea[data-sheet-path="text.profPlain.value"]{
   padding:8px;
   background:rgba(0,0,0,0.12);
 }
+.lss-langbox--full{ margin-bottom:12px; }
+
+.lss-lang-pill-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
 .lss-lang-pill-name{
   font-weight:700;
-  margin-bottom:4px;
+  font-size:13px;
+  line-height:1.15;
 }
+.lss-lang-pill-x{
+  width:22px;
+  height:22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(0,0,0,0.18);
+  color:rgba(255,255,255,0.9);
+  cursor:pointer;
+  flex:0 0 auto;
+}
+.lss-lang-pill-x:hover{ background:rgba(255,255,255,0.08); }
 .lss-lang-pill-meta{
-  font-size:12px;
+  margin-top:4px;
+  font-size:11px;
   opacity:0.9;
   line-height:1.25;
 }
