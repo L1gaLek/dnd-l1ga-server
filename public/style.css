@@ -641,6 +641,45 @@ button:hover {
   min-width: 86px;
 }
 
+.sheet-chip--clickable{
+  cursor:pointer;
+  user-select:none;
+}
+.sheet-chip--clickable:focus{
+  outline:2px solid rgba(0,200,255,0.45);
+  outline-offset:2px;
+}
+.sheet-chip--hp{
+  min-width: 132px; /* чтобы влезало "(10) 21/21" */
+}
+
+.popup-card.hp-popup{
+  width:min(520px, 100%);
+}
+
+.hp-delta-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.hp-delta-btn{
+  width:46px;
+  height:40px;
+  border-radius:12px;
+  background:rgba(255,255,255,0.10);
+  border:1px solid rgba(255,255,255,0.16);
+  color:inherit;
+  font-size:22px;
+  font-weight:800;
+  cursor:pointer;
+}
+.hp-delta-input{
+  flex:1;
+  text-align:center;
+}
+
+
+
 /* HP chip: "liquid" fill (shrinks right-to-left) */
 .sheet-chip--hp{
   position: relative;
@@ -648,6 +687,16 @@ button:hover {
   --hp-fill-pct: 100%;
 }
 
+.sheet-chip--hp .hp-liquid{
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--hp-fill-pct);
+  background: rgba(137,21,21,0.55);
+  border-radius: 10px;
+  pointer-events: none;
+}
 
 /* small "wave" highlight */
 .sheet-chip--hp .hp-liquid::after{
@@ -2705,113 +2754,3 @@ textarea[data-sheet-path="text.profPlain.value"]{
   white-space: nowrap;
 }
 
-
-
-/* === HP chip clickable + popover === */
-.sheet-chip.is-clickable{ cursor: pointer; user-select: none; }
-.sheet-chip--hp{ min-width: 170px; position: relative; overflow: hidden; }
-.sheet-chip--hp .hp-liquid{
-  position:absolute;
-  inset:0;
-  background: rgba(137,21,21,0.55);
-  transform-origin: right center;
-  transform: scaleX(calc(var(--hp-fill-pct, 0) / 100));
-  transition: transform 220ms ease;
-  pointer-events:none;
-}
-.sheet-chip--hp .k, .sheet-chip--hp .v{ position: relative; z-index: 1; }
-
-.hp-popover{
-  position:absolute;
-  width: 320px;
-  max-width: calc(100% - 16px);
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(25,25,25,0.95);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
-  padding: 12px;
-  display:none;
-  z-index: 9999;
-}
-.hp-popover.is-open{ display:block; }
-
-.hp-popover__head{
-  display:flex;
-  align-items:center;
-  justify-content: space-between;
-  gap:10px;
-  margin-bottom:10px;
-}
-.hp-popover__title{
-  font-weight: 900;
-  font-size: 14px;
-}
-.hp-popover__close{
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color:#fff;
-  cursor:pointer;
-}
-
-.hp-popover__grid{
-  display:grid;
-  grid-template-columns: 1fr;
-  gap:10px;
-}
-
-.hp-field{
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.05);
-  border-radius: 12px;
-  padding: 10px;
-}
-.hp-field__label{
-  font-size: 12px;
-  font-weight: 800;
-  opacity: 0.85;
-  margin-bottom: 6px;
-}
-.hp-field__input{
-  width:100%;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color:#fff;
-  padding: 7px 9px;
-  font-weight: 900;
-  outline:none;
-}
-.hp-field--wide{ padding-bottom: 12px; }
-
-.hp-adjust{
-  display:flex;
-  align-items:center;
-  gap:8px;
-}
-.hp-adjust__delta{
-  flex:1 1 auto;
-  min-width: 80px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color:#fff;
-  padding: 7px 9px;
-  font-weight: 900;
-  text-align:center;
-  outline:none;
-}
-.hp-btn{
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.18);
-  background: rgba(255,255,255,0.06);
-  color:#fff;
-  font-weight: 900;
-  cursor:pointer;
-}
-.hp-btn--minus{ border-color: rgba(255,0,0,0.45); background: rgba(255,0,0,0.12); }
-.hp-btn--plus{ border-color: rgba(0,255,120,0.45); background: rgba(0,255,120,0.12); }
