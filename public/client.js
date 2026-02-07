@@ -72,13 +72,16 @@ joinBtn.addEventListener('click', () => {
 
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
 
-  ws.onopen = () => ws.send(JSON.stringify({ type: "register", name, role }));
+  const savedUserId = localStorage.getItem("dnd_user_id") || "";
+
+  ws.onopen = () => ws.send(JSON.stringify({ type: "register", userId: savedUserId, name, role }));
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
 
     if (msg.type === "registered") {
       myId = msg.id;
+      localStorage.setItem("dnd_user_id", String(msg.id));
       myRole = msg.role;
       myNameSpan.textContent = msg.name;
       myRoleSpan.textContent = msg.role;
@@ -1036,6 +1039,7 @@ function updatePhaseUI(state) {
 
   updateCurrentPlayer(state);
 }
+
 
 
 
