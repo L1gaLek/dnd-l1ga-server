@@ -951,6 +951,32 @@ button:hover {
   color:#d0d6e4;
 }
 
+/* label + иконки (кубик / владение спасброском) */
+.lss-pill-label-row{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.lss-dice-btn{
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(255,255,255,0.06);
+  border-radius:8px;
+  padding:2px 4px;
+  line-height:0;
+  cursor:pointer;
+  color:rgb(155,155,155);
+}
+
+.lss-dice-btn:hover{
+  background:rgba(255,255,255,0.10);
+  border-color:rgba(255,255,255,0.20);
+}
+
+.lss-dice-btn:active{
+  transform:translateY(1px);
+}
+
 .lss-pill-val{
   min-width:30px;     /* ⬅ меньше */
   text-align:center;
@@ -997,6 +1023,26 @@ button:hover {
   flex:0 0 auto;
 }
 
+/* кружок владения спасброском (2 состояния) */
+.lss-save-dot{
+  width:12px;
+  height:12px;
+  border-radius:999px;
+  border:2px solid rgba(255,255,255,0.25);
+  background:transparent;
+  flex:0 0 auto;
+  padding:0;
+}
+
+.lss-save-dot.clickable{
+  cursor:pointer;
+}
+
+.lss-save-dot.active{
+  border-color:orange;
+  box-shadow: 0 0 0 2px rgba(255,165,0,0.18), 0 0 10px rgba(255,165,0,0.25);
+}
+
 /* кликабельный кружок навыка */
 .lss-dot.clickable{
   cursor: pointer;
@@ -1018,6 +1064,12 @@ button:hover {
   font-size:12px;     /* ⬅ меньше */
   line-height: 14px;
   color:#eef2ff;
+  min-width:0;
+  flex:1 1 auto;
+}
+
+.lss-skill-name-text{
+  display:block;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
