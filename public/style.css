@@ -2657,3 +2657,26 @@ textarea[data-sheet-path="text.profPlain.value"]{
   white-space: nowrap;
 }
 
+
+
+/* PATCH: coin colors */
+.coin-box[data-coin-box="cp"]{ border-color: rgb(184,115,51); background: rgba(184,115,51,0.12); }
+.coin-box[data-coin-box="sp"]{ border-color: rgb(192,192,192); background: rgba(192,192,192,0.12); }
+.coin-box[data-coin-box="gp"]{ border-color: rgb(255,215,0); background: rgba(255,215,0,0.12); }
+.coin-box[data-coin-box="ep"]{ border-color: rgb(255,219,139); background: rgba(255,219,139,0.12); }
+.coin-box[data-coin-box="pp"]{ border-color: rgb(127,118,121); background: rgba(127,118,121,0.12); }
+
+/* PATCH: inventory textareas */
+.inv-textarea{
+  width:100%;
+  min-height:120px;
+  resize:vertical;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color:#fff;
+  padding:10px;
+  font-size:13px;
+}
+
+
