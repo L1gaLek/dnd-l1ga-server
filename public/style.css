@@ -934,6 +934,13 @@ button:hover {
   flex-wrap:wrap;
 }
 
+.lss-ability-divider{
+  height: 1px;
+  background: rgba(255,255,255,0.10);
+  margin: 8px 0 6px;
+  border-radius: 999px;
+}
+
 .lss-pill{
   display:flex;
   align-items:center;
@@ -1100,21 +1107,21 @@ button:hover {
 }
 
 /* пассивки + владения */
-.lss-bottom-grid{
-  display:grid;
-  grid-template-columns: 1fr 1fr;
+.lss-bottom-stack{
+  display:flex;
+  flex-direction:column;
   gap:12px;
   margin-top:12px;
 }
-@media (max-width: 900px){
-  .lss-bottom-grid{ grid-template-columns: 1fr; }
-}
+
 .lss-passives, .lss-profbox{
+  width: 100%;
   background:#121212;
   border:1px solid #333;
   border-radius:12px;
   padding:10px;
 }
+
 .lss-passives-title{
   font-weight:900;
   letter-spacing:0.6px;
@@ -1122,7 +1129,15 @@ button:hover {
   font-size:12px;
   margin-bottom:8px;
 }
+
+/* пассивные чувства — в один ряд (на узких экранах перенесётся) */
+.lss-passive-rowlist{
+  display:flex;
+  gap:8px;
+  flex-wrap: wrap;
+}
 .lss-passive-row{
+  flex: 1 1 160px;
   display:flex;
   align-items:center;
   gap:10px;
@@ -1130,9 +1145,8 @@ button:hover {
   background:rgba(255,255,255,0.04);
   border-radius:10px;
   padding:6px 8px;
-  margin-bottom:6px;
+  margin:0;
 }
-.lss-passive-row:last-child{ margin-bottom:0; }
 .lss-passive-val{
   font-weight:900;
   color:#fff;
