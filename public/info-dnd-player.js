@@ -1092,8 +1092,20 @@ function ensureWiredCloseHandlers() {
   function toViewModel(sheet, fallbackName = "-") {
     const name = get(sheet, 'name.value', fallbackName);
     const cls = get(sheet, 'info.charClass.value', '-');
+    const subcls = get(sheet, 'info.charSubclass.value', '');
     const lvl = get(sheet, 'info.level.value', '-');
     const race = get(sheet, 'info.race.value', '-');
+    const background = get(sheet, 'info.background.value', '');
+    const alignment = get(sheet, 'info.alignment.value', '');
+    const playerName = get(sheet, 'info.playerName.value', '');
+    const experience = get(sheet, 'info.experience.value', '');
+
+    // Charbox/LSS extra fields (часто есть в экспортируемых .json, но раньше не отображались)
+    const hiddenName = get(sheet, 'hiddenName', '');
+    const casterClass = get(sheet, 'casterClass', '');
+    const avatar = get(sheet, 'avatar', '');
+    const createdAt = safeInt(get(sheet, 'createdAt', 0), 0);
+    const proficiencyCustom = safeInt(get(sheet, 'proficiencyCustom', 0), 0);
 
     const hp = get(sheet, 'vitality.hp-max.value', '-');
     const hpCur = get(sheet, 'vitality.hp-current.value', '-');
@@ -1111,8 +1123,7 @@ function ensureWiredCloseHandlers() {
       const label = s.label || ({ str:"Сила", dex:"Ловкость", con:"Телосложение", int:"Интеллект", wis:"Мудрость", cha:"Харизма" })[k];
       const score = safeInt(s.score, 10);
       const mod = safeInt(s.modifier, 0);
-      const saveProf = !!(sheet?.saves?.[k]?.isProf);
-      return { k, label, score, mod, check: calcCheckBonus(sheet, k), save: calcSaveBonus(sheet, k), saveProf, skills: [] };
+      return { k, label, score, mod, check: calcCheckBonus(sheet, k), save: calcSaveBonus(sheet, k), skills: [] };
     });
 
     // group skills under stats
@@ -1172,12 +1183,14 @@ function ensureWiredCloseHandlers() {
 
     // notes (детали + список заметок)
     const notesDetails = {
-      height: get(sheet, "notes.details.height.value", ""),
-      weight: get(sheet, "notes.details.weight.value", ""),
-      age: get(sheet, "notes.details.age.value", ""),
-      eyes: get(sheet, "notes.details.eyes.value", ""),
-      skin: get(sheet, "notes.details.skin.value", ""),
-      hair: get(sheet, "notes.details.hair.value", "")
+      // 1) наши поля notes.details.*
+      // 2) fallback на charbox: subInfo.*
+      height: get(sheet, "notes.details.height.value", get(sheet, "subInfo.height.value", "")),
+      weight: get(sheet, "notes.details.weight.value", get(sheet, "subInfo.weight.value", "")),
+      age: get(sheet, "notes.details.age.value", get(sheet, "subInfo.age.value", "")),
+      eyes: get(sheet, "notes.details.eyes.value", get(sheet, "subInfo.eyes.value", "")),
+      skin: get(sheet, "notes.details.skin.value", get(sheet, "subInfo.skin.value", "")),
+      hair: get(sheet, "notes.details.hair.value", get(sheet, "subInfo.hair.value", ""))
     };
     const notesEntries = Array.isArray(sheet?.notes?.entries) ? sheet.notes.entries : [];
 
@@ -1337,7 +1350,49 @@ const weapons = weaponsRaw
 
     const coinsViewDenom = String(sheet?.coinsView?.denom || "gp").toLowerCase();
 
-    return { name, cls, lvl, race, hp, hpCur, hpTemp, ac, spd, inspiration, exhaustion, conditions, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins, coinsViewDenom };
+    return {
+      name,
+      cls,
+      subcls,
+      lvl,
+      race,
+      background,
+      alignment,
+      playerName,
+      experience,
+      hiddenName,
+      casterClass,
+      avatar,
+      createdAt,
+      proficiencyCustom,
+
+      hp,
+      hpCur,
+      hpTemp,
+      ac,
+      spd,
+      inspiration,
+      exhaustion,
+      conditions,
+
+      stats,
+      passive,
+      profLines,
+      profText,
+      personality,
+      notesDetails,
+      notesEntries,
+      spellsInfo,
+      slots,
+      spellsByLevel,
+      spellsPlainByLevel,
+      spellNameByHref,
+      spellDescByHref,
+      profBonus: getProfBonus(sheet),
+      weapons,
+      coins,
+      coinsViewDenom
+    };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -1757,20 +1812,9 @@ function bindEditableInputs(root, player, canEdit) {
       }
     } catch {}
 
-// live updates
-if (path === "proficiency" || path === "proficiencyCustom") {
-  // пересчитать навыки/пассивы + проверка/спасбросок (т.к. зависят от бонуса владения)
+    // live updates
+if (path === "proficiency") {
   updateSkillsAndPassives(root, player.sheet.parsed);
-  try {
-    ["str","dex","con","int","wis","cha"].forEach(k => updateDerivedForStat(root, player.sheet.parsed, k));
-  } catch {}
-
-  // обновить подсказку у кружков спасбросков
-  root.querySelectorAll('.lss-save-dot[data-save-key]').forEach(d => {
-    const statKey = d.getAttribute('data-save-key');
-    if (statKey) d.title = `Владение спасброском: +${getProfBonus(player.sheet.parsed)} к спасброску`;
-  });
-
   updateWeaponsBonuses(root, player.sheet.parsed);
 }
         if (path === "vitality.ac.value" || path === "vitality.hp-max.value" || path === "vitality.hp-current.value" || path === "vitality.speed.value") {
@@ -1845,96 +1889,6 @@ if (path === "proficiency" || path === "proficiencyCustom") {
         }
 
         scheduleSheetSave(player);
-      });
-    });
-  }
-
-  // ===== clickable dot binding (saving throws proficiency) =====
-  function bindSaveProfDots(root, player, canEdit) {
-    if (!root || !player?.sheet?.parsed) return;
-
-    const sheet = player.sheet.parsed;
-    const dots = root.querySelectorAll('.lss-save-dot[data-save-key]');
-    dots.forEach(dot => {
-      const statKey = dot.getAttribute('data-save-key');
-      if (!statKey) return;
-
-      dot.classList.add('clickable');
-      dot.classList.toggle('active', !!sheet?.saves?.[statKey]?.isProf);
-      dot.title = `Владение спасброском: +${getProfBonus(sheet)} к спасброску`;
-
-      if (!canEdit) return;
-
-      dot.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (!canEdit) return;
-
-        if (!sheet.saves || typeof sheet.saves !== 'object') sheet.saves = {};
-        if (!sheet.saves[statKey] || typeof sheet.saves[statKey] !== 'object') {
-          sheet.saves[statKey] = { name: statKey, isProf: false, bonus: 0 };
-        }
-
-        sheet.saves[statKey].isProf = !sheet.saves[statKey].isProf;
-        dot.classList.toggle('active', !!sheet.saves[statKey].isProf);
-        dot.title = `Владение спасброском: +${getProfBonus(sheet)} к спасброску`;
-
-        // обновить значение спасброска в UI
-        const ability = dot.closest('.lss-ability');
-        const saveInp = ability?.querySelector(`.lss-pill-val[data-kind="save"][data-stat-key="${CSS.escape(statKey)}"]`);
-        if (saveInp) {
-          const v = formatMod(calcSaveBonus(sheet, statKey));
-          if (saveInp.tagName === 'INPUT' || saveInp.tagName === 'TEXTAREA') saveInp.value = v;
-          else saveInp.textContent = v;
-        }
-
-        scheduleSheetSave(player);
-      });
-    });
-  }
-
-  // ===== dice buttons (checks/saves/skills) =====
-  function bindStatRollButtons(root, player) {
-    if (!root || !player?.sheet?.parsed) return;
-    const sheet = player.sheet.parsed;
-
-    const btns = root.querySelectorAll('.lss-dice-btn[data-roll-kind]');
-    btns.forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const kind = btn.getAttribute('data-roll-kind');
-        let bonus = 0;
-        let kindText = 'Бросок d20';
-
-        if (kind === 'skill') {
-          const skillKey = btn.getAttribute('data-skill-key');
-          if (!skillKey) return;
-          bonus = calcSkillBonus(sheet, skillKey);
-          const label = sheet?.skills?.[skillKey]?.label || skillKey;
-          kindText = `${label}: d20${bonus ? formatMod(bonus) : ''}`;
-        }
-
-        if (kind === 'check') {
-          const statKey = btn.getAttribute('data-stat-key');
-          if (!statKey) return;
-          bonus = calcCheckBonus(sheet, statKey);
-          const label = sheet?.stats?.[statKey]?.label || statKey;
-          kindText = `${label}: Проверка d20${bonus ? formatMod(bonus) : ''}`;
-        }
-
-        if (kind === 'save') {
-          const statKey = btn.getAttribute('data-stat-key');
-          if (!statKey) return;
-          bonus = calcSaveBonus(sheet, statKey);
-          const label = sheet?.stats?.[statKey]?.label || statKey;
-          kindText = `${label}: Спасбросок d20${bonus ? formatMod(bonus) : ''}`;
-        }
-
-        // бросок в общую панель кубиков (и в лог/"Броски других")
-        if (window.DicePanel?.roll) {
-          await window.DicePanel.roll({ sides: 20, count: 1, bonus, kindText });
-        }
       });
     });
   }
@@ -2569,8 +2523,6 @@ function rerenderSpellsTabInPlace(root, player, sheet, canEdit) {
 
   bindEditableInputs(root, player, canEdit);
   bindSkillBoostDots(root, player, canEdit);
-  bindSaveProfDots(root, player, canEdit);
-  bindStatRollButtons(root, player);
   bindAbilityAndSkillEditors(root, player, canEdit);
   bindNotesEditors(root, player, canEdit);
   bindSlotEditors(root, player, canEdit);
@@ -3211,13 +3163,6 @@ function bindSpellAddAndDesc(root, player, canEdit) {
   // ================== RENDER
   // ================== RENDER ==================
   function renderAbilitiesGrid(vm) {
-    const d20SvgMini = `
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-        <path d="M12 2 20.5 7v10L12 22 3.5 17V7L12 2Z" fill="currentColor" opacity="0.95"></path>
-        <path d="M12 2v20M3.5 7l8.5 5 8.5-5M3.5 17l8.5-5 8.5 5" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="1.2"></path>
-      </svg>
-    `;
-
     const blocks = vm.stats.map(s => {
       const skillRows = (s.skills || []).map(sk => {
         const dotClass = (sk.boostLevel === 1) ? "boost1" : (sk.boostLevel === 2) ? "boost2" : "";
@@ -3225,13 +3170,10 @@ function bindSpellAddAndDesc(root, player, canEdit) {
           <div class="lss-skill-row">
             <div class="lss-skill-left">
               <span class="lss-dot ${dotClass}" data-skill-key="${escapeHtml(sk.key)}"></span>
-              <span class="lss-skill-name" title="${escapeHtml(sk.label)}">
-                <span class="lss-skill-name-text">
-                  ${escapeHtml(sk.label)}
-                  <span class="lss-boost">${sk.boostStars ? ` ${escapeHtml(sk.boostStars)}` : ""}</span>
-                </span>
+              <span class="lss-skill-name">
+                ${escapeHtml(sk.label)}
+                <span class="lss-boost">${sk.boostStars ? ` ${escapeHtml(sk.boostStars)}` : ""}</span>
               </span>
-              <button class="lss-dice-btn" type="button" data-roll-kind="skill" data-skill-key="${escapeHtml(sk.key)}" title="Бросок: d20${escapeHtml(formatMod(sk.bonus))}">${d20SvgMini}</button>
             </div>
             <input class="lss-skill-val lss-skill-val-input" type="text" value="${escapeHtml(formatMod(sk.bonus))}" data-skill-key="${escapeHtml(sk.key)}">
           </div>
@@ -3247,24 +3189,17 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
           <div class="lss-ability-actions">
             <div class="lss-pill">
-              <div class="lss-pill-label-row">
-                <span class="lss-pill-label">ПРОВЕРКА</span>
-                <button class="lss-dice-btn" type="button" data-roll-kind="check" data-stat-key="${escapeHtml(s.k)}" title="Бросок проверки">
-                  ${d20SvgMini}
-                </button>
-              </div>
+              <span class="lss-pill-label">ПРОВЕРКА</span>
               <input class="lss-pill-val lss-pill-val-input" type="text" value="${escapeHtml(formatMod(s.check))}" data-stat-key="${escapeHtml(s.k)}" data-kind="check">
             </div>
             <div class="lss-pill">
-              <div class="lss-pill-label-row">
-                <button class="lss-save-dot ${s.saveProf ? "active" : ""}" type="button" data-save-key="${escapeHtml(s.k)}" title="Владение спасброском"></button>
-                <span class="lss-pill-label">СПАСБРОСОК</span>
-                <button class="lss-dice-btn" type="button" data-roll-kind="save" data-stat-key="${escapeHtml(s.k)}" title="Бросок спасброска">
-                  ${d20SvgMini}
-                </button>
-              </div>
+              <span class="lss-pill-label">СПАСБРОСОК</span>
               <input class="lss-pill-val lss-pill-val-input" type="text" value="${escapeHtml(formatMod(s.save))}" data-stat-key="${escapeHtml(s.k)}" data-kind="save">
             </div>
+          </div>
+
+          <div class="lss-stat-sep" aria-hidden="true">
+            <span>Навыки</span>
           </div>
 
           <div class="lss-skill-list">
@@ -3328,13 +3263,32 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             <div class="profile-col">
               <div class="kv"><div class="k">Имя</div><div class="v"><input type="text" data-sheet-path="name.value" style="width:180px"></div></div>
               <div class="kv"><div class="k">Класс</div><div class="v"><input type="text" data-sheet-path="info.charClass.value" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Подкласс</div><div class="v"><input type="text" data-sheet-path="info.charSubclass.value" style="width:180px"></div></div>
               <div class="kv"><div class="k">Уровень</div><div class="v"><input type="number" min="1" max="20" data-sheet-path="info.level.value" style="width:90px"></div></div>
+              <div class="kv"><div class="k">Опыт</div><div class="v"><input type="number" min="0" step="1" data-sheet-path="info.experience.value" style="width:120px"></div></div>
             </div>
 
             <div class="profile-col">
               <div class="kv"><div class="k">Раса</div><div class="v"><input type="text" data-sheet-path="info.race.value" style="width:180px"></div></div>
               <div class="kv"><div class="k">Предыстория</div><div class="v"><input type="text" data-sheet-path="info.background.value" style="width:180px"></div></div>
               <div class="kv"><div class="k">Мировоззрение</div><div class="v"><input type="text" data-sheet-path="info.alignment.value" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Имя игрока</div><div class="v"><input type="text" data-sheet-path="info.playerName.value" style="width:180px"></div></div>
+            </div>
+
+            <div class="profile-col">
+              <div class="kv"><div class="k">Скрытое имя</div><div class="v"><input type="text" data-sheet-path="hiddenName" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Класс заклинаний</div><div class="v"><input type="text" data-sheet-path="casterClass" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Бонус владения (ручной)</div><div class="v"><input type="number" step="1" data-sheet-path="proficiencyCustom" style="width:90px" placeholder="0"></div></div>
+              <div class="kv"><div class="k">Аватар (URL)</div><div class="v"><input type="text" data-sheet-path="avatar" style="width:260px" placeholder="https://..."></div></div>
+              <div class="kv" style="align-items:flex-start;">
+                <div class="k">Предпросмотр</div>
+                <div class="v">
+                  <div class="profile-avatar-preview">
+                    ${String(vm.avatar||"").trim() ? `<img src="${escapeHtml(String(vm.avatar))}" alt="avatar" loading="lazy">` : `<div class="profile-avatar-empty">—</div>`}
+                  </div>
+                </div>
+              </div>
+              <div class="kv"><div class="k">Создан</div><div class="v"><input type="text" value="${vm.createdAt ? new Date(vm.createdAt).toLocaleString('ru-RU') : ''}" disabled style="width:260px"></div></div>
             </div>
           </div>
         </div>
@@ -4133,8 +4087,6 @@ function renderCombatTab(vm) {
 
     bindEditableInputs(sheetContent, player, canEdit);
     bindSkillBoostDots(sheetContent, player, canEdit);
-    bindSaveProfDots(sheetContent, player, canEdit);
-    bindStatRollButtons(sheetContent, player);
     bindAbilityAndSkillEditors(sheetContent, player, canEdit);
     bindNotesEditors(sheetContent, player, canEdit);
     bindSlotEditors(sheetContent, player, canEdit);
@@ -4169,8 +4121,6 @@ function renderCombatTab(vm) {
 
           bindEditableInputs(sheetContent, player, canEdit);
           bindSkillBoostDots(sheetContent, player, canEdit);
-          bindSaveProfDots(sheetContent, player, canEdit);
-          bindStatRollButtons(sheetContent, player);
           bindAbilityAndSkillEditors(sheetContent, player, canEdit);
           bindNotesEditors(sheetContent, player, canEdit);
           bindSlotEditors(sheetContent, player, canEdit);
