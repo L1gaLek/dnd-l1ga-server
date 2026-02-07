@@ -876,6 +876,14 @@ const weapons = weaponsRaw
     const hpEl = root.querySelector('[data-hero-val="hp"]');
     if (hpEl) hpEl.textContent = `${hpCur}/${hp}`;
 
+    // HP "liquid" fill in chip (shrinks right-to-left)
+    const hpChip = root.querySelector('[data-hero="hp"]');
+    if (hpChip) {
+      const ratio = (hp > 0) ? Math.max(0, Math.min(1, hpCur / hp)) : 0;
+      const pct = Math.round(ratio * 100);
+      hpChip.style.setProperty('--hp-fill-pct', `${pct}%`);
+    }
+
     const spdEl = root.querySelector('[data-hero-val="speed"]');
     if (spdEl) spdEl.textContent = String(spd);
   }
@@ -2607,10 +2615,10 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
           <div class="sheet-card">
             <h4>Базовые параметры</h4>
-            <div class="kv"><div class="k">AC</div><div class="v"><input type="number" min="0" max="40" data-sheet-path="vitality.ac.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">HP max</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">HP current</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Speed</div><div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div></div>
+            <div class="kv"><div class="k">Класс брони</div><div class="v"><input type="number" min="0" max="40" data-sheet-path="vitality.ac.value" style="width:90px"></div></div>
+            <div class="kv"><div class="k">Здоровье макс.</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div></div>
+            <div class="kv"><div class="k">Здоровья осталось</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div></div>
+            <div class="kv"><div class="k">Скорость</div><div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">Владение (Бонус мастерства)</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
           </div>
         </div>
@@ -3338,9 +3346,19 @@ function renderCombatTab(vm) {
             </div>
           </div>
           <div class="sheet-chips">
-            <div class="sheet-chip" data-hero="ac"><div class="k">AC</div><div class="v" data-hero-val="ac">${escapeHtml(String(vm.ac))}</div></div>
-            <div class="sheet-chip" data-hero="hp"><div class="k">HP</div><div class="v" data-hero-val="hp">${escapeHtml(String(vm.hpCur))}/${escapeHtml(String(vm.hp))}</div></div>
-            <div class="sheet-chip" data-hero="speed"><div class="k">Speed</div><div class="v" data-hero-val="speed">${escapeHtml(String(vm.spd))}</div></div>
+            <div class="sheet-chip" data-hero="ac">
+              <div class="k">Броня</div>
+              <div class="v" data-hero-val="ac">${escapeHtml(String(vm.ac))}</div>
+            </div>
+            <div class="sheet-chip sheet-chip--hp" data-hero="hp" style="--hp-fill-pct:${escapeHtml(String(vm.hp ? Math.max(0, Math.min(100, Math.round((Number(vm.hpCur) / Math.max(1, Number(vm.hp))) * 100))) : 0))}%">
+              <div class="hp-liquid" aria-hidden="true"></div>
+              <div class="k">Здоровье</div>
+              <div class="v" data-hero-val="hp">${escapeHtml(String(vm.hpCur))}/${escapeHtml(String(vm.hp))}</div>
+            </div>
+            <div class="sheet-chip" data-hero="speed">
+              <div class="k">Скорость</div>
+              <div class="v" data-hero-val="speed">${escapeHtml(String(vm.spd))}</div>
+            </div>
           </div>
           </div>
         </div>
