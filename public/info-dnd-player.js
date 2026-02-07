@@ -965,6 +965,17 @@ function ensureWiredCloseHandlers() {
     if (!player.sheet.parsed || typeof player.sheet.parsed !== "object") {
       player.sheet.parsed = createEmptySheet(player.name);
     }
+
+    // ✅ Синхронизация имени по умолчанию:
+    // если в sheet имя пустое (например, после импорта/ручных правок),
+    // показываем и сохраняем имя из созданного игрока.
+    try {
+      if (!player.sheet.parsed.name || typeof player.sheet.parsed.name !== 'object') {
+        player.sheet.parsed.name = { value: player.name };
+      }
+      const cur = String(player.sheet.parsed?.name?.value ?? '').trim();
+      if (!cur) player.sheet.parsed.name.value = player.name;
+    } catch {}
   }
 
   // ================== CALC MODIFIERS ==================
@@ -1709,21 +1720,7 @@ function bindEditableInputs(root, player, canEdit) {
           setByPath(player.sheet.parsed, "exhaustion", ex);
         }
 
-        if (path === "name.value") {
-          // Синхронизация имени: Профиль (sheet.name.value) <-> имя токена/в списке игроков
-          const nextName = String(val || "").trim();
-          if (nextName) {
-            player.name = nextName;
-            // обновим заголовок модалки сразу
-            try {
-              if (sheetTitle) sheetTitle.textContent = `Инфа: ${player.name}`;
-            } catch {}
-            // сообщим серверу, чтобы обновился список "Игроки и инициатива"
-            try {
-              ctx?.sendMessage?.({ type: "updatePlayerName", id: player.id, name: nextName });
-            } catch {}
-          }
-        }
+        if (path === "name.value") player.name = val || player.name;
 
         // keep hp popup synced after re-render
     try {
@@ -2039,8 +2036,22 @@ if (path === "proficiency") {
   function bindInventoryEditors(root, player, canEdit) {
     if (!root) return;
 
-    // важно: sheetContent(root) переиспользуется, а объекты player/sheet приходят новыми при каждом state.
-    // поэтому обработчик НЕ должен замыкать старый player/sheet.
+    // IMPORTANT:
+    // root переиспользуется между вкладками и при обновлениях.
+    // Если замкнуть player/sheet/canEdit в closure, то кнопки будут менять старый sheet,
+    // и при возврате во вкладку значения "сбросятся" визуально.
+    // Поэтому храним актуальное состояние на root и берём его в момент клика.
+    root.__invCoinsState = { player, canEdit };
+    const getState = () => root.__invCoinsState || { player, canEdit };
+    const getSheet = () => {
+      const { player: curPlayer } = getState();
+      const s = curPlayer?.sheet?.parsed;
+      if (!s || typeof s !== 'object') return null;
+      if (!s.coins || typeof s.coins !== 'object') s.coins = {};
+      return s;
+    };
+
+    // чтобы не навешивать обработчики повторно при ререндерах/смене вкладки
     if (root.__invCoinsBound) return;
     root.__invCoinsBound = true;
 
@@ -2048,10 +2059,10 @@ if (path === "proficiency") {
       const btn = e.target?.closest?.("[data-coin-op][data-coin-key]");
       if (!btn) return;
 
-      const curPlayer = getOpenedPlayerSafe();
-      if (!curPlayer) return;
-      if (!canEditPlayer(curPlayer)) return;
-      const sheet = curPlayer.sheet?.parsed;
+      const { player: curPlayer, canEdit: curCanEdit } = getState();
+      if (!curCanEdit) return;
+
+      const sheet = getSheet();
       if (!sheet) return;
 
       const op = btn.getAttribute("data-coin-op");
@@ -2071,8 +2082,7 @@ if (path === "proficiency") {
       coinInp.value = String(next);
 
       updateCoinsTotal(root, sheet);
-      markModalInteracted(curPlayer.id);
-      scheduleSheetSave(curPlayer);
+      if (curPlayer) scheduleSheetSave(curPlayer);
     });
   }
 
@@ -3886,23 +3896,6 @@ function renderCombatTab(vm) {
     }
 
     const sheet = player.sheet?.parsed || createEmptySheet(player.name);
-
-    // === Имя: синхронизация token/player.name <-> sheet.name.value ===
-    // Требование: имя в "Профиль" связано с именем при создании игрока и меняет "Игроки и инициатива".
-    try {
-      const sheetName = String(sheet?.name?.value || "").trim();
-      const tokenName = String(player.name || "").trim();
-
-      if (!sheetName && tokenName) {
-        if (!sheet.name || typeof sheet.name !== "object") sheet.name = { value: "" };
-        sheet.name.value = tokenName;
-      } else if (sheetName && sheetName !== tokenName) {
-        // если в sheet имя уже задано — считаем его истинным и синхронизируем token
-        player.name = sheetName;
-        try { ctx?.sendMessage?.({ type: "updatePlayerName", id: player.id, name: sheetName }); } catch {}
-      }
-    } catch {}
-
     const vm = toViewModel(sheet, player.name);
 
     const tabs = [
