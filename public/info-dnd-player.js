@@ -19,8 +19,15 @@
   let ctx = null;
 
   function canEditPlayer(player) {
-    const myRole = ctx?.myRole || ctx?.role || "";
-    const myId = ctx?.myId ?? "";
+    // client.js передаёт в init() функции getMyRole()/getMyId().
+    // Важно: не полагаемся на ctx.myRole/ctx.myId (их может не быть),
+    // иначе у игроков отключаются клики/выборы в "Основное".
+    const myRole = (typeof ctx?.getMyRole === "function")
+      ? (ctx.getMyRole() || "")
+      : (ctx?.myRole || ctx?.role || "");
+    const myId = (typeof ctx?.getMyId === "function")
+      ? (ctx.getMyId() ?? "")
+      : (ctx?.myId ?? "");
     if (myRole === "GM") return true;
     const owner = player?.ownerId ?? "";
     return String(owner) && String(myId) && String(owner) === String(myId);
