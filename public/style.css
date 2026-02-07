@@ -2871,8 +2871,14 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 /* ===== Inspiration chip ===== */
 .sheet-chip--insp{
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   user-select: none;
+  min-width: 92px;
+  min-height: 54px;
 }
 .sheet-chip--insp[data-readonly]{
   cursor: default;
@@ -2882,7 +2888,8 @@ textarea[data-sheet-path="text.profPlain.value"]{
   width: 26px;
   height: 26px;
   opacity: 0.85;
-  transform: translateY(-1px);
+  margin-top: 4px;
+  transform: none;
   pointer-events: none;
   fill: transparent;            /* режим 1: без заливки */
   stroke: rgba(190,190,190,0.85); /* режим 1: серый контур */
