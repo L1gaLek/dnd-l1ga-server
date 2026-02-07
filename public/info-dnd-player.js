@@ -463,21 +463,13 @@
         const sheet = player.sheet?.parsed;
         if (!sheet) return;
         sheet.exhaustion = lvl;
-        applyExhaustionToConditions(sheet);
 
         // sync visible inputs/chips without full re-render
         try {
           const exInput = sheetContent?.querySelector('[data-sheet-path="exhaustion"]');
           if (exInput && exInput instanceof HTMLInputElement) exInput.value = String(lvl);
-
-          const condInput = sheetContent?.querySelector('[data-sheet-path="conditions"]');
-          if (condInput && condInput instanceof HTMLInputElement) condInput.value = sheet.conditions || "";
-
-          const condChip = sheetContent?.querySelector('[data-cond-open]');
-          if (condChip) condChip.classList.toggle('has-value', !!String(sheet.conditions || '').trim());
         } catch {}
-
-        markModalInteracted(player.id);
+markModalInteracted(player.id);
         scheduleSheetSave(player);
         hideExhPopup();
       }
@@ -531,11 +523,9 @@
         const sheet = player.sheet?.parsed;
         if (!sheet) return;
 
-        // clear all non-exhaustion conditions
-        const ex = Math.max(0, Math.min(6, safeInt(sheet?.exhaustion, 0)));
-        sheet.conditions = (ex > 0) ? `Истощение ${ex}` : "";
-
-        markModalInteracted(player.id);
+        // clear condition (не влияет на Истощение)
+        sheet.conditions = "";
+markModalInteracted(player.id);
         scheduleSheetSave(player);
 
         try {
@@ -564,17 +554,11 @@
         const sheet = player.sheet?.parsed;
         if (!sheet) return;
 
-        const ex = Math.max(0, Math.min(6, safeInt(sheet?.exhaustion, 0)));
+        const current = String(sheet.conditions || "").trim();
+        const already = current && current.toLowerCase() === String(name).toLowerCase();
 
-        // keep only non-exhaustion condition (single selection behavior)
-        const list = parseCondList(sheet.conditions).filter(x => !/^Истощение\s+\d+$/i.test(x));
-        const already = list.length === 1 && list[0].toLowerCase() === String(name).toLowerCase();
-
-        const nextList = [];
-        if (ex > 0) nextList.push(`Истощение ${ex}`);
-        if (!already) nextList.push(String(name));
-
-        setCondList(sheet, nextList);
+        // одиночный выбор: повторный клик по тому же состоянию снимает его
+        sheet.conditions = already ? "" : String(name);
 
         markModalInteracted(player.id);
         scheduleSheetSave(player);
@@ -1719,21 +1703,6 @@ function bindEditableInputs(root, player, canEdit) {
         else val = inp.value;
 
         setByPath(player.sheet.parsed, path, val);
-
-
-        // Exhaustion/Conditions sync
-        if (path === "exhaustion") {
-          const ex = Math.max(0, Math.min(6, safeInt(getByPath(player.sheet.parsed, "exhaustion"), 0)));
-          setByPath(player.sheet.parsed, "exhaustion", ex);
-          applyExhaustionToConditions(player.sheet.parsed);
-          const condInp = root.querySelector('[data-sheet-path="conditions"]');
-          if (condInp && condInp instanceof HTMLInputElement) condInp.value = player.sheet.parsed.conditions || "";
-        }
-        if (path === "conditions") {
-          // keep exhaustion marker consistent
-          applyExhaustionToConditions(player.sheet.parsed);
-          const condInp = root.querySelector('[data-sheet-path="conditions"]');
-          if (condInp && condInp instanceof HTMLInputElement) condInp.value = player.sheet.parsed.conditions || "";
         }
 
         if (path === "name.value") player.name = val || player.name;
