@@ -1858,7 +1858,7 @@ function openLanguagesPopup(curPlayer) {
           <div class="lss-lang-row-name">${escapeHtml(l.name)}</div>
           <button class="popup-btn primary" type="button" data-lang-learn="${escapeHtml(l.id)}" data-lang-cat="${escapeHtml(category)}">Выучить</button>
         </div>
-        <div class="lss-lang-row-meta">Типичный представитель — ${escapeHtml(l.typical)}; Письменность — ${escapeHtml(l.script)}</div>
+        <div class="lss-lang-row-meta"><span class="lss-lang-lbl">Типичный представитель</span> - ${escapeHtml(l.typical)}; <span class="lss-lang-lbl">Письменность</span> - ${escapeHtml(l.script)}</div>
       </div>
     `).join("");
 
@@ -3449,9 +3449,9 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
   const learnedHtml = learned.length
     ? learned.map(l => `
-        <div class="lss-lang-item">
-          <div class="lss-lang-item-name">${escapeHtml(l.name)}</div>
-          <div class="lss-lang-item-meta">Типичный представитель — ${escapeHtml(l.typical || "-")}; Письменность — ${escapeHtml(l.script || "-")}</div>
+        <div class="lss-lang-pill">
+          <div class="lss-lang-pill-name">${escapeHtml(l.name)}</div>
+          <div class="lss-lang-pill-meta"><span class="lss-lang-lbl">Типичный представитель</span> - ${escapeHtml(l.typical || "-")}; <span class="lss-lang-lbl">Письменность</span> - ${escapeHtml(l.script || "-")}</div>
         </div>
       `).join("")
     : `<div class="sheet-note">Пока языки не выбраны</div>`;
