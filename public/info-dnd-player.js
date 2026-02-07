@@ -458,6 +458,98 @@ function normalizeLanguagesLearned(raw) {
 }
 
 
+function openLanguagesPopup(player) {
+  if (!player?.sheet?.parsed) return;
+  if (!canEditPlayer(player)) return;
+
+  const renderCol = (title, items, category) => {
+    const rows = items.map(l => `
+      <div class="lss-lang-row" data-lang-id="${escapeHtml(l.id)}">
+        <div class="lss-lang-row-head">
+          <div class="lss-lang-row-name">${escapeHtml(l.name)}</div>
+          <button class="popup-btn primary" type="button"
+            data-lang-learn="${escapeHtml(l.id)}"
+            data-lang-cat="${escapeHtml(category)}">Выучить</button>
+        </div>
+        <div class="lss-lang-row-meta">Типичный представитель - ${escapeHtml(l.typical)}; Письменность - ${escapeHtml(l.script)}</div>
+      </div>
+    `).join("");
+
+    return `
+      <div class="lss-lang-col">
+        <div class="lss-lang-col-title">${escapeHtml(title)}</div>
+        ${rows}
+      </div>
+    `;
+  };
+
+  const { overlay, close } = openPopup({
+    title: "Выучить язык",
+    bodyHtml: `
+      <div class="lss-lang-popup-grid">
+        ${renderCol("Обычные языки", LANGUAGES_DB.common, "common")}
+        ${renderCol("Экзотические языки", LANGUAGES_DB.exotic, "exotic")}
+      </div>
+    `
+  });
+
+  overlay.addEventListener("click", (e) => {
+    const btn = e.target?.closest?.("[data-lang-learn]");
+    if (!btn) return;
+
+    const id = String(btn.getAttribute("data-lang-learn") || "").trim();
+    const cat = String(btn.getAttribute("data-lang-cat") || "").trim();
+
+    const all = [
+      ...LANGUAGES_DB.common.map(x => ({ ...x, category: "common" })),
+      ...LANGUAGES_DB.exotic.map(x => ({ ...x, category: "exotic" }))
+    ];
+    const found = all.find(x => x.id === id);
+    if (!found) return;
+
+    const sheet = player.sheet.parsed;
+    if (!sheet.info || typeof sheet.info !== "object") sheet.info = {};
+    if (!Array.isArray(sheet.info.languagesLearned)) sheet.info.languagesLearned = [];
+
+    const already = sheet.info.languagesLearned.some(x =>
+      String(x?.id || "") === id || String(x?.name || "") === found.name
+    );
+
+    if (!already) {
+      sheet.info.languagesLearned.push({
+        id: found.id,
+        name: found.name,
+        typical: found.typical,
+        script: found.script,
+        category: cat || found.category || ""
+      });
+    }
+
+    markModalInteracted(player.id);
+    scheduleSheetSave(player);
+    close();
+    renderSheetModal(player, { force: true });
+  });
+}
+
+function bindLanguagesUi(root, player, canEdit) {
+  if (!root) return;
+  const btn = root.querySelector("[data-lang-popup-open]");
+  if (!btn) return;
+
+  if (btn.__langWired) return;
+  btn.__langWired = true;
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!canEdit) return;
+    openLanguagesPopup(player);
+  });
+}
+
+
+
   function parseCondList(s) {
     if (!s || typeof s !== "string") return [];
     return s.split(",").map(x => x.trim()).filter(Boolean);
@@ -1846,102 +1938,6 @@ if (path === "proficiency" || path === "proficiencyCustom") {
       inp.addEventListener("change", handler);
     });
   }
-
-function openLanguagesPopup(curPlayer) {
-  const { overlay, close } = createPopupOverlay();
-  const safeTitle = "Выбор языка";
-
-  const renderCol = (title, items, category) => {
-    const rows = items.map(l => `
-      <div class="lss-lang-row" data-lang-id="${escapeHtml(l.id)}">
-        <div class="lss-lang-row-head">
-          <div class="lss-lang-row-name">${escapeHtml(l.name)}</div>
-          <button class="popup-btn primary" type="button" data-lang-learn="${escapeHtml(l.id)}" data-lang-cat="${escapeHtml(category)}">Выучить</button>
-        </div>
-        <div class="lss-lang-row-meta"><span class="lss-lang-lbl">Типичный представитель</span> - ${escapeHtml(l.typical)}; <span class="lss-lang-lbl">Письменность</span> - ${escapeHtml(l.script)}</div>
-      </div>
-    `).join("");
-
-    return `
-      <div class="lss-lang-col">
-        <div class="lss-lang-col-title">${escapeHtml(title)}</div>
-        ${rows}
-      </div>
-    `;
-  };
-
-  overlay.innerHTML = `
-    <div class="popup-card lss-lang-popup-card">
-      <div class="popup-head">
-        <div class="popup-title">${safeTitle}</div>
-        <button class="popup-close" type="button" data-popup-close>Закрыть</button>
-      </div>
-
-      <div class="popup-grid lss-lang-popup-grid">
-        ${renderCol("Обычные языки", LANGUAGES_DB.common, "common")}
-        ${renderCol("Экзотические языки", LANGUAGES_DB.exotic, "exotic")}
-      </div>
-    </div>
-  `;
-
-  overlay.addEventListener("click", (e) => {
-    const btn = e.target?.closest?.("[data-lang-learn]");
-    if (!btn) return;
-
-    const { player: p, canEdit } = getState();
-    if (!canEdit) return;
-
-    const sheet = getSheet();
-    if (!sheet) return;
-
-    if (!sheet.info || typeof sheet.info !== "object") sheet.info = {};
-    if (!Array.isArray(sheet.info.languagesLearned)) sheet.info.languagesLearned = [];
-
-    const id = String(btn.getAttribute("data-lang-learn") || "").trim();
-    const cat = String(btn.getAttribute("data-lang-cat") || "").trim();
-
-    const all = [
-      ...LANGUAGES_DB.common.map(x => ({ ...x, category: "common" })),
-      ...LANGUAGES_DB.exotic.map(x => ({ ...x, category: "exotic" }))
-    ];
-    const found = all.find(x => x.id === id);
-    if (!found) return;
-
-    const already = sheet.info.languagesLearned.some(x => String(x?.id || "") === id || String(x?.name || "") === found.name);
-    if (!already) {
-      sheet.info.languagesLearned.push({
-        id: found.id,
-        name: found.name,
-        typical: found.typical,
-        script: found.script,
-        category: cat || found.category || ""
-      });
-    }
-
-    scheduleSheetSave(p);
-    markModalInteracted(p?.id);
-    close();
-
-    // перерисуем модалку, чтобы "Языки" сразу обновились
-    if (p) renderSheetModal(p);
-  });
-}
-
-function bindLanguagesUi(root, player, canEdit) {
-  if (!root) return;
-
-  root.addEventListener("click", (e) => {
-    const openBtn = e.target?.closest?.("[data-lang-popup-open]");
-    if (!openBtn) return;
-
-    const { player: curPlayer, canEdit: curCanEdit } = getState();
-    if (!curCanEdit) return;
-
-    openLanguagesPopup(curPlayer);
-  });
-}
-
-
   // ===== clickable dots binding (skills boost) =====
   function bindSkillBoostDots(root, player, canEdit) {
     if (!root || !player?.sheet?.parsed) return;
@@ -4319,6 +4315,7 @@ function renderCombatTab(vm) {
     sheetContent.addEventListener('keydown', () => markModalInteracted(player.id), { passive: true });
 
     bindEditableInputs(sheetContent, player, canEdit);
+    bindLanguagesUi(sheetContent, player, canEdit);
     bindSkillBoostDots(sheetContent, player, canEdit);
     bindSaveProfDots(sheetContent, player, canEdit);
     bindStatRollButtons(sheetContent, player);
