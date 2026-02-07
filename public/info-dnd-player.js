@@ -2999,6 +2999,63 @@ function renderCombatTab(vm) {
   function renderInventoryTab(vm) {
     const denom = String(vm?.coinsViewDenom || "gp").toLowerCase();
 
+    const exchangeTooltip = `
+      <div class="exchange-tooltip" role="tooltip">
+        <div class="exchange-title">Обменный курс</div>
+        <div class="exchange-table">
+          <div class="ex-row ex-head">
+            <div class="ex-cell">Монета</div>
+            <div class="ex-cell">ММ</div>
+            <div class="ex-cell">СМ</div>
+            <div class="ex-cell">ЭМ</div>
+            <div class="ex-cell">ЗМ</div>
+            <div class="ex-cell">ПМ</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-cell">Медная (мм)</div>
+            <div class="ex-cell">1</div>
+            <div class="ex-cell">1/10</div>
+            <div class="ex-cell">1/50</div>
+            <div class="ex-cell">1/100</div>
+            <div class="ex-cell">1/1,000</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-cell">Серебряная (см)</div>
+            <div class="ex-cell">10</div>
+            <div class="ex-cell">1</div>
+            <div class="ex-cell">1/5</div>
+            <div class="ex-cell">1/10</div>
+            <div class="ex-cell">1/100</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-cell">Электрумовая (эм)</div>
+            <div class="ex-cell">50</div>
+            <div class="ex-cell">5</div>
+            <div class="ex-cell">1</div>
+            <div class="ex-cell">1/2</div>
+            <div class="ex-cell">1/20</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-cell">Золотая (зм)</div>
+            <div class="ex-cell">100</div>
+            <div class="ex-cell">10</div>
+            <div class="ex-cell">2</div>
+            <div class="ex-cell">1</div>
+            <div class="ex-cell">1/10</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-cell">Платиновая (пм)</div>
+            <div class="ex-cell">1,000</div>
+            <div class="ex-cell">100</div>
+            <div class="ex-cell">20</div>
+            <div class="ex-cell">10</div>
+            <div class="ex-cell">1</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+
     const coinBox = (key, title, abbr, row) => `
       <div class="coin-box" data-coin-box="${escapeHtml(key)}" data-coin-row="${row}">
         <div class="coin-top">
@@ -3028,11 +3085,11 @@ function renderCombatTab(vm) {
         <div class="coin-top coin-top--between">
           <div class="coin-pill">Итог</div>
           <select class="coin-select" data-coins-total-denom data-sheet-path="coinsView.denom">
-            <option value="cp" ${denom === "cp" ? "selected" : ""}>CP</option>
-            <option value="sp" ${denom === "sp" ? "selected" : ""}>SP</option>
-            <option value="ep" ${denom === "ep" ? "selected" : ""}>EP</option>
-            <option value="gp" ${denom === "gp" ? "selected" : ""}>GP</option>
-            <option value="pp" ${denom === "pp" ? "selected" : ""}>PP</option>
+            <option value="cp" ${denom === "cp" ? "selected" : ""}>мм</option>
+            <option value="sp" ${denom === "sp" ? "selected" : ""}>см</option>
+            <option value="ep" ${denom === "ep" ? "selected" : ""}>эм</option>
+            <option value="gp" ${denom === "gp" ? "selected" : ""}>зм</option>
+            <option value="pp" ${denom === "pp" ? "selected" : ""}>пм</option>
           </select>
         </div>
 
@@ -3048,7 +3105,13 @@ function renderCombatTab(vm) {
         <h3>Инвентарь</h3>
 
         <div class="sheet-card fullwidth coins-card">
-          <h4>Монеты</h4>
+          <div class="coins-head">
+            <h4 style="margin:0">Монеты</h4>
+            <div class="exchange-pill" tabindex="0">
+              Обменный курс
+              ${exchangeTooltip}
+            </div>
+          </div>
 
           <div class="coins-grid coins-grid--row1">
             ${coinBox("cp", "Медная", "мм", 1)}
