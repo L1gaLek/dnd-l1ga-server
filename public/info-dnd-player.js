@@ -19,8 +19,15 @@
   let ctx = null;
 
   function canEditPlayer(player) {
-    const myRole = ctx?.myRole || ctx?.role || "";
-    const myId = ctx?.myId ?? "";
+    // client.js передаёт в init() функции getMyRole()/getMyId().
+    // Важно: не полагаемся на ctx.myRole/ctx.myId (их может не быть),
+    // иначе у игроков отключаются клики/выборы в "Основное".
+    const myRole = (typeof ctx?.getMyRole === "function")
+      ? (ctx.getMyRole() || "")
+      : (ctx?.myRole || ctx?.role || "");
+    const myId = (typeof ctx?.getMyId === "function")
+      ? (ctx.getMyId() ?? "")
+      : (ctx?.myId ?? "");
     if (myRole === "GM") return true;
     const owner = player?.ownerId ?? "";
     return String(owner) && String(myId) && String(owner) === String(myId);
@@ -641,6 +648,37 @@ function ensureWiredCloseHandlers() {
     });
   }
 
+  // Прямая привязка кликов к текущему DOM (на случай, если делегирование не сработало
+  // из-за disabled input / особенностей браузера). Вызывается после каждого рендера модалки.
+  function wireQuickBasicInteractions(root) {
+    if (!root || root.__basicQuickWired) return;
+    root.__basicQuickWired = true;
+
+    // Вдохновение (звезда)
+    const inspChip = root.querySelector('[data-hero="insp"]');
+    if (inspChip) {
+      inspChip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const player = getOpenedPlayerSafe();
+        if (!player) return;
+        if (!canEditPlayer(player)) return;
+        const sheet = player.sheet?.parsed;
+        if (!sheet) return;
+        sheet.inspiration = safeInt(sheet.inspiration, 0) ? 0 : 1;
+        markModalInteracted(player.id);
+        scheduleSheetSave(player);
+        updateHeroChips(root, sheet);
+      });
+    }
+
+    // Истощение/Состояние: открытие попапов кликом по рамке
+    const exhChip = root.querySelector('[data-exh-open]');
+    if (exhChip) exhChip.addEventListener('click', (e) => { e.stopPropagation(); showExhPopup(); });
+
+    const condChip = root.querySelector('[data-cond-open]');
+    if (condChip) condChip.addEventListener('click', (e) => { e.stopPropagation(); showCondPopup(); });
+  }
+
   // keep condition chip highlight in sync when user edits the field manually
   sheetContent?.addEventListener('input', (e) => {
     const t = e.target;
@@ -965,17 +1003,6 @@ function ensureWiredCloseHandlers() {
     if (!player.sheet.parsed || typeof player.sheet.parsed !== "object") {
       player.sheet.parsed = createEmptySheet(player.name);
     }
-
-    // ✅ Синхронизация имени по умолчанию:
-    // если в sheet имя пустое (например, после импорта/ручных правок),
-    // показываем и сохраняем имя из созданного игрока.
-    try {
-      if (!player.sheet.parsed.name || typeof player.sheet.parsed.name !== 'object') {
-        player.sheet.parsed.name = { value: player.name };
-      }
-      const cur = String(player.sheet.parsed?.name?.value ?? '').trim();
-      if (!cur) player.sheet.parsed.name.value = player.name;
-    } catch {}
   }
 
   // ================== CALC MODIFIERS ==================
@@ -1407,12 +1434,11 @@ const weapons = weaponsRaw
     }
 
 
-    // Inspiration star
+    // Inspiration star (SVG)
     const inspChip = root.querySelector('[data-hero="insp"] .insp-star');
     if (inspChip) {
       const on = !!safeInt(sheet?.inspiration, 0);
       inspChip.classList.toggle('on', on);
-      inspChip.textContent = on ? '★' : '☆';
     }
 
     const spdEl = root.querySelector('[data-hero-val="speed"]');
@@ -2035,23 +2061,11 @@ if (path === "proficiency") {
   // ===== Inventory (coins) editors =====
   function bindInventoryEditors(root, player, canEdit) {
     if (!root) return;
-
-    // IMPORTANT:
-    // root переиспользуется между вкладками и при обновлениях.
-    // Если замкнуть player/sheet/canEdit в closure, то кнопки будут менять старый sheet,
-    // и при возврате во вкладку значения "сбросятся" визуально.
-    // Поэтому храним актуальное состояние на root и берём его в момент клика.
+    // как и в bindSlotEditors: root (sheetContent) переиспользуется.
+    // Храним актуальные ссылки, чтобы монеты не писались в sheet старого игрока.
     root.__invCoinsState = { player, canEdit };
     const getState = () => root.__invCoinsState || { player, canEdit };
-    const getSheet = () => {
-      const { player: curPlayer } = getState();
-      const s = curPlayer?.sheet?.parsed;
-      if (!s || typeof s !== 'object') return null;
-      if (!s.coins || typeof s.coins !== 'object') s.coins = {};
-      return s;
-    };
 
-    // чтобы не навешивать обработчики повторно при ререндерах/смене вкладки
     if (root.__invCoinsBound) return;
     root.__invCoinsBound = true;
 
@@ -2062,8 +2076,8 @@ if (path === "proficiency") {
       const { player: curPlayer, canEdit: curCanEdit } = getState();
       if (!curCanEdit) return;
 
-      const sheet = getSheet();
-      if (!sheet) return;
+      const sheet = curPlayer?.sheet?.parsed;
+      if (!sheet || typeof sheet !== "object") return;
 
       const op = btn.getAttribute("data-coin-op");
       const key = btn.getAttribute("data-coin-key");
@@ -2082,7 +2096,7 @@ if (path === "proficiency") {
       coinInp.value = String(next);
 
       updateCoinsTotal(root, sheet);
-      if (curPlayer) scheduleSheetSave(curPlayer);
+      scheduleSheetSave(curPlayer);
     });
   }
 
@@ -3170,11 +3184,13 @@ function bindSpellAddAndDesc(root, player, canEdit) {
         <div class="sheet-topline">
           <div class="sheet-chip sheet-chip--exh" data-exh-open title="Истощение">
             <div class="k">Истощение</div>
-            <input class="sheet-chip-input" type="number" min="0" max="6" ${canEdit ? "" : "disabled"} data-sheet-path="exhaustion" value="${escapeHtml(String(vm.exhaustion))}">
+            <!-- readonly: выбор идёт через список; так клик по полю тоже открывает окно -->
+            <input class="sheet-chip-input" type="number" min="0" max="6" ${canEdit ? "" : "disabled"} readonly data-sheet-path="exhaustion" value="${escapeHtml(String(vm.exhaustion))}">
           </div>
           <div class="sheet-chip sheet-chip--cond ${String(vm.conditions||"").trim() ? "has-value" : ""}" data-cond-open title="Состояние">
             <div class="k">Состояние</div>
-            <input class="sheet-chip-input sheet-chip-input--wide" type="text" ${canEdit ? "" : "disabled"} data-sheet-path="conditions" value="${escapeHtml(String(vm.conditions || ""))}">
+            <!-- readonly: состояние выбирается из списка (и очищается кнопкой) -->
+            <input class="sheet-chip-input sheet-chip-input--wide" type="text" ${canEdit ? "" : "disabled"} readonly data-sheet-path="conditions" value="${escapeHtml(String(vm.conditions || ""))}">
           </div>
         </div>
 
@@ -3924,7 +3940,9 @@ function renderCombatTab(vm) {
           <div class="sheet-chips">
             <div class="sheet-chip sheet-chip--insp" data-hero="insp" title="Вдохновение" ${canEdit ? "" : "data-readonly"}>
               <div class="k">Вдохновение</div>
-              <div class="insp-star ${vm.inspiration ? "on" : ""}" aria-label="Вдохновение">${vm.inspiration ? "★" : "☆"}</div>
+              <svg class="insp-star ${vm.inspiration ? "on" : ""}" viewBox="0 0 24 24" aria-label="Вдохновение" role="img">
+                <path d="M12 2.6l2.93 5.94 6.56.95-4.75 4.63 1.12 6.53L12 17.9l-5.86 3.08 1.12-6.53L2.5 9.49l6.56-.95L12 2.6z"></path>
+              </svg>
             </div>
             <div class="sheet-chip" data-hero="prof" title="Бонус мастерства">
               <div class="k">Владение</div>
@@ -3998,6 +4016,10 @@ function renderCombatTab(vm) {
     bindInventoryEditors(sheetContent, player, canEdit);
     updateCoinsTotal(sheetContent, player.sheet?.parsed);
 
+    // важное: быстрые клики "Вдохновение" / "Истощение" / "Состояние"
+    // (на некоторых браузерах клики по input могут не доходить, если он disabled)
+    wireQuickBasicInteractions(sheetContent);
+
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
 
@@ -4058,6 +4080,3 @@ function renderCombatTab(vm) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
-
-
-
