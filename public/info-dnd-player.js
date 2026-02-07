@@ -464,10 +464,21 @@
         if (!sheet) return;
         sheet.exhaustion = lvl;
         applyExhaustionToConditions(sheet);
+
+        // sync visible inputs/chips without full re-render
+        try {
+          const exInput = sheetContent?.querySelector('[data-sheet-path="exhaustion"]');
+          if (exInput && exInput instanceof HTMLInputElement) exInput.value = String(lvl);
+
+          const condInput = sheetContent?.querySelector('[data-sheet-path="conditions"]');
+          if (condInput && condInput instanceof HTMLInputElement) condInput.value = sheet.conditions || "";
+
+          const condChip = sheetContent?.querySelector('[data-cond-open]');
+          if (condChip) condChip.classList.toggle('has-value', !!String(sheet.conditions || '').trim());
+        } catch {}
+
         markModalInteracted(player.id);
         scheduleSheetSave(player);
-        // sync inputs after save
-        try { renderSheetModal(player); } catch {}
         hideExhPopup();
       }
     });
@@ -491,6 +502,7 @@
           <button class="mini-popover__x" type="button" data-cond-close>✕</button>
         </div>
         <div class="mini-popover__body">
+          <button class="cond-clear" type="button" data-cond-clear>Убрать состояние</button>
           <div class="cond-list">
             ${CONDITIONS_DB.map((c, i) => `
               <div class="cond-item" data-cond-name="${escapeHtml(c.name)}">
@@ -512,6 +524,29 @@
       if (!(t instanceof Element)) return;
       if (t.closest("[data-cond-close]")) { hideCondPopup(); return; }
 
+      if (t.closest("[data-cond-clear]")) {
+        const player = getOpenedPlayerSafe();
+        if (!player) return;
+        if (!canEditPlayer(player)) return;
+        const sheet = player.sheet?.parsed;
+        if (!sheet) return;
+
+        // clear all non-exhaustion conditions
+        const ex = Math.max(0, Math.min(6, safeInt(sheet?.exhaustion, 0)));
+        sheet.conditions = (ex > 0) ? `Истощение ${ex}` : "";
+
+        markModalInteracted(player.id);
+        scheduleSheetSave(player);
+
+        try {
+          const input = sheetContent?.querySelector('[data-sheet-path="conditions"]');
+          if (input && input instanceof HTMLInputElement) input.value = sheet.conditions || "";
+          const condChip = sheetContent?.querySelector('[data-cond-open]');
+          if (condChip) condChip.classList.toggle('has-value', !!String(sheet.conditions || '').trim());
+        } catch {}
+        return;
+      }
+
       const descBtn = t.closest("[data-cond-desc]");
       if (descBtn) {
         const i = descBtn.getAttribute("data-cond-desc");
@@ -529,16 +564,27 @@
         const sheet = player.sheet?.parsed;
         if (!sheet) return;
 
-        const list = parseCondList(sheet.conditions);
-        const has = list.some(x => x.toLowerCase() === String(name).toLowerCase());
-        const next = has ? list.filter(x => x.toLowerCase() !== String(name).toLowerCase()) : [...list, String(name)];
-        setCondList(sheet, next);
+        const ex = Math.max(0, Math.min(6, safeInt(sheet?.exhaustion, 0)));
+
+        // keep only non-exhaustion condition (single selection behavior)
+        const list = parseCondList(sheet.conditions).filter(x => !/^Истощение\s+\d+$/i.test(x));
+        const already = list.length === 1 && list[0].toLowerCase() === String(name).toLowerCase();
+
+        const nextList = [];
+        if (ex > 0) nextList.push(`Истощение ${ex}`);
+        if (!already) nextList.push(String(name));
+
+        setCondList(sheet, nextList);
+
         markModalInteracted(player.id);
         scheduleSheetSave(player);
 
-        // sync current input if present
-        const input = sheetContent?.querySelector('[data-sheet-path="conditions"]');
-        if (input && input instanceof HTMLInputElement) input.value = sheet.conditions || "";
+        try {
+          const input = sheetContent?.querySelector('[data-sheet-path="conditions"]');
+          if (input && input instanceof HTMLInputElement) input.value = sheet.conditions || "";
+          const condChip = sheetContent?.querySelector('[data-cond-open]');
+          if (condChip) condChip.classList.toggle('has-value', !!String(sheet.conditions || '').trim());
+        } catch {}
         return;
       }
     });
@@ -612,6 +658,16 @@ function ensureWiredCloseHandlers() {
       if (co) { showCondPopup(); return; }
     });
   }
+
+  // keep condition chip highlight in sync when user edits the field manually
+  sheetContent?.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const inp = t.closest('[data-sheet-path="conditions"]');
+    if (!inp) return;
+    const chip = sheetContent?.querySelector('[data-cond-open]');
+    if (chip) chip.classList.toggle('has-value', !!String(inp.value || '').trim());
+  });
 
 
 
@@ -1355,6 +1411,15 @@ const weapons = weaponsRaw
       const ratio = (hp > 0) ? Math.max(0, Math.min(1, hpCur / hp)) : 0;
       const pct = Math.round(ratio * 100);
       hpChip.style.setProperty('--hp-fill-pct', `${pct}%`);
+    }
+
+
+    // Inspiration star
+    const inspChip = root.querySelector('[data-hero="insp"] .insp-star');
+    if (inspChip) {
+      const on = !!safeInt(sheet?.inspiration, 0);
+      inspChip.classList.toggle('on', on);
+      inspChip.textContent = on ? '★' : '☆';
     }
 
     const spdEl = root.querySelector('[data-hero-val="speed"]');
@@ -3104,7 +3169,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             <div class="k">Истощение</div>
             <input class="sheet-chip-input" type="number" min="0" max="6" ${canEdit ? "" : "disabled"} data-sheet-path="exhaustion" value="${escapeHtml(String(vm.exhaustion))}">
           </div>
-          <div class="sheet-chip sheet-chip--cond" data-cond-open title="Состояние">
+          <div class="sheet-chip sheet-chip--cond ${String(vm.conditions||"").trim() ? "has-value" : ""}" data-cond-open title="Состояние">
             <div class="k">Состояние</div>
             <input class="sheet-chip-input sheet-chip-input--wide" type="text" ${canEdit ? "" : "disabled"} data-sheet-path="conditions" value="${escapeHtml(String(vm.conditions || ""))}">
           </div>
@@ -3854,15 +3919,15 @@ function renderCombatTab(vm) {
             </div>
           </div>
           <div class="sheet-chips">
+            <div class="sheet-chip sheet-chip--insp" data-hero="insp" title="Вдохновение" ${canEdit ? "" : "data-readonly"}>
+              <div class="k">Вдохновение</div>
+              <div class="insp-star ${vm.inspiration ? "on" : ""}" aria-label="Вдохновение">${vm.inspiration ? "★" : "☆"}</div>
+            </div>
             <div class="sheet-chip" data-hero="prof" title="Бонус мастерства">
               <div class="k">Владение</div>
               <input class="sheet-chip-input" type="number" min="0" max="10" ${canEdit ? "" : "disabled"} data-sheet-path="proficiency" value="${escapeHtml(String(vm.profBonus))}">
             </div>
 
-            <div class="sheet-chip sheet-chip--insp" data-hero="insp" title="Вдохновение" ${canEdit ? "" : "data-readonly"}>
-              <div class="k">Вдохновение</div>
-              <div class="insp-star ${vm.inspiration ? "on" : ""}" aria-label="Вдохновение">★</div>
-            </div>
             <div class="sheet-chip" data-hero="ac">
               <div class="k">Броня</div>
               <input class="sheet-chip-input" type="number" min="0" max="40" ${canEdit ? "" : "disabled"} data-sheet-path="vitality.ac.value" data-hero-val="ac" value="${escapeHtml(String(vm.ac))}">
