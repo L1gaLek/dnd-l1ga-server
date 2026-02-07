@@ -2717,127 +2717,118 @@ textarea[data-sheet-path="text.profPlain.value"]{
 
 
 
-/* ===== HP popover ===== */
-.sheet-chip--clickable{ cursor:pointer; }
-.sheet-chip--clickable:focus{ outline: 2px solid rgba(255,255,255,0.18); outline-offset: 2px; }
-.sheet-chip--hp{ min-width: 132px; }
 
-.hp-popover-backdrop{
+/* === HP chip clickable + popover === */
+.hp-chip-clickable{ cursor: pointer; }
+.sheet-chip--hp{ min-width: 150px; } /* enough for (10) 21/21 */
+
+.hp-popover-wrap{
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.58);
+  z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
 }
-
+.hp-popover-backdrop{
+  position:absolute;
+  inset:0;
+  background: rgba(0,0,0,0.55);
+}
 .hp-popover{
-  width: min(460px, 94vw);
-  background: #171717;
-  border: 1px solid #3a3a3a;
+  position: relative;
+  width: min(420px, calc(100vw - 24px));
   border-radius: 14px;
-  box-shadow: 0 18px 45px rgba(0,0,0,0.55);
-  padding: 12px 12px 10px 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: #141414;
   color: #fff;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.45);
+  padding: 12px;
 }
-
 .hp-popover-head{
-  display: flex;
-  align-items: center;
+  display:flex;
+  align-items:center;
   justify-content: space-between;
   gap: 10px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #2f2f2f;
   margin-bottom: 10px;
 }
-
 .hp-popover-title{
   font-size: 14px;
-  font-weight: 800;
-  letter-spacing: 0.2px;
+  font-weight: 900;
 }
-
-.hp-popover-close{
-  border: 1px solid #444;
-  background: #1f1f1f;
-  color: #fff;
+.hp-popover-x{
+  width: 28px;
+  height: 28px;
   border-radius: 10px;
-  width: 32px;
-  height: 30px;
-  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color:#fff;
+  cursor:pointer;
+  font-size: 18px;
+  line-height: 0;
 }
-.hp-popover-close:hover{ background:#252525; }
-
 .hp-popover-grid{
-  display: grid;
+  display:grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
-
 .hp-field{
-  background: #1c1c1c;
-  border: 1px solid #333;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.05);
   border-radius: 12px;
   padding: 10px;
 }
-
 .hp-field--wide{ grid-column: 1 / -1; }
-
-.hp-field-k{
-  font-size: 11px;
-  color: #aaa;
+.hp-field-label{
+  font-size: 12px;
+  font-weight: 900;
+  opacity: 0.85;
   margin-bottom: 6px;
 }
-
-.hp-field-v{
-  width: 100%;
-  background: #121212;
-  border: 1px solid #3a3a3a;
+.hp-field-input{
+  width:100%;
   border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color:#fff;
   padding: 8px 10px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  box-sizing: border-box;
+  font-size: 14px;
+  font-weight: 900;
+  text-align: center;
+  outline: none;
 }
-
-.hp-delta{
-  display: grid;
-  grid-template-columns: 36px 1fr 36px;
+.hp-adjust{
+  display:flex;
+  align-items:center;
   gap: 8px;
-  align-items: center;
 }
-
-.hp-delta-btn{
-  width: 36px;
+.hp-adjust-input{
+  flex: 1 1 auto;
+  min-width: 80px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color:#fff;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 900;
+  text-align: center;
+  outline: none;
+}
+.hp-adjust-btn{
+  width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid #3a3a3a;
-  background: #161616;
-  color: #fff;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  color:#fff;
+  font-weight: 900;
+  cursor:pointer;
 }
-.hp-delta-btn:hover{ background:#1e1e1e; }
-.hp-delta-btn--minus{ color: rgb(255,120,120); }
-.hp-delta-btn--plus{ color: rgb(120,255,140); }
-
-.hp-delta-input{
-  width: 100%;
-  background: #121212;
-  border: 1px solid #3a3a3a;
-  border-radius: 10px;
-  padding: 8px 10px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  text-align: center;
-}
-
-.hp-delta-hint{
+.hp-adjust-btn--minus{ border-color: rgba(255,0,0,0.40); background: rgba(255,0,0,0.12); }
+.hp-adjust-btn--plus{ border-color: rgba(0,255,120,0.40); background: rgba(0,255,120,0.12); }
+.hp-field-hint{
   margin-top: 6px;
   font-size: 11px;
-  color: #8f8f8f;
+  opacity: 0.7;
 }
