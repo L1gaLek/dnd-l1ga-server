@@ -2879,9 +2879,9 @@ textarea[data-sheet-path="text.profPlain.value"]{
   opacity: 0.85;
 }
 .insp-star{
-  font-size: 22px;
+  font-size: 30px;
   line-height: 1;
-  opacity: 0.25;
+  opacity: 0.75;
   transform: translateY(-1px);
   text-align: center;
 }
@@ -3022,3 +3022,46 @@ textarea[data-sheet-path="text.profPlain.value"]{
   line-height: 1.35;
 }
 .cond-item__desc.hidden{ display:none; }
+
+/* Clickable hint */
+.sheet-chip--exh[data-exh-open], .sheet-chip--cond[data-cond-open]{
+  cursor: pointer;
+  user-select: none;
+}
+.sheet-chip--exh[data-exh-open]:hover, .sheet-chip--cond[data-cond-open]:hover{
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.12), 0 10px 22px rgba(0,0,0,0.35);
+  background: rgba(255,255,255,0.06);
+}
+
+/* Condition chip active highlight */
+.sheet-chip--cond.has-value{
+  background: rgba(211,98,80,0.35);
+  border-color: rgba(211,98,80,0.65);
+}
+.sheet-chip--cond.has-value .sheet-chip-input{
+  border-color: rgba(211,98,80,0.65);
+}
+
+/* Conditions popup */
+.cond-clear{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: inherit;
+  cursor: pointer;
+  margin-bottom: 10px;
+  font-weight: 800;
+}
+.cond-clear:hover{
+  background: rgba(255,255,255,0.09);
+}
+.cond-list{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 720px){
+  .cond-list{ grid-template-columns: 1fr; }
+}
