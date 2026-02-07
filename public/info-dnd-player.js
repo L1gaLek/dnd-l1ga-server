@@ -464,6 +464,53 @@
     if (!player.sheet.parsed || typeof player.sheet.parsed !== "object") {
       player.sheet.parsed = createEmptySheet(player.name);
     }
+
+    // Нормализация HP-полей под нашу схему (hp-max / hp-current / hp-temp).
+    // Некоторые файлы/источники могут хранить здоровье иначе (например, vitality.hp).
+    normalizeHpSchema(player.sheet.parsed);
+  }
+
+  // Приводим здоровье к единой схеме:
+  // - vitality["hp-max"].value
+  // - vitality["hp-current"].value
+  // - vitality["hp-temp"].value
+  // Поддерживаем legacy:
+  // - vitality.hp.value (или vitality.hp)
+  // - когда в файле есть только одно из max/current
+  function normalizeHpSchema(sheet) {
+    if (!sheet || typeof sheet !== "object") return;
+    if (!sheet.vitality || typeof sheet.vitality !== "object") sheet.vitality = {};
+
+    const vit = sheet.vitality;
+    // Читаем разные возможные источники
+    const hpMaxRaw = (vit["hp-max"] && typeof vit["hp-max"] === "object" && "value" in vit["hp-max"]) ? vit["hp-max"].value : vit["hp-max"];
+    const hpCurRaw = (vit["hp-current"] && typeof vit["hp-current"] === "object" && "value" in vit["hp-current"]) ? vit["hp-current"].value : vit["hp-current"];
+    const hpTempRaw = (vit["hp-temp"] && typeof vit["hp-temp"] === "object" && "value" in vit["hp-temp"]) ? vit["hp-temp"].value : vit["hp-temp"];
+
+    const legacyHpRaw = (vit.hp && typeof vit.hp === "object" && "value" in vit.hp) ? vit.hp.value : vit.hp;
+
+    let hpMax = Math.max(0, safeInt(hpMaxRaw, 0));
+    let hpCur = Math.max(0, safeInt(hpCurRaw, 0));
+    let hpTemp = Math.max(0, safeInt(hpTempRaw, 0));
+    const legacyHp = Math.max(0, safeInt(legacyHpRaw, 0));
+
+    // Если max отсутствует, но есть current — делаем max=current
+    if (hpMax <= 0 && hpCur > 0) hpMax = hpCur;
+    // Если current отсутствует, но есть max — делаем current=max
+    if (hpCur <= 0 && hpMax > 0) hpCur = hpMax;
+    // Если оба отсутствуют, но есть legacy hp — используем его
+    if (hpMax <= 0 && hpCur <= 0 && legacyHp > 0) {
+      hpMax = legacyHp;
+      hpCur = legacyHp;
+    }
+
+    // Финальный clamp
+    hpCur = Math.max(0, Math.min(hpMax, hpCur));
+
+    // Записываем обратно в ожидаемую структуру (создаст нужные объекты, если их нет)
+    setByPath(sheet, "vitality.hp-max.value", hpMax);
+    setByPath(sheet, "vitality.hp-current.value", hpCur);
+    setByPath(sheet, "vitality.hp-temp.value", hpTemp);
   }
 
   // ================== CALC MODIFIERS ==================
@@ -1585,6 +1632,10 @@ function openHpPopup({ root, player, sheet, canEdit }) {
     setByPath(sheet, 'vitality.hp-current.value', curV);
     setByPath(sheet, 'vitality.hp-temp.value', tmpV);
 
+    // чтобы обновления с сервера не перерисовывали модалку во время редактирования попапа
+    // (иначе верхние рамки могут мигать 0 -> значение)
+    markModalInteracted(player.id);
+
     updateHeroChips(root, sheet);
     scheduleSheetSave(player);
   }
@@ -1615,6 +1666,7 @@ function openHpPopup({ root, player, sheet, canEdit }) {
 
     if (inpCur) inpCur.value = String(nextCur);
     // clamp also saves
+    markModalInteracted(player.id);
     clampHpValues();
   });
 
@@ -3427,6 +3479,11 @@ function renderCombatTab(vm) {
           const text = await file.text();
           const sheet = parseCharboxFileText(text);
           player.sheet = sheet;
+
+          // FIX: здоровье из файла должно попадать в hp-max/hp-current (и быть редактируемым через попап)
+          // + поддержка legacy формата vitality.hp
+          if (player.sheet?.parsed) normalizeHpSchema(player.sheet.parsed);
+
           ctx.sendMessage({ type: "setPlayerSheet", id: player.id, sheet });
 
           // Мгновенно обновляем UI (не ждём round-trip через сервер)
