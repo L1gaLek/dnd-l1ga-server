@@ -3461,29 +3461,31 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     <div class="lss-profbox">
       <div class="lss-passives-title">ПРОЧИЕ ВЛАДЕНИЯ И ЗАКЛИНАНИЯ</div>
 
-      <div class="lss-prof-grid">
-        <div class="lss-langbox">
-          <div class="lss-langbox-head">
+      <!-- Языки: на всю ширину блока -->
+      <div class="lss-langbox lss-langbox--full">
+        <div class="lss-langbox-head">
+          <div class="lss-langbox-head-left">
             <div class="lss-langbox-title">ЯЗЫКИ</div>
-            <button class="lss-lang-learn-btn" type="button" data-lang-popup-open>Выучить язык</button>
+            <div class="lss-langbox-head-hint ${hint ? "" : "hidden"}">
+              <span class="lss-langbox-head-hint-label">Знание языков:</span>
+              <span class="lss-langbox-head-hint-val">${escapeHtml(hint)}</span>
+            </div>
           </div>
-
-          <div class="lss-langbox-hint ${hint ? "" : "hidden"}">
-            <span class="lss-langbox-hint-label">Знание языков:</span>
-            <span class="lss-langbox-hint-val">${escapeHtml(hint)}</span>
-          </div>
-
-          <div class="lss-langbox-list">
-            ${learnedHtml}
-          </div>
+          <button class="lss-lang-learn-btn" type="button" data-lang-popup-open>Выучить язык</button>
         </div>
 
-        <textarea class="lss-prof-text lss-prof-text--wide" rows="8" data-sheet-path="text.profPlain.value"
-          placeholder="Например: владения, инструменты, языки, заклинания...">${escapeHtml(vm.profText || "")}</textarea>
+        <div class="lss-langbox-list lss-langbox-list--cols3">
+          ${learnedHtml}
+        </div>
       </div>
+
+      <!-- Прочие владения/заклинания: тоже на всю ширину -->
+      <textarea class="lss-prof-text lss-prof-text--full" rows="8" data-sheet-path="text.profPlain.value"
+        placeholder="Например: владения, инструменты, языки, заклинания...">${escapeHtml(vm.profText || "")}</textarea>
     </div>
   `;
 }
+
 
   function renderBasicTab(vm, canEdit) {
     return `
