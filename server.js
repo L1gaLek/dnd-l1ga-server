@@ -54,6 +54,7 @@ setInterval(() => {
   });
 }, 15000);
 
+
 // ================== GAME STATE ==================
 let gameState = {
   boardWidth: 10,
@@ -126,13 +127,8 @@ function scheduleUserCleanupIfNeeded(userId) {
   setTimeout(() => {
     const u = usersById.get(userId);
     if (!u) return;
-
-    // если снова онлайн — не трогаем
     if (u.online) return;
-
-    // если у пользователя есть персонажи — НЕ удаляем (иначе потеряешь владельца)
-    if (hasAnyPlayersForUser(userId)) return;
-
+    if (hasAnyPlayersForUser(userId)) return; // не удаляем владельца, если есть персонажи
     usersById.delete(userId);
     broadcastUsers();
   }, USER_CLEANUP_MS);
@@ -140,12 +136,12 @@ function scheduleUserCleanupIfNeeded(userId) {
 
 // ================== WS HANDLERS ==================
 wss.on("connection", ws => {
-  // Инициализация у нового клиента
-  ws.send(JSON.stringify({ type: "init", state: gameState }));
-
   // heartbeat flags
   ws.isAlive = true;
   ws.on("pong", () => { ws.isAlive = true; });
+
+  // Инициализация у нового клиента
+  ws.send(JSON.stringify({ type: "init", state: gameState }));
 
   ws.on("message", msg => {
     let data;
@@ -154,7 +150,7 @@ wss.on("connection", ws => {
     switch (data.type) {
 
       // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
-  case "register": {
+      case "register": {
         const name = String(data.name || "").trim();
         const role = String(data.role || "").trim();
         const requestedId = String(data.userId || "").trim();
@@ -168,7 +164,7 @@ wss.on("connection", ws => {
         let user = requestedId ? usersById.get(requestedId) : null;
 
         if (!user) {
-          // проверка на единственного GM (но разрешаем если это тот же id)
+          // Только один GM (но переподключение к существующему GM разрешено выше)
           const gmExists = Array.from(usersById.values()).some(u => u.role === "GM");
           if (role === "GM" && gmExists) {
             ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
@@ -186,10 +182,8 @@ wss.on("connection", ws => {
           };
           usersById.set(id, user);
         } else {
-          // обновим имя (чтобы при переподключении оно было актуальным)
+          // имя обновляем, роль не меняем (чтобы не ломать права)
           user.name = name;
-          // роль лучше не менять на лету (иначе можно сломать права)
-          // но если хочешь — можно разрешить смену роли тут.
           user.lastSeen = Date.now();
           user.online = true;
         }
@@ -199,7 +193,7 @@ wss.on("connection", ws => {
 
         ws.send(JSON.stringify({ type: "registered", id: user.id, role: user.role, name: user.name }));
 
-        // полная синхронизация только этому клиенту
+        // 🔑 ПОЛНАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЭТОМУ КЛИЕНТУ
         sendFullSync(ws);
 
         broadcastUsers();
@@ -234,8 +228,8 @@ wss.on("connection", ws => {
       }
 
       case "addPlayer": {
-const user = getUserByWS(ws);
-if (!user) return;
+        const user = getUserByWS(ws);
+        if (!user) return;
 
         const isBase = !!data.player?.isBase;
 
@@ -547,24 +541,21 @@ case "diceEvent": {
   });
 
   ws.on("close", () => {
-  const user = getUserByWS(ws);
-  if (user) {
-    user.connections.delete(ws);
-    user.lastSeen = Date.now();
-
-    // если соединений больше нет — оффлайн
-    if (user.connections.size === 0) {
-      user.online = false;
-      scheduleUserCleanupIfNeeded(user.id);
+    const user = getUserByWS(ws);
+    if (user) {
+      user.connections.delete(ws);
+      user.lastSeen = Date.now();
+      if (user.connections.size === 0) {
+        user.online = false;
+        scheduleUserCleanupIfNeeded(user.id);
+      }
     }
-  }
 
-  broadcastUsers();
-  broadcast();
+    broadcastUsers();
+    broadcast();
+  });
 });
-});
-
-unction sendFullSync(ws) {
+function sendFullSync(ws) {
   if (ws.readyState !== WebSocket.OPEN) return;
 
   ws.send(JSON.stringify({
@@ -599,6 +590,5 @@ function autoPlacePlayers() {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
-
 
 
