@@ -310,12 +310,31 @@
     const delta = Math.max(0, Math.trunc(Number(deltaEl?.value ?? 0) || 0));
     if (!delta) return;
 
+    if (!sheet.vitality["hp-max"]) sheet.vitality["hp-max"] = { value: 0 };
+    if (!sheet.vitality["hp-current"]) sheet.vitality["hp-current"] = { value: 0 };
+    if (!sheet.vitality["hp-temp"]) sheet.vitality["hp-temp"] = { value: 0 };
+
     const max = Number(sheet?.vitality?.["hp-max"]?.value) || 0;
     const cur = Number(sheet?.vitality?.["hp-current"]?.value) || 0;
+    const temp = Number(sheet?.vitality?.["hp-temp"]?.value) || 0;
 
-    const next = Math.max(0, Math.min(max, cur + (mult * delta)));
-    if (!sheet.vitality["hp-current"]) sheet.vitality["hp-current"] = { value: 0 };
-    sheet.vitality["hp-current"].value = next;
+    // mult: +1 = heal current (temp НЕ пополняется кнопкой "+")
+    // mult: -1 = damage (сначала снимаем временные хиты, затем текущее здоровье)
+    let nextCur = cur;
+    let nextTemp = temp;
+
+    if (mult > 0) {
+      nextCur = Math.max(0, Math.min(max, cur + delta));
+      // temp unchanged
+    } else {
+      const spentTemp = Math.min(temp, delta);
+      nextTemp = Math.max(0, temp - delta);
+      const remaining = Math.max(0, delta - spentTemp);
+      nextCur = Math.max(0, Math.min(max, cur - remaining));
+    }
+
+    sheet.vitality["hp-current"].value = nextCur;
+    sheet.vitality["hp-temp"].value = nextTemp;
 
     syncHpPopupInputs(sheet);
     markModalInteracted(player.id);
@@ -1077,7 +1096,10 @@ const weapons = weaponsRaw
     const spd = safeInt(sheet?.vitality?.speed?.value, 0);
 
     const acEl = root.querySelector('[data-hero-val="ac"]');
-    if (acEl) acEl.textContent = String(ac);
+    if (acEl) {
+      if (acEl.tagName === "INPUT" || acEl.tagName === "TEXTAREA") acEl.value = String(ac);
+      else acEl.textContent = String(ac);
+    }
 
     const hpEl = root.querySelector('[data-hero-val="hp"]');
     const hpTemp = safeInt(sheet?.vitality?.["hp-temp"]?.value, 0);
@@ -1092,7 +1114,10 @@ const weapons = weaponsRaw
     }
 
     const spdEl = root.querySelector('[data-hero-val="speed"]');
-    if (spdEl) spdEl.textContent = String(spd);
+    if (spdEl) {
+      if (spdEl.tagName === "INPUT" || spdEl.tagName === "TEXTAREA") spdEl.value = String(spd);
+      else spdEl.textContent = String(spd);
+    }
   }
 
   function updateSkillsAndPassives(root, sheet) {
@@ -2830,10 +2855,6 @@ function bindSpellAddAndDesc(root, player, canEdit) {
 
           <div class="sheet-card">
             <h4>Базовые параметры</h4>
-            <div class="kv"><div class="k">Класс брони</div><div class="v"><input type="number" min="0" max="40" data-sheet-path="vitality.ac.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Здоровье макс.</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-max.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Здоровья осталось</div><div class="v"><input type="number" min="0" max="999" data-sheet-path="vitality.hp-current.value" style="width:90px"></div></div>
-            <div class="kv"><div class="k">Скорость</div><div class="v"><input type="number" min="0" max="200" data-sheet-path="vitality.speed.value" style="width:90px"></div></div>
             <div class="kv"><div class="k">Владение (Бонус мастерства)</div><div class="v"><input type="number" min="0" max="10" data-sheet-path="proficiency" style="width:90px"></div></div>
           </div>
         </div>
@@ -3563,7 +3584,7 @@ function renderCombatTab(vm) {
           <div class="sheet-chips">
             <div class="sheet-chip" data-hero="ac">
               <div class="k">Броня</div>
-              <div class="v" data-hero-val="ac">${escapeHtml(String(vm.ac))}</div>
+              <input class="sheet-chip-input" type="number" min="0" max="40" ${canEdit ? "" : "disabled"} data-sheet-path="vitality.ac.value" data-hero-val="ac" value="${escapeHtml(String(vm.ac))}">
             </div>
             <div class="sheet-chip sheet-chip--hp" data-hero="hp" data-hp-open role="button" tabindex="0" style="--hp-fill-pct:${escapeHtml(String(vm.hp ? Math.max(0, Math.min(100, Math.round((Number(vm.hpCur) / Math.max(1, Number(vm.hp))) * 100))) : 0))}%">
               <div class="hp-liquid" aria-hidden="true"></div>
@@ -3572,7 +3593,7 @@ function renderCombatTab(vm) {
             </div>
             <div class="sheet-chip" data-hero="speed">
               <div class="k">Скорость</div>
-              <div class="v" data-hero-val="speed">${escapeHtml(String(vm.spd))}</div>
+              <input class="sheet-chip-input" type="number" min="0" max="200" ${canEdit ? "" : "disabled"} data-sheet-path="vitality.speed.value" data-hero-val="speed" value="${escapeHtml(String(vm.spd))}">
             </div>
           </div>
           </div>
