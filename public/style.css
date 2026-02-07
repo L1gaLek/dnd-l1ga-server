@@ -641,6 +641,51 @@ button:hover {
   min-width: 86px;
 }
 
+/* HP chip: "liquid" fill (shrinks right-to-left) */
+.sheet-chip--hp{
+  position: relative;
+  overflow: hidden;
+  --hp-fill-pct: 100%;
+}
+
+.sheet-chip--hp .hp-liquid{
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--hp-fill-pct);
+  background: rgba(137,21,21,0.55);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+/* small "wave" highlight */
+.sheet-chip--hp .hp-liquid::after{
+  content: "";
+  position: absolute;
+  left: -40px;
+  top: 0;
+  height: 100%;
+  width: calc(100% + 40px);
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.00) 0%,
+    rgba(255,255,255,0.08) 45%,
+    rgba(255,255,255,0.00) 60%);
+  opacity: 0.65;
+  animation: hpWave 2.6s linear infinite;
+}
+
+@keyframes hpWave{
+  from{ transform: translateX(0); }
+  to{ transform: translateX(40px); }
+}
+
+.sheet-chip--hp .k,
+.sheet-chip--hp .v{
+  position: relative;
+  z-index: 1;
+}
+
 .sheet-chip .k {
   font-size: 11px;
   color: #aaa;
