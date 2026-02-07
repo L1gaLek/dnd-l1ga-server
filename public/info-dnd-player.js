@@ -18,6 +18,15 @@
   // context from client.js
   let ctx = null;
 
+  function canEditPlayer(player) {
+    const myRole = ctx?.myRole || ctx?.role || "";
+    const myId = ctx?.myId ?? "";
+    if (myRole === "GM") return true;
+    const owner = player?.ownerId ?? "";
+    return String(owner) && String(myId) && String(owner) === String(myId);
+  }
+
+
   // состояние модалки
   let openedSheetPlayerId = null;
   let lastCanEdit = false; // GM или владелец текущего открытого персонажа
@@ -129,6 +138,8 @@
   function closeModal() {
     if (!sheetModal) return;
     hideHpPopup();
+    hideExhPopup();
+    hideCondPopup();
     sheetModal.classList.add('hidden');
     sheetModal.setAttribute('aria-hidden', 'true');
     openedSheetPlayerId = null;
@@ -363,7 +374,182 @@
     scheduleSheetSave(player);
     if (sheetContent) updateHeroChips(sheetContent, sheet);
   }
-  function ensureWiredCloseHandlers() {
+  
+  // ================== EXHAUSTION + CONDITIONS POPUPS ==================
+  let exhPopupEl = null;
+  let condPopupEl = null;
+
+  const EXHAUSTION_LEVELS = [
+    { lvl: 1, text: "Помеха на проверки характеристик" },
+    { lvl: 2, text: "Скорость уменьшается вдвое" },
+    { lvl: 3, text: "Помеха на броски атаки и спасброски" },
+    { lvl: 4, text: "Максимальные хиты уменьшаются вдвое" },
+    { lvl: 5, text: "Скорость уменьшается до 0" },
+    { lvl: 6, text: "Смерть" }
+  ];
+
+  const CONDITIONS_DB = [
+    { name: "Ослеплённое", desc: "Ослепленное существо не может видеть и автоматически проваливает любую проверку характеристик, зависящую от зрения.\nБроски атаки против существа совершаются с преимуществом, а броски атаки существа совершаются с помехой." },
+    { name: "Заворожённое", desc: "Заворожённое существо не может напасть на заклинателя или использовать против заклинателя вредоносную способность или магические эффекты.\nЗаклинатель совершает с преимуществом любую проверку характеристик связанную с социальным взаимодействием с существом." },
+    { name: "Оглохшее", desc: "Оглохшее существо не может слышать и автоматически проваливает любую проверку характеристики, которая связана со слухом." },
+    { name: "Испуганное", desc: "Испуганное существо совершает с помехой проверки характеристик и броски атаки если источник его страха находится в пределах прямой видимости существа.\nСущество не может добровольно приблизиться к источнику своего страха." },
+    { name: "Схваченное", desc: "Скорость схваченного существа становится 0, и он не может извлечь выгоду из какого-либо бонуса к своей скорости.\nПерсонаж выходит из состояния \"схвачен\", если схватившее его существо недееспособно (см. состояние).\nСостояние также заканчивается, если эффект удаляет схваченное существо из досягаемости захвата или эффекта захвата, например, когда существо отбрасывается заклинанием Громовой волны." },
+    { name: "Недееспособное", desc: "Недееспособное существо не может предпринимать ни действия, ни реакции." },
+    { name: "Невидимое", desc: "Невидимое существо невозможно увидеть без помощи магии или особых чувств. Для определения возможности Скрыться невидимого существа считается что оно находится в местности, видимость которого крайне затруднена. Местоположение существа можно определить по любому шуму, который оно издает, или по следам, которые оно оставляет.\nБроски атаки против существа совершаются с помехой, а броски атаки существа - с преимуществом." },
+    { name: "Парализованное", desc: "Парализованное существо недееспособно (см. состояние) и не может двигаться или говорить.\nСущество автоматически проваливает спасброски по Силе и Ловкости.\nБроски атаки против существа совершаются с преимуществом.\nЛюбая атака, которая поражает существо, является критическим попаданием, если нападающий находится в пределах 5 футов от существа." },
+    { name: "Окаменевшее", desc: "Окаменевшее существо превращается вместе с любыми неволшебными предметами, который оно носит или несет, в твердую неодушевленную субстанцию (обычно камень). Его вес увеличивается в десять раз и оно перестает стареть.\nСущество недееспособно (см. состаяние), не может двигаться или говорить и не знает о своем окружении.\nБроски атаки против существа совершаются с преимуществом.\nСущество автоматически проваливает спасброски по Силе и Ловкости.\nУ окаменевшего существа устойчивость ко всем повреждениям.\nСущество невосприимчиво к яду и болезням, хотя яд или болезнь уже в его организме приостановлены, а не нейтрализованы." },
+    { name: "Отравленное", desc: "Отравленное существо совершает с помехой броски атаки и проверки характеристик." },
+    { name: "Распластанное", desc: "Если существо не поднимается на ноги и не оканчивает таким образом действие этого состояния, то единственный вариант движения распластанного существа это ползание.\nСущество совершает броски атаки с помехой.\nБроски атаки против существа совершаются с преимуществом, если нападающий находится в пределах 5 футов от существа. В противном случае, броски атаки совершаются с помехой." },
+    { name: "Обездвиженное", desc: "Скорость обездвиженного существа становится 0 и никакие эффекты не могут повысить его скорость.\nБроски атаки против существа совершаются с преимуществом, а броски атаки существа совершаются с помехой.\nСущество совершает спасброски Ловкости с помехой." },
+    { name: "Оглушенное", desc: "Оглушенное существо недееспособно (см. состояние), не может двигаться и может говорить только запинаясь.\nСущество автоматически проваливает спасброски по Силе и Ловкости.\nБроски атаки против существа совершаются с преимуществом." },
+    { name: "Без сознания", desc: "Бессознательное существо недееспособно (см. состояние), не может двигаться или говорить и не осознает своего окружения.\nСущество роняет то, что держало, и падает ничком, получая состояние \"Распластанное\".\nСущество автоматически проваливает спасброски по Силе и Ловкости.\nБроски атаки против существа совершаются с преимуществом.\nЛюбая атака, которая поражает существо, является критическим попаданием, если нападающий находится в пределах 5 футов от существа." }
+  ];
+
+  function parseCondList(s) {
+    if (!s || typeof s !== "string") return [];
+    return s.split(",").map(x => x.trim()).filter(Boolean);
+  }
+  function setCondList(sheet, arr) {
+    const s = Array.from(new Set(arr.map(x => String(x).trim()).filter(Boolean))).join(", ");
+    sheet.conditions = s;
+    return s;
+  }
+  function applyExhaustionToConditions(sheet) {
+    const ex = Math.max(0, Math.min(6, safeInt(sheet?.exhaustion, 0)));
+    const list = parseCondList(sheet.conditions);
+    const list2 = list.filter(x => !/^Истощение\s+\d+$/i.test(x));
+    if (ex > 0) list2.unshift(`Истощение ${ex}`);
+    setCondList(sheet, list2);
+  }
+
+  function ensureExhPopup() {
+    if (exhPopupEl) return exhPopupEl;
+    exhPopupEl = document.createElement("div");
+    exhPopupEl.className = "mini-popover hidden";
+    exhPopupEl.innerHTML = `
+      <div class="mini-popover__backdrop" data-exh-close></div>
+      <div class="mini-popover__panel mini-popover__panel--wide" role="dialog" aria-label="Истощение">
+        <div class="mini-popover__head">
+          <div class="mini-popover__title">Истощение</div>
+          <button class="mini-popover__x" type="button" data-exh-close>✕</button>
+        </div>
+        <div class="mini-popover__body">
+          <div class="exh-table">
+            <div class="exh-row exh-row--head">
+              <div>Уровень</div><div>Эффект</div>
+            </div>
+            ${EXHAUSTION_LEVELS.map(r => `
+              <button class="exh-row" type="button" data-exh-set="${r.lvl}">
+                <div class="exh-lvl">${r.lvl}</div>
+                <div class="exh-txt">${escapeHtml(r.text)}</div>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+    sheetModal?.appendChild(exhPopupEl);
+
+    exhPopupEl.addEventListener("click", (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-exh-close]")) { hideExhPopup(); return; }
+      const btn = t.closest("[data-exh-set]");
+      if (btn) {
+        const lvl = Math.max(0, Math.min(6, safeInt(btn.getAttribute("data-exh-set"), 0)));
+        const player = getOpenedPlayerSafe();
+        if (!player) return;
+        if (!canEditPlayer(player)) return;
+        const sheet = player.sheet?.parsed;
+        if (!sheet) return;
+        sheet.exhaustion = lvl;
+        applyExhaustionToConditions(sheet);
+        markModalInteracted(player.id);
+        scheduleSheetSave(player);
+        // sync inputs after save
+        try { renderSheetModal(player); } catch {}
+        hideExhPopup();
+      }
+    });
+
+    exhPopupEl.addEventListener("keydown", (e) => { if (e.key === "Escape") hideExhPopup(); });
+    return exhPopupEl;
+  }
+
+  function showExhPopup() { ensureExhPopup().classList.remove("hidden"); }
+  function hideExhPopup() { exhPopupEl?.classList.add("hidden"); }
+
+  function ensureCondPopup() {
+    if (condPopupEl) return condPopupEl;
+    condPopupEl = document.createElement("div");
+    condPopupEl.className = "mini-popover hidden";
+    condPopupEl.innerHTML = `
+      <div class="mini-popover__backdrop" data-cond-close></div>
+      <div class="mini-popover__panel mini-popover__panel--wide" role="dialog" aria-label="Состояния">
+        <div class="mini-popover__head">
+          <div class="mini-popover__title">Состояния</div>
+          <button class="mini-popover__x" type="button" data-cond-close>✕</button>
+        </div>
+        <div class="mini-popover__body">
+          <div class="cond-list">
+            ${CONDITIONS_DB.map((c, i) => `
+              <div class="cond-item" data-cond-name="${escapeHtml(c.name)}">
+                <div class="cond-item__row">
+                  <button class="cond-item__name" type="button" data-cond-toggle="${escapeHtml(c.name)}">${escapeHtml(c.name)}</button>
+                  <button class="cond-item__descbtn" type="button" data-cond-desc="${i}">Описание</button>
+                </div>
+                <div class="cond-item__desc hidden" data-cond-descbox="${i}">${escapeHtml(c.desc).replace(/\n/g, "<br>")}</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+    sheetModal?.appendChild(condPopupEl);
+
+    condPopupEl.addEventListener("click", (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (t.closest("[data-cond-close]")) { hideCondPopup(); return; }
+
+      const descBtn = t.closest("[data-cond-desc]");
+      if (descBtn) {
+        const i = descBtn.getAttribute("data-cond-desc");
+        const box = condPopupEl.querySelector(`[data-cond-descbox="${i}"]`);
+        if (box) box.classList.toggle("hidden");
+        return;
+      }
+
+      const tog = t.closest("[data-cond-toggle]");
+      if (tog) {
+        const name = tog.getAttribute("data-cond-toggle");
+        const player = getOpenedPlayerSafe();
+        if (!player) return;
+        if (!canEditPlayer(player)) return;
+        const sheet = player.sheet?.parsed;
+        if (!sheet) return;
+
+        const list = parseCondList(sheet.conditions);
+        const has = list.some(x => x.toLowerCase() === String(name).toLowerCase());
+        const next = has ? list.filter(x => x.toLowerCase() !== String(name).toLowerCase()) : [...list, String(name)];
+        setCondList(sheet, next);
+        markModalInteracted(player.id);
+        scheduleSheetSave(player);
+
+        // sync current input if present
+        const input = sheetContent?.querySelector('[data-sheet-path="conditions"]');
+        if (input && input instanceof HTMLInputElement) input.value = sheet.conditions || "";
+        return;
+      }
+    });
+
+    condPopupEl.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCondPopup(); });
+    return condPopupEl;
+  }
+
+  function showCondPopup() { ensureCondPopup().classList.remove("hidden"); }
+  function hideCondPopup() { condPopupEl?.classList.add("hidden"); }
+function ensureWiredCloseHandlers() {
     sheetClose?.addEventListener('click', closeModal);
 
     // клик по фону закрывает
@@ -395,6 +581,35 @@
         e.preventDefault();
         showHpPopup();
       }
+    });
+
+    // Inspiration chip toggle
+    sheetContent?.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      const chip = t.closest('[data-hero="insp"]');
+      if (!chip) return;
+      const player = getOpenedPlayerSafe();
+      if (!player) return;
+      if (!canEditPlayer(player)) return;
+      const sheet = player.sheet?.parsed;
+      if (!sheet) return;
+      sheet.inspiration = safeInt(sheet.inspiration, 0) ? 0 : 1;
+      markModalInteracted(player.id);
+      scheduleSheetSave(player);
+      updateHeroChips(sheetContent, sheet);
+    });
+
+    // Exhaustion/Conditions popups
+    sheetContent?.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+
+      const ex = t.closest('[data-exh-open]');
+      if (ex) { showExhPopup(); return; }
+
+      const co = t.closest('[data-cond-open]');
+      if (co) { showCondPopup(); return; }
     });
   }
 
@@ -617,6 +832,9 @@
         speed: { value: 0 }
       },
       proficiency: 0,
+      inspiration: 0,
+      exhaustion: 0,
+      conditions: "",
       stats: {
         str: { score: 10, modifier: 0, label: "Сила", check: 0 },
         dex: { score: 10, modifier: 0, label: "Ловкость", check: 0 },
@@ -806,6 +1024,10 @@
     const hpTemp = get(sheet, 'vitality.hp-temp.value', 0);
     const ac = get(sheet, 'vitality.ac.value', '-');
     const spd = get(sheet, 'vitality.speed.value', '-');
+
+    const inspiration = safeInt(get(sheet, 'inspiration', 0), 0) ? 1 : 0;
+    const exhaustion = Math.max(0, Math.min(6, safeInt(get(sheet, 'exhaustion', 0), 0)));
+    const conditions = (typeof get(sheet, 'conditions', "") === "string") ? get(sheet, 'conditions', "") : "";
 
     const statKeys = ["str","dex","con","int","wis","cha"];
     const stats = statKeys.map(k => {
@@ -1038,7 +1260,7 @@ const weapons = weaponsRaw
 
     const coinsViewDenom = String(sheet?.coinsView?.denom || "gp").toLowerCase();
 
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins, coinsViewDenom };
+    return { name, cls, lvl, race, hp, hpCur, hpTemp, ac, spd, inspiration, exhaustion, conditions, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins, coinsViewDenom };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -1235,7 +1457,7 @@ function rerenderCombatTabInPlace(root, player, canEdit) {
 
   const freshSheet = player.sheet?.parsed || createEmptySheet(player.name);
   const freshVm = toViewModel(freshSheet, player.name);
-  main.innerHTML = renderActiveTab("combat", freshVm);
+  main.innerHTML = renderActiveTab("combat", freshVm, canEdit);
 
   bindEditableInputs(root, player, canEdit);
   bindSkillBoostDots(root, player, canEdit);
@@ -1432,6 +1654,22 @@ function bindEditableInputs(root, player, canEdit) {
         else val = inp.value;
 
         setByPath(player.sheet.parsed, path, val);
+
+
+        // Exhaustion/Conditions sync
+        if (path === "exhaustion") {
+          const ex = Math.max(0, Math.min(6, safeInt(getByPath(player.sheet.parsed, "exhaustion"), 0)));
+          setByPath(player.sheet.parsed, "exhaustion", ex);
+          applyExhaustionToConditions(player.sheet.parsed);
+          const condInp = root.querySelector('[data-sheet-path="conditions"]');
+          if (condInp && condInp instanceof HTMLInputElement) condInp.value = player.sheet.parsed.conditions || "";
+        }
+        if (path === "conditions") {
+          // keep exhaustion marker consistent
+          applyExhaustionToConditions(player.sheet.parsed);
+          const condInp = root.querySelector('[data-sheet-path="conditions"]');
+          if (condInp && condInp instanceof HTMLInputElement) condInp.value = player.sheet.parsed.conditions || "";
+        }
 
         if (path === "name.value") player.name = val || player.name;
 
@@ -2858,9 +3096,20 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     `;
   }
 
-  function renderBasicTab(vm) {
+  function renderBasicTab(vm, canEdit) {
     return `
       <div class="sheet-section">
+        <div class="sheet-topline">
+          <div class="sheet-chip sheet-chip--exh" data-exh-open title="Истощение">
+            <div class="k">Истощение</div>
+            <input class="sheet-chip-input" type="number" min="0" max="6" ${canEdit ? "" : "disabled"} data-sheet-path="exhaustion" value="${escapeHtml(String(vm.exhaustion))}">
+          </div>
+          <div class="sheet-chip sheet-chip--cond" data-cond-open title="Состояние">
+            <div class="k">Состояние</div>
+            <input class="sheet-chip-input sheet-chip-input--wide" type="text" ${canEdit ? "" : "disabled"} data-sheet-path="conditions" value="${escapeHtml(String(vm.conditions || ""))}">
+          </div>
+        </div>
+
         <h3>Основное</h3>
 
         <div class="sheet-card sheet-card--profile">
@@ -3501,8 +3750,8 @@ function renderCombatTab(vm) {
   }
 
 
-  function renderActiveTab(tabId, vm) {
-    if (tabId === "basic") return renderBasicTab(vm);
+  function renderActiveTab(tabId, vm, canEdit) {
+    if (tabId === "basic") return renderBasicTab(vm, canEdit);
     if (tabId === "spells") return renderSpellsTab(vm);
     if (tabId === "combat") return renderCombatTab(vm);
     if (tabId === "inventory") return renderInventoryTab(vm);
@@ -3609,6 +3858,11 @@ function renderCombatTab(vm) {
               <div class="k">Владение</div>
               <input class="sheet-chip-input" type="number" min="0" max="10" ${canEdit ? "" : "disabled"} data-sheet-path="proficiency" value="${escapeHtml(String(vm.profBonus))}">
             </div>
+
+            <div class="sheet-chip sheet-chip--insp" data-hero="insp" title="Вдохновение" ${canEdit ? "" : "data-readonly"}>
+              <div class="k">Вдохновение</div>
+              <div class="insp-star ${vm.inspiration ? "on" : ""}" aria-label="Вдохновение">★</div>
+            </div>
             <div class="sheet-chip" data-hero="ac">
               <div class="k">Броня</div>
               <input class="sheet-chip-input" type="number" min="0" max="40" ${canEdit ? "" : "disabled"} data-sheet-path="vitality.ac.value" data-hero-val="ac" value="${escapeHtml(String(vm.ac))}">
@@ -3640,7 +3894,7 @@ function renderCombatTab(vm) {
 
     const mainHtml = `
       <div class="sheet-main" id="sheet-main">
-        ${renderActiveTab(activeTab, vm)}
+        ${renderActiveTab(activeTab, vm, canEdit)}
       </div>
     `;
 
@@ -3694,7 +3948,7 @@ function renderCombatTab(vm) {
         if (main) {
           const freshSheet = player.sheet?.parsed || createEmptySheet(player.name);
           const freshVm = toViewModel(freshSheet, player.name);
-          main.innerHTML = renderActiveTab(activeTab, freshVm);
+          main.innerHTML = renderActiveTab(activeTab, freshVm, canEdit);
 
           bindEditableInputs(sheetContent, player, canEdit);
           bindSkillBoostDots(sheetContent, player, canEdit);
