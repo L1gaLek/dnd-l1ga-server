@@ -445,7 +445,9 @@
         skillsAbilities: { value: "" }
       },
       weaponsList: [],
-      coins: { cp: { value: 0 }, sp: { value: 0 }, ep: { value: 0 }, gp: { value: 0 }, pp: { value: 0 } }
+      coins: { cp: { value: 0 }, sp: { value: 0 }, ep: { value: 0 }, gp: { value: 0 }, pp: { value: 0 } },
+      // в какую монету пересчитывать общий итог (по умолчанию ЗМ)
+      coinsView: { denom: "gp" }
     };
   }
 
@@ -783,7 +785,9 @@ const weapons = weaponsRaw
     const coinsRaw = sheet?.coins && typeof sheet.coins === "object" ? sheet.coins : null;
     const coins = coinsRaw ? { cp: v(coinsRaw.cp, 0), sp: v(coinsRaw.sp, 0), ep: v(coinsRaw.ep, 0), gp: v(coinsRaw.gp, 0), pp: v(coinsRaw.pp, 0) } : null;
 
-    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins };
+    const coinsViewDenom = String(sheet?.coinsView?.denom || "gp").toLowerCase();
+
+    return { name, cls, lvl, race, hp, hpCur, ac, spd, stats, passive, profLines, profText, personality, notesDetails, notesEntries, spellsInfo, slots, spellsByLevel, spellsPlainByLevel, spellNameByHref, spellDescByHref, profBonus: getProfBonus(sheet), weapons, coins, coinsViewDenom };
   }
 
   // ================== SHEET UPDATE HELPERS ==================
@@ -816,6 +820,41 @@ const weapons = weaponsRaw
     }, 450);
 
     sheetSaveTimers.set(key, t);
+  }
+
+  // ===== Coins helpers =====
+  const COIN_TO_CP = { cp: 1, sp: 10, ep: 50, gp: 100, pp: 1000 };
+
+  function coinsTotalCp(sheet) {
+    const cp = safeInt(sheet?.coins?.cp?.value, 0);
+    const sp = safeInt(sheet?.coins?.sp?.value, 0);
+    const ep = safeInt(sheet?.coins?.ep?.value, 0);
+    const gp = safeInt(sheet?.coins?.gp?.value, 0);
+    const pp = safeInt(sheet?.coins?.pp?.value, 0);
+    return cp * 1 + sp * 10 + ep * 50 + gp * 100 + pp * 1000;
+  }
+
+  function fmtCoinNumber(x) {
+    const n = Number(x);
+    if (!Number.isFinite(n)) return "0";
+    const rounded = Math.round(n * 100) / 100;
+    return (Math.abs(rounded - Math.round(rounded)) < 1e-9)
+      ? String(Math.round(rounded))
+      : String(rounded);
+  }
+
+  function updateCoinsTotal(root, sheet) {
+    if (!root || !sheet) return;
+    const out = root.querySelector('[data-coins-total]');
+    if (!out) return;
+
+    let denom = String(sheet?.coinsView?.denom || "gp").toLowerCase();
+    const denomSel = root.querySelector('[data-coins-total-denom]');
+    if (denomSel && denomSel.value) denom = String(denomSel.value).toLowerCase();
+
+    const base = COIN_TO_CP[denom] || 100;
+    const total = coinsTotalCp(sheet) / base;
+    out.value = fmtCoinNumber(total);
   }
 
   
@@ -1145,6 +1184,11 @@ if (path === "proficiency") {
           if (s) rerenderSpellsTabInPlace(root, player, s, canEdit);
         }
 
+        // Монеты: обновляем пересчёт итога без полного ререндера
+        if (path.startsWith("coins.") || path.startsWith("coinsView.")) {
+          updateCoinsTotal(root, player.sheet.parsed);
+        }
+
         scheduleSheetSave(player);
       };
 
@@ -1426,6 +1470,42 @@ if (path === "proficiency") {
       });
     });
   }
+
+  // ===== Inventory (coins) editors =====
+  function bindInventoryEditors(root, player, canEdit) {
+    if (!root || !player?.sheet?.parsed) return;
+    const sheet = player.sheet.parsed;
+
+    // чтобы не навешивать обработчики повторно при ререндерах/смене вкладки
+    if (root.__invCoinsBound) return;
+    root.__invCoinsBound = true;
+
+    root.addEventListener("click", (e) => {
+      const btn = e.target?.closest?.("[data-coin-op][data-coin-key]");
+      if (!btn) return;
+      if (!canEdit) return;
+
+      const op = btn.getAttribute("data-coin-op");
+      const key = btn.getAttribute("data-coin-key");
+      if (!key) return;
+
+      const box = btn.closest(`[data-coin-box="${key}"]`) || root;
+      const deltaInp = box.querySelector(`[data-coin-delta="${key}"]`);
+      const coinInp = root.querySelector(`input[data-sheet-path="coins.${key}.value"]`);
+      if (!coinInp) return;
+
+      const delta = Math.max(0, safeInt(deltaInp?.value, 1));
+      const cur = Math.max(0, safeInt(coinInp.value, 0));
+      const next = (op === "plus") ? (cur + delta) : Math.max(0, cur - delta);
+
+      setByPath(sheet, `coins.${key}.value`, next);
+      coinInp.value = String(next);
+
+      updateCoinsTotal(root, sheet);
+      scheduleSheetSave(player);
+    });
+  }
+
   // ===== Slots (spell slots) editors =====
 function bindSlotEditors(root, player, canEdit) {
   if (!root || !player?.sheet) return;
@@ -2917,24 +2997,73 @@ function renderCombatTab(vm) {
 }
 
   function renderInventoryTab(vm) {
-    const coins = vm.coins
-      ? `
-        <div class="kv"><div class="k">CP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.cp.value" style="width:110px"></div></div>
-        <div class="kv"><div class="k">SP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.sp.value" style="width:110px"></div></div>
-        <div class="kv"><div class="k">EP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.ep.value" style="width:110px"></div></div>
-        <div class="kv"><div class="k">GP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.gp.value" style="width:110px"></div></div>
-        <div class="kv"><div class="k">PP</div><div class="v"><input type="number" min="0" max="999999" data-sheet-path="coins.pp.value" style="width:110px"></div></div>
-      `
-      : `<div class="sheet-note">Нет данных</div>`;
+    const denom = String(vm?.coinsViewDenom || "gp").toLowerCase();
+
+    const coinBox = (key, title, abbr, row) => `
+      <div class="coin-box" data-coin-box="${escapeHtml(key)}" data-coin-row="${row}">
+        <div class="coin-top">
+          <div class="coin-pill">${escapeHtml(title)} <span class="coin-pill__abbr">(${escapeHtml(abbr)})</span></div>
+        </div>
+
+        <div class="coin-line">
+          <input
+            class="coin-value"
+            type="number"
+            min="0"
+            max="999999"
+            data-sheet-path="coins.${escapeHtml(key)}.value"
+          />
+
+          <div class="coin-adjust">
+            <button class="coin-btn coin-btn--minus" data-coin-op="minus" data-coin-key="${escapeHtml(key)}">-</button>
+            <input class="coin-delta" type="number" min="0" max="999999" value="1" data-coin-delta="${escapeHtml(key)}" />
+            <button class="coin-btn coin-btn--plus" data-coin-op="plus" data-coin-key="${escapeHtml(key)}">+</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const totalBox = `
+      <div class="coin-box coin-box--total" data-coin-box="total">
+        <div class="coin-top coin-top--between">
+          <div class="coin-pill">Итог</div>
+          <select class="coin-select" data-coins-total-denom data-sheet-path="coinsView.denom">
+            <option value="cp" ${denom === "cp" ? "selected" : ""}>CP</option>
+            <option value="sp" ${denom === "sp" ? "selected" : ""}>SP</option>
+            <option value="ep" ${denom === "ep" ? "selected" : ""}>EP</option>
+            <option value="gp" ${denom === "gp" ? "selected" : ""}>GP</option>
+            <option value="pp" ${denom === "pp" ? "selected" : ""}>PP</option>
+          </select>
+        </div>
+
+        <div class="coin-line">
+          <input class="coin-value coin-total" type="text" readonly data-coins-total value="0" />
+          <div class="coin-total-hint">по курсу D&D</div>
+        </div>
+      </div>
+    `;
 
     return `
       <div class="sheet-section">
         <h3>Инвентарь</h3>
-        <div class="sheet-grid-2">
-          <div class="sheet-card">
-            <h4>Монеты (редактируемые)</h4>
-            ${coins}
+
+        <div class="sheet-card fullwidth coins-card">
+          <h4>Монеты</h4>
+
+          <div class="coins-grid coins-grid--row1">
+            ${coinBox("cp", "Медная", "мм", 1)}
+            ${coinBox("sp", "Серебряная", "см", 1)}
+            ${coinBox("gp", "Золотая", "зм", 1)}
           </div>
+
+          <div class="coins-grid coins-grid--row2">
+            ${coinBox("ep", "Электрумовая", "эм", 2)}
+            ${coinBox("pp", "Платиновая", "пм", 2)}
+            ${totalBox}
+          </div>
+        </div>
+
+        <div class="sheet-grid-2" style="margin-top:10px">
           <div class="sheet-card">
             <h4>Предметы</h4>
             <div class="sheet-note">Пока не редактируются в UI.</div>
@@ -3192,7 +3321,9 @@ function renderCombatTab(vm) {
     bindNotesEditors(sheetContent, player, canEdit);
     bindSlotEditors(sheetContent, player, canEdit);
     bindSpellAddAndDesc(sheetContent, player, canEdit);
-   bindCombatEditors(sheetContent, player, canEdit);
+    bindCombatEditors(sheetContent, player, canEdit);
+    bindInventoryEditors(sheetContent, player, canEdit);
+    updateCoinsTotal(sheetContent, player.sheet?.parsed);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
@@ -3220,7 +3351,9 @@ function renderCombatTab(vm) {
           bindNotesEditors(sheetContent, player, canEdit);
           bindSlotEditors(sheetContent, player, canEdit);
           bindSpellAddAndDesc(sheetContent, player, canEdit);
-           bindCombatEditors(sheetContent, player, canEdit);
+          bindCombatEditors(sheetContent, player, canEdit);
+          bindInventoryEditors(sheetContent, player, canEdit);
+          updateCoinsTotal(sheetContent, player.sheet?.parsed);
         }
       });
     });
