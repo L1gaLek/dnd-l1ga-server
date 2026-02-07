@@ -414,13 +414,9 @@
     sheet.conditions = s;
     return s;
   }
-  function applyExhaustionToConditions(sheet) {
-    const ex = Math.max(0, Math.min(6, safeInt(sheet?.exhaustion, 0)));
-    const list = parseCondList(sheet.conditions);
-    const list2 = list.filter(x => !/^Истощение\s+\d+$/i.test(x));
-    if (ex > 0) list2.unshift(`Истощение ${ex}`);
-    setCondList(sheet, list2);
-  }
+  // ВАЖНО: "Истощение" и "Состояние" не связаны.
+  // sheet.exhaustion хранит только уровень (0..6),
+  // sheet.conditions хранит выбранное состояние (строка) или пусто.
 
   function ensureExhPopup() {
     if (exhPopupEl) return exhPopupEl;
@@ -463,13 +459,13 @@
         const sheet = player.sheet?.parsed;
         if (!sheet) return;
         sheet.exhaustion = lvl;
-
-        // sync visible inputs/chips without full re-render
+        // sync visible input without full re-render
         try {
           const exInput = sheetContent?.querySelector('[data-sheet-path="exhaustion"]');
           if (exInput && exInput instanceof HTMLInputElement) exInput.value = String(lvl);
         } catch {}
-markModalInteracted(player.id);
+
+        markModalInteracted(player.id);
         scheduleSheetSave(player);
         hideExhPopup();
       }
@@ -523,9 +519,10 @@ markModalInteracted(player.id);
         const sheet = player.sheet?.parsed;
         if (!sheet) return;
 
-        // clear condition (не влияет на Истощение)
+        // очищаем только состояние (истощение не трогаем)
         sheet.conditions = "";
-markModalInteracted(player.id);
+
+        markModalInteracted(player.id);
         scheduleSheetSave(player);
 
         try {
@@ -547,18 +544,18 @@ markModalInteracted(player.id);
 
       const tog = t.closest("[data-cond-toggle]");
       if (tog) {
-        const name = tog.getAttribute("data-cond-toggle");
+        const name = (tog.getAttribute("data-cond-toggle") || "").trim();
+        if (!name) return;
         const player = getOpenedPlayerSafe();
         if (!player) return;
         if (!canEditPlayer(player)) return;
         const sheet = player.sheet?.parsed;
         if (!sheet) return;
 
-        const current = String(sheet.conditions || "").trim();
-        const already = current && current.toLowerCase() === String(name).toLowerCase();
-
-        // одиночный выбор: повторный клик по тому же состоянию снимает его
-        sheet.conditions = already ? "" : String(name);
+        // одиночный выбор: повторный клик по выбранному состоянию = снять
+        const cur = String(sheet.conditions || "").trim();
+        const already = cur.toLowerCase() === name.toLowerCase();
+        sheet.conditions = already ? "" : name;
 
         markModalInteracted(player.id);
         scheduleSheetSave(player);
@@ -1703,6 +1700,12 @@ function bindEditableInputs(root, player, canEdit) {
         else val = inp.value;
 
         setByPath(player.sheet.parsed, path, val);
+
+
+        // Истощение (0..6) и Состояние (строка) не связаны
+        if (path === "exhaustion") {
+          const ex = Math.max(0, Math.min(6, safeInt(getByPath(player.sheet.parsed, "exhaustion"), 0)));
+          setByPath(player.sheet.parsed, "exhaustion", ex);
         }
 
         if (path === "name.value") player.name = val || player.name;
