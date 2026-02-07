@@ -895,8 +895,10 @@ function ensureWiredCloseHandlers() {
       name: { value: fallbackName },
       info: {
         charClass: { value: "" },
+        classArchetype: { value: "" },
         level: { value: 1 },
         race: { value: "" },
+        raceArchetype: { value: "" },
         background: { value: "" },
         alignment: { value: "" }
       },
@@ -971,6 +973,7 @@ function ensureWiredCloseHandlers() {
       },
       notes: {
         details: {
+          gender: { value: "" },
           height: { value: "" },
           weight: { value: "" },
           age: { value: "" },
@@ -3267,6 +3270,8 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             </div>
           </div>
 
+          <div class="lss-ability-divider"></div>
+
           <div class="lss-skill-list">
             ${skillRows || `<div class="sheet-note">Нет навыков</div>`}
           </div>
@@ -3288,7 +3293,9 @@ function bindSpellAddAndDesc(root, player, canEdit) {
     return `
       <div class="lss-passives">
         <div class="lss-passives-title">ПАССИВНЫЕ ЧУВСТВА</div>
-        ${rows}
+        <div class="lss-passive-rowlist">
+          ${rows}
+        </div>
       </div>
     `;
   }
@@ -3328,11 +3335,13 @@ function bindSpellAddAndDesc(root, player, canEdit) {
             <div class="profile-col">
               <div class="kv"><div class="k">Имя</div><div class="v"><input type="text" data-sheet-path="name.value" style="width:180px"></div></div>
               <div class="kv"><div class="k">Класс</div><div class="v"><input type="text" data-sheet-path="info.charClass.value" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Архетип класса</div><div class="v"><input type="text" data-sheet-path="info.classArchetype.value" style="width:180px"></div></div>
               <div class="kv"><div class="k">Уровень</div><div class="v"><input type="number" min="1" max="20" data-sheet-path="info.level.value" style="width:90px"></div></div>
             </div>
 
             <div class="profile-col">
               <div class="kv"><div class="k">Раса</div><div class="v"><input type="text" data-sheet-path="info.race.value" style="width:180px"></div></div>
+              <div class="kv"><div class="k">Архетип расы</div><div class="v"><input type="text" data-sheet-path="info.raceArchetype.value" style="width:180px"></div></div>
               <div class="kv"><div class="k">Предыстория</div><div class="v"><input type="text" data-sheet-path="info.background.value" style="width:180px"></div></div>
               <div class="kv"><div class="k">Мировоззрение</div><div class="v"><input type="text" data-sheet-path="info.alignment.value" style="width:180px"></div></div>
             </div>
@@ -3344,7 +3353,7 @@ function bindSpellAddAndDesc(root, player, canEdit) {
           ${renderAbilitiesGrid(vm)}
         </div>
 
-        <div class="lss-bottom-grid">
+        <div class="lss-bottom-stack">
           ${renderPassives(vm)}
           ${renderProfBox(vm)}
         </div>
@@ -3876,6 +3885,7 @@ function renderCombatTab(vm) {
           <div class="sheet-card">
             <h4>Внешность</h4>
             <div class="notes-details-grid">
+              <div class="kv"><div class="k">Пол</div><div class="v"><input type="text" data-sheet-path="notes.details.gender.value" style="width:140px"></div></div>
               <div class="kv"><div class="k">Рост</div><div class="v"><input type="text" data-sheet-path="notes.details.height.value" style="width:140px"></div></div>
               <div class="kv"><div class="k">Вес</div><div class="v"><input type="text" data-sheet-path="notes.details.weight.value" style="width:140px"></div></div>
               <div class="kv"><div class="k">Возраст</div><div class="v"><input type="text" data-sheet-path="notes.details.age.value" style="width:140px"></div></div>
