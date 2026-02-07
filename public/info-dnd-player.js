@@ -534,17 +534,40 @@ function openLanguagesPopup(player) {
 
 function bindLanguagesUi(root, player, canEdit) {
   if (!root) return;
-  const btn = root.querySelector("[data-lang-popup-open]");
-  if (!btn) return;
+  if (root.__langWired) return;
+  root.__langWired = true;
 
-  if (btn.__langWired) return;
-  btn.__langWired = true;
+  // Делегирование: кнопка открытия попапа + удаление выученного языка
+  root.addEventListener("click", (e) => {
+    const openBtn = e.target?.closest?.("[data-lang-popup-open]");
+    if (openBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!canEdit) return;
+      openLanguagesPopup(player);
+      return;
+    }
 
-  btn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!canEdit) return;
-    openLanguagesPopup(player);
+    const rm = e.target?.closest?.("[data-lang-remove-id]");
+    if (rm) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!canEdit) return;
+      const id = String(rm.getAttribute("data-lang-remove-id") || "").trim();
+      if (!id) return;
+      const sheet = player?.sheet?.parsed;
+      if (!sheet?.info || typeof sheet.info !== "object") return;
+      if (!Array.isArray(sheet.info.languagesLearned)) return;
+
+      sheet.info.languagesLearned = sheet.info.languagesLearned.filter(x => {
+        const xid = String(x?.id || x?.name || "");
+        return xid !== id;
+      });
+
+      markModalInteracted(player.id);
+      scheduleSheetSave(player);
+      renderSheetModal(player, { force: true });
+    }
   });
 }
 
@@ -3446,7 +3469,10 @@ function bindSpellAddAndDesc(root, player, canEdit) {
   const learnedHtml = learned.length
     ? learned.map(l => `
         <div class="lss-lang-pill">
-          <div class="lss-lang-pill-name">${escapeHtml(l.name)}</div>
+          <div class="lss-lang-pill-head">
+            <div class="lss-lang-pill-name">${escapeHtml(l.name)}</div>
+            <button class="lss-lang-pill-x" type="button" title="Удалить язык" data-lang-remove-id="${escapeHtml(String(l.id || l.name || ""))}">✕</button>
+          </div>
           <div class="lss-lang-pill-meta"><span class="lss-lang-lbl">Типичный представитель</span> - ${escapeHtml(l.typical || "-")}; <span class="lss-lang-lbl">Письменность</span> - ${escapeHtml(l.script || "-")}</div>
         </div>
       `).join("")
