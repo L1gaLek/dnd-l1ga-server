@@ -225,6 +225,18 @@ wss.on("connection", ws => {
         // Обновление "Инфы" персонажа НЕ должно попадать в журнал действий.
         // Пользователь может часто менять значения (монеты, хиты, заметки и т.д.).
         p.sheet = data.sheet;
+
+        // ✅ Синхронизация имени персонажа:
+        // Если в "Профиль" изменили имя (sheet.parsed.name.value),
+        // то обновляем p.name, чтобы сразу изменилось в списке "Игроки и инициатива".
+        try {
+          const newName = String(
+            data?.sheet?.parsed?.name?.value ??
+            data?.sheet?.name?.value ??
+            ""
+          ).trim();
+          if (newName) p.name = newName;
+        } catch {}
         broadcast();
         break;
       }
@@ -276,23 +288,6 @@ wss.on("connection", ws => {
         }
 
         logEvent(`${p.name} изменил размер на ${p.size}x${p.size}`);
-        broadcast();
-        break;
-      }
-
-      case "updatePlayerName": {
-        const p = gameState.players.find(pl => pl.id === data.id);
-        if (!p) return;
-
-        const newName = (typeof data.name === "string") ? data.name.trim() : "";
-        if (!newName) return;
-
-        const gm = isGM(ws);
-        const owner = ownsPlayer(ws, p);
-        if (!gm && !owner) return;
-
-        // Обновление имени не пишем в журнал (как и sheet), чтобы не спамить.
-        p.name = newName;
         broadcast();
         break;
       }
