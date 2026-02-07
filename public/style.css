@@ -3159,3 +3159,148 @@ textarea[data-sheet-path="text.profPlain.value"]{
 @media (max-width: 720px){
   .cond-list{ grid-template-columns: 1fr; }
 }
+
+
+
+/* ===== Languages block (inside 'Прочие владения и заклинания') ===== */
+.lss-prof-grid{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.lss-prof-text--wide{
+  grid-column: 2 / 4; /* занимает 2 из 3 колонок */
+  min-height: 170px;
+}
+
+@media (max-width: 920px){
+  .lss-prof-grid{ grid-template-columns: 1fr; }
+  .lss-prof-text--wide{ grid-column: auto; }
+}
+
+.lss-langbox{
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.lss-langbox-head{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.lss-langbox-title{
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  color: #d8dde8;
+}
+
+.lss-lang-learn-btn{
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.16);
+  color: inherit;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.lss-lang-learn-btn:hover{
+  border-color: rgba(0,200,255,0.50);
+}
+
+.lss-langbox-hint{
+  font-size: 11px;
+  line-height: 14px;
+  color: rgba(230,235,255,0.9);
+  opacity: 0.95;
+  margin-bottom: 8px;
+}
+
+.lss-langbox-hint-label{
+  opacity: 0.85;
+  margin-right: 6px;
+}
+
+.lss-langbox-list{
+  display:flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+.lss-lang-item{
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.20);
+  border-radius: 10px;
+  padding: 8px 9px;
+}
+
+.lss-lang-item-name{
+  font-weight: 900;
+  color: #fff;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.lss-lang-item-meta{
+  font-size: 12px;
+  color: rgba(220,228,255,0.92);
+  opacity: 0.95;
+}
+
+/* ===== Languages popup ===== */
+.lss-lang-popup-card{
+  width: min(980px, 100%);
+}
+
+.lss-lang-popup-grid{
+  align-items: start;
+}
+
+.lss-lang-col-title{
+  font-weight: 900;
+  font-size: 13px;
+  margin: 6px 0 10px;
+  color: #e7ecff;
+}
+
+.lss-lang-row{
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.lss-lang-row-head{
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.lss-lang-row-name{
+  font-weight: 900;
+  color: #fff;
+  font-size: 14px;
+}
+
+.lss-lang-row-meta{
+  font-size: 12px;
+  color: rgba(220,228,255,0.92);
+  opacity: 0.95;
+}
