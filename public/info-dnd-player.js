@@ -3136,6 +3136,26 @@ function renderCombatTab(vm) {
     `;
   }
 
+// PATCH: Inventory Items & Treasures full-width editable areas
+(function(){
+  const orig = window.renderInventoryTab;
+  if (typeof orig !== "function") return;
+  window.renderInventoryTab = function(vm){
+    const html = orig(vm);
+    const extra = `
+      <div class="sheet-card fullwidth" style="margin-top:10px">
+        <h4>Предметы</h4>
+        <textarea class="inv-textarea" data-sheet-path="inventory.items" placeholder="Введите предметы..."></textarea>
+      </div>
+      <div class="sheet-card fullwidth" style="margin-top:10px">
+        <h4>Сокровища</h4>
+        <textarea class="inv-textarea" data-sheet-path="inventory.treasures" placeholder="Введите сокровища..."></textarea>
+      </div>
+    `;
+    return html + extra;
+  }
+})();
+   
   function renderPersonalityTab(vm) {
     return `
       <div class="sheet-section">
@@ -3446,6 +3466,7 @@ function renderCombatTab(vm) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
 
 
 
