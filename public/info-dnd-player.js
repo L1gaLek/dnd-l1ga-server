@@ -640,6 +640,37 @@ function ensureWiredCloseHandlers() {
     });
   }
 
+  // Прямая привязка кликов к текущему DOM (на случай, если делегирование не сработало
+  // из-за disabled input / особенностей браузера). Вызывается после каждого рендера модалки.
+  function wireQuickBasicInteractions(root) {
+    if (!root || root.__basicQuickWired) return;
+    root.__basicQuickWired = true;
+
+    // Вдохновение (звезда)
+    const inspChip = root.querySelector('[data-hero="insp"]');
+    if (inspChip) {
+      inspChip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const player = getOpenedPlayerSafe();
+        if (!player) return;
+        if (!canEditPlayer(player)) return;
+        const sheet = player.sheet?.parsed;
+        if (!sheet) return;
+        sheet.inspiration = safeInt(sheet.inspiration, 0) ? 0 : 1;
+        markModalInteracted(player.id);
+        scheduleSheetSave(player);
+        updateHeroChips(root, sheet);
+      });
+    }
+
+    // Истощение/Состояние: открытие попапов кликом по рамке
+    const exhChip = root.querySelector('[data-exh-open]');
+    if (exhChip) exhChip.addEventListener('click', (e) => { e.stopPropagation(); showExhPopup(); });
+
+    const condChip = root.querySelector('[data-cond-open]');
+    if (condChip) condChip.addEventListener('click', (e) => { e.stopPropagation(); showCondPopup(); });
+  }
+
   // keep condition chip highlight in sync when user edits the field manually
   sheetContent?.addEventListener('input', (e) => {
     const t = e.target;
@@ -3139,11 +3170,13 @@ function bindSpellAddAndDesc(root, player, canEdit) {
         <div class="sheet-topline">
           <div class="sheet-chip sheet-chip--exh" data-exh-open title="Истощение">
             <div class="k">Истощение</div>
-            <input class="sheet-chip-input" type="number" min="0" max="6" ${canEdit ? "" : "disabled"} data-sheet-path="exhaustion" value="${escapeHtml(String(vm.exhaustion))}">
+            <!-- readonly: выбор идёт через список; так клик по полю тоже открывает окно -->
+            <input class="sheet-chip-input" type="number" min="0" max="6" ${canEdit ? "" : "disabled"} readonly data-sheet-path="exhaustion" value="${escapeHtml(String(vm.exhaustion))}">
           </div>
           <div class="sheet-chip sheet-chip--cond ${String(vm.conditions||"").trim() ? "has-value" : ""}" data-cond-open title="Состояние">
             <div class="k">Состояние</div>
-            <input class="sheet-chip-input sheet-chip-input--wide" type="text" ${canEdit ? "" : "disabled"} data-sheet-path="conditions" value="${escapeHtml(String(vm.conditions || ""))}">
+            <!-- readonly: состояние выбирается из списка (и очищается кнопкой) -->
+            <input class="sheet-chip-input sheet-chip-input--wide" type="text" ${canEdit ? "" : "disabled"} readonly data-sheet-path="conditions" value="${escapeHtml(String(vm.conditions || ""))}">
           </div>
         </div>
 
@@ -3966,6 +3999,10 @@ function renderCombatTab(vm) {
     bindCombatEditors(sheetContent, player, canEdit);
     bindInventoryEditors(sheetContent, player, canEdit);
     updateCoinsTotal(sheetContent, player.sheet?.parsed);
+
+    // важное: быстрые клики "Вдохновение" / "Истощение" / "Состояние"
+    // (на некоторых браузерах клики по input могут не доходить, если он disabled)
+    wireQuickBasicInteractions(sheetContent);
 
     const tabButtons = sheetContent.querySelectorAll(".sheet-tab");
     const main = sheetContent.querySelector("#sheet-main");
