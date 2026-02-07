@@ -226,16 +226,23 @@ wss.on("connection", ws => {
         // Пользователь может часто менять значения (монеты, хиты, заметки и т.д.).
         p.sheet = data.sheet;
 
-        // ✅ Синхронизация имени персонажа:
-        // Если в "Профиль" изменили имя (sheet.parsed.name.value),
-        // то обновляем p.name, чтобы сразу изменилось в списке "Игроки и инициатива".
+        // Синхронизация имени:
+        // - "Имя" в профиле (sheet.parsed.name.value) должно менять имя игрока в списке "Игроки и инициатива".
+        // - при создании игрока имя уже задано в p.name, а sheet может быть пустым.
         try {
-          const newName = String(
-            data?.sheet?.parsed?.name?.value ??
-            data?.sheet?.name?.value ??
-            ""
-          ).trim();
-          if (newName) p.name = newName;
+          const parsed = p.sheet && typeof p.sheet === "object" ? p.sheet.parsed : null;
+          let nextName = null;
+          if (parsed && typeof parsed === "object") {
+            if (parsed.name && typeof parsed.name === "object" && ("value" in parsed.name)) {
+              nextName = parsed.name.value;
+            } else if (typeof parsed.name === "string") {
+              nextName = parsed.name;
+            }
+          }
+          if (typeof nextName === "string") {
+            const trimmed = nextName.trim();
+            if (trimmed) p.name = trimmed;
+          }
         } catch {}
         broadcast();
         break;
