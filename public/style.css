@@ -3229,6 +3229,14 @@ textarea[data-sheet-path="text.profPlain.value"]{
 .lss-lang-popup-card{
   max-width:980px;
 }
+.lss-lang-popup-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+@media (max-width: 820px){
+  .lss-lang-popup-grid{ grid-template-columns:1fr; }
+}
 .lss-lang-col-title{
   font-weight:800;
   margin-bottom:8px;
