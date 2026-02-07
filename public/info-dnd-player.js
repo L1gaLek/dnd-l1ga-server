@@ -1654,7 +1654,6 @@ if (path === "proficiency") {
   }
 
     });
-  }
 
   // ===== Slots (spell slots) editors =====
 function bindSlotEditors(root, player, canEdit) {
@@ -3647,6 +3646,7 @@ function renderCombatTab(vm) {
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
+
 
 
 
