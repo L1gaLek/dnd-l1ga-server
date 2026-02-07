@@ -3261,6 +3261,53 @@ textarea[data-sheet-path="text.profPlain.value"]{
   opacity: 0.95;
 }
 
+
+
+/* Full-width variant for languages + prof textarea */
+.lss-langbox--full{
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.lss-prof-text--full{
+  width: 100%;
+  min-height: 170px;
+}
+
+.lss-langbox-head-left{
+  display:flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lss-langbox-head-hint{
+  font-size: 11px;
+  line-height: 14px;
+  color: rgba(230,235,255,0.9);
+  opacity: 0.95;
+}
+
+.lss-langbox-head-hint-label{
+  opacity: 0.85;
+  margin-right: 6px;
+}
+
+.lss-langbox-list--cols3{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 6px;
+}
+
+@media (max-width: 920px){
+  .lss-langbox-list--cols3{
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ===== Languages popup ===== */
 .lss-lang-popup-card{
   width: min(980px, 100%);
