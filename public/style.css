@@ -2879,16 +2879,20 @@ textarea[data-sheet-path="text.profPlain.value"]{
   opacity: 0.85;
 }
 .insp-star{
-  font-size: 30px;
-  line-height: 1;
-  opacity: 0.75;
+  width: 26px;
+  height: 26px;
+  opacity: 0.85;
   transform: translateY(-1px);
-  text-align: center;
+  pointer-events: none;
+  fill: transparent;            /* режим 1: без заливки */
+  stroke: rgba(190,190,190,0.85); /* режим 1: серый контур */
+  stroke-width: 1.9;
 }
 .insp-star.on{
   opacity: 1;
-  color: #ff9a2f;
-  text-shadow: 0 0 10px rgba(255,154,47,0.35);
+  fill: #ff9a2f;                 /* режим 2: оранжевая заливка */
+  stroke: #ff9a2f;               /* режим 2: оранжевый контур */
+  filter: drop-shadow(0 0 10px rgba(255,154,47,0.35));
 }
 
 /* ===== Top line in Basic tab (Exhaustion + Conditions) ===== */
@@ -2897,6 +2901,17 @@ textarea[data-sheet-path="text.profPlain.value"]{
   grid-template-columns: 170px 1fr;
   gap: 10px;
   margin: 6px 0 10px;
+}
+
+/* Важно: в "Истощение" и "Состояние" значения выбираются из списка,
+   поэтому поле только для отображения — клики должны попадать в рамку, а не в input. */
+.sheet-chip--exh,
+.sheet-chip--cond{
+  cursor: pointer;
+}
+.sheet-chip--exh .sheet-chip-input,
+.sheet-chip--cond .sheet-chip-input{
+  pointer-events: none;
 }
 
 /* Чтобы клик по полю "Истощение/Состояние" открывал список (а не ставил курсор) */
