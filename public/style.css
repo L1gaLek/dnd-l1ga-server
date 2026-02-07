@@ -2852,3 +2852,19 @@ textarea[data-sheet-path="text.profPlain.value"]{
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+
+/* ===== Профиль: 2 колонки ===== */
+.sheet-card--profile{ width: 100%; }
+.profile-grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.profile-col{
+  display: grid;
+  gap: 8px;
+}
+@media (max-width: 760px){
+  .profile-grid{ grid-template-columns: 1fr; }
+}
