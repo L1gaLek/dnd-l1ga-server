@@ -3645,7 +3645,7 @@ function renderCombatTab(vm) {
   }
 
   window.InfoModal = { init, open, refresh, close: closeModal };
-})();
+
 
 
 
