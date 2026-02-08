@@ -126,10 +126,10 @@
     <div id="game-container">
 
       <div id="current-turn">
-        <div class="current-turn-left">
-          Текущий игрок: <span id="current-player">-</span>
-        </div>
-        <button id="end-turn" class="next-turn-btn" type="button" title="Следующий ход">Следующий ход</button>
+        Текущий игрок: <span id="current-player">-</span>
+        <button id="next-turn" class="next-turn-btn" type="button" title="Передать ход следующему по инициативе">
+          Следующий ход
+        </button>
       </div>
 
       <div id="board-settings">
@@ -142,32 +142,28 @@
         <button id="create-board">Создать поле</button>
       </div>
 
-      <div id="battle-area">
+      <div id="board-row">
         <div id="board-wrapper">
           <div id="game-board"></div>
         </div>
 
-        <!-- Панели справа от поля (видны только GM) -->
-        <div id="right-panels">
+        <!-- Правая колонка (только для GM, управляется в client.js) -->
+        <div id="right-panel">
 
-          <div id="world-phases" class="sheet-card gm-only">
+          <div id="world-phases" class="side-box">
             <h3>Фазы мира</h3>
-            <div class="panel-buttons">
-              <button id="phase-exploration" type="button">Фаза исследования</button>
-              <button id="phase-initiative" type="button">Фаза инициативы</button>
-              <button id="phase-combat" type="button">Фаза бой</button>
-            </div>
+            <button id="start-exploration">Фаза исследования</button>
+            <button id="start-initiative">Фаза инициативы</button>
+            <button id="start-combat">Фаза бой</button>
           </div>
 
-          <div id="env-panel" class="sheet-card gm-only">
+          <div id="env-editor" class="side-box">
             <h3>Редактирования окружения</h3>
-            <div id="environment-controls" class="panel-buttons">
-              <button id="edit-environment" type="button">Редактирование окружения: ВЫКЛ</button>
-              <button id="add-wall" type="button" disabled>Добавить стену</button>
-              <button id="remove-wall" type="button" disabled>Удалить стену</button>
-              <button id="reset-game" type="button">Сбросить игру полностью</button>
-              <button id="clear-board" type="button">Очистить поле</button>
-            </div>
+            <button id="edit-environment">Редактирование окружения: ВЫКЛ</button>
+            <button id="add-wall" disabled>Добавить стену</button>
+            <button id="remove-wall" disabled>Удалить стену</button>
+            <button id="clear-board">Очистить поле</button>
+            <button id="reset-game">Сбросить игру полностью</button>
           </div>
 
         </div>
@@ -176,6 +172,8 @@
       <div id="initiative-warning" style="display:none; color: orange; font-weight: bold;">
         Бросьте инициативу за своих персонажей!
       </div>
+
+      <!-- environment-controls перенесены в правую колонку -->
 
     </div>
   </div>
