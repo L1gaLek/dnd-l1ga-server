@@ -123,34 +123,60 @@
 </div>
 
     <!-- Игровая колонка -->
-    <div id="game-container"><div id="board-settings">
-        <label>Ширина поля:
-          <input type="number" id="board-width" value="10" min="1" max="20">
-        </label>
-        <label>Высота поля:
-          <input type="number" id="board-height" value="10" min="1" max="20">
-        </label>
-        <button id="create-board">Создать поле</button>
-      </div>
+    <div id="game-container">
 
       <div id="board-row">
-        <div id="board-column">
 
+        <!-- Левая часть (ширина = ширина поля). Всё, что "над полем", центрируется относительно поля -->
+        <div id="board-col">
 
-      <div id="current-turn">
-        Текущий игрок: <span id="current-player">-</span>
-        <button id="next-turn" class="next-turn-btn" type="button" title="Завершить текущий ход (по инициативе)">
-          Конец хода
-        </button>
-      </div>
+          <div id="current-turn">
+            Текущий игрок: <span id="current-player">-</span>
+            <button id="next-turn" class="next-turn-btn" type="button" title="Конец хода (по инициативе)">
+              Конец хода
+            </button>
+          </div>
 
-      
+          <div id="board-settings">
+            <label>Ширина поля:
+              <input type="number" id="board-width" value="10" min="1" max="20">
+            </label>
+            <label>Высота поля:
+              <input type="number" id="board-height" value="10" min="1" max="20">
+            </label>
+            <button id="create-board">Создать поле</button>
+          </div>
 
-        <div id="board-wrapper">
-          <div id="game-board"></div>
+          <div id="board-wrapper">
+            <div id="game-board"></div>
+          </div>
+
+          <div id="initiative-warning" style="display:none; color: orange; font-weight: bold;">
+            Бросьте инициативу за своих персонажей!
+          </div>
+
         </div>
-      <!-- environment-controls перенесены в правую колонку -->
 
+        <!-- Правая колонка (только для GM, управляется в client.js) -->
+        <div id="right-panel">
+
+          <div id="world-phases" class="side-box">
+            <h3>Фазы мира</h3>
+            <button id="start-exploration">Фаза исследования</button>
+            <button id="start-initiative">Фаза инициативы</button>
+            <button id="start-combat">Фаза бой</button>
+          </div>
+
+          <div id="env-editor" class="side-box">
+            <h3>Редактирования окружения</h3>
+            <button id="edit-environment">Редактирование окружения: ВЫКЛ</button>
+            <button id="add-wall" disabled>Добавить стену</button>
+            <button id="remove-wall" disabled>Удалить стену</button>
+            <button id="clear-board">Очистить поле</button>
+            <button id="reset-game">Сбросить игру полностью</button>
+          </div>
+
+        </div>
     </div>
   </div>
 </div>
