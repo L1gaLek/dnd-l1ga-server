@@ -4194,7 +4194,8 @@ function renderCombatTab(vm) {
 
     const myRole = ctx.getMyRole?.();
     const myId = ctx.getMyId?.();
-    const canEdit = (myRole === "GM" || String(player.ownerId) === String(myId));
+    const myAccountId = ctx.getMyAccountId?.();
+    const canEdit = (myRole === "GM" || String(player.ownerId) === String(myId) || (myAccountId && String(player.ownerId) === String(myAccountId)));
     lastCanEdit = !!canEdit;
 
     sheetTitle.textContent = `Инфа: ${player.name}`;
@@ -4233,7 +4234,8 @@ function renderCombatTab(vm) {
       btnLoad.type = 'button';
       btnLoad.textContent = 'Загрузить основу';
       btnLoad.addEventListener('click', () => {
-        ctx.sendMessage({ type: "loadBaseSheet", id: player.id });
+        window.__baseLoadTargetPlayerId = player.id;
+        ctx.sendMessage({ type: "listBaseSheets" });
         const tmp = document.createElement('div');
         tmp.className = 'sheet-note';
         tmp.textContent = "Загружаю основу…";
@@ -4450,6 +4452,124 @@ function renderCombatTab(vm) {
     const pl = players.find(x => x.id === openedSheetPlayerId);
     if (pl) renderSheetModal(pl);
   }
+
+
+  // ===== Persist: picker modal for saved base sheets =====
+  // items: [{id,name,updatedAt}]
+  // onPick(saveId)
+  window.showBaseSheetsPicker = function(items, onPick) {
+    try {
+      // remove existing
+      const existing = document.getElementById("baseSheetsPickerOverlay");
+      if (existing) existing.remove();
+
+      const overlay = document.createElement("div");
+      overlay.id = "baseSheetsPickerOverlay";
+      overlay.style.position = "fixed";
+      overlay.style.inset = "0";
+      overlay.style.background = "rgba(0,0,0,0.55)";
+      overlay.style.zIndex = "99999";
+      overlay.style.display = "flex";
+      overlay.style.alignItems = "center";
+      overlay.style.justifyContent = "center";
+      overlay.addEventListener("click", (e) => {
+        if (e.target === overlay) overlay.remove();
+      });
+
+      const box = document.createElement("div");
+      box.style.width = "min(720px, calc(100vw - 24px))";
+      box.style.maxHeight = "min(70vh, 520px)";
+      box.style.overflow = "auto";
+      box.style.background = "#1f1f1f";
+      box.style.border = "1px solid rgba(255,255,255,0.12)";
+      box.style.borderRadius = "12px";
+      box.style.padding = "14px";
+      box.style.boxShadow = "0 12px 40px rgba(0,0,0,0.45)";
+
+      const title = document.createElement("div");
+      title.style.fontSize = "16px";
+      title.style.fontWeight = "700";
+      title.style.marginBottom = "10px";
+      title.textContent = "Выберите сохранённого персонажа";
+      box.appendChild(title);
+
+      const hint = document.createElement("div");
+      hint.style.opacity = "0.85";
+      hint.style.fontSize = "12px";
+      hint.style.marginBottom = "10px";
+      hint.textContent = items && items.length ? "Нажмите «Загрузить» напротив нужного персонажа." : "Сохранений пока нет. Сначала нажмите «Сохранить основу» у текущего персонажа.";
+      box.appendChild(hint);
+
+      const list = document.createElement("div");
+      list.style.display = "flex";
+      list.style.flexDirection = "column";
+      list.style.gap = "8px";
+
+      const fmt = (ms) => {
+        try {
+          const d = new Date(ms);
+          return d.toLocaleString();
+        } catch { return ""; }
+      };
+
+      (items || []).forEach((it) => {
+        const row = document.createElement("div");
+        row.style.display = "flex";
+        row.style.alignItems = "center";
+        row.style.justifyContent = "space-between";
+        row.style.gap = "10px";
+        row.style.padding = "10px";
+        row.style.border = "1px solid rgba(255,255,255,0.10)";
+        row.style.borderRadius = "10px";
+        row.style.background = "rgba(255,255,255,0.04)";
+
+        const left = document.createElement("div");
+        const nm = document.createElement("div");
+        nm.style.fontWeight = "700";
+        nm.textContent = it.name || "Без имени";
+        const meta = document.createElement("div");
+        meta.style.fontSize = "12px";
+        meta.style.opacity = "0.8";
+        meta.textContent = it.updatedAt ? ("Обновлено: " + fmt(it.updatedAt)) : "";
+        left.appendChild(nm);
+        left.appendChild(meta);
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Загрузить";
+        btn.addEventListener("click", () => {
+          overlay.remove();
+          if (typeof onPick === "function") onPick(it.id);
+        });
+
+        row.appendChild(left);
+        row.appendChild(btn);
+        list.appendChild(row);
+      });
+
+      box.appendChild(list);
+
+      const bottom = document.createElement("div");
+      bottom.style.display = "flex";
+      bottom.style.justifyContent = "flex-end";
+      bottom.style.marginTop = "12px";
+
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.textContent = "Закрыть";
+      closeBtn.addEventListener("click", () => overlay.remove());
+      bottom.appendChild(closeBtn);
+
+      box.appendChild(bottom);
+
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+    } catch (e) {
+      console.error(e);
+      alert("Не удалось открыть список сохранений");
+    }
+  };
+
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
