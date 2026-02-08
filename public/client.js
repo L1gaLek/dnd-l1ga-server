@@ -160,7 +160,15 @@ loginDiv.style.display = 'none';
       }
     }
 
-    if (msg.type === "error") loginError.textContent = msg.message;
+    if (msg.type === "error") {
+      const text = msg.message || "Ошибка";
+      if (loginDiv && loginDiv.style.display !== "none") {
+        loginError.textContent = text;
+      } else {
+        // во время игры
+        alert(text);
+      }
+    }
 
     if (msg.type === "users" && Array.isArray(msg.users)) {
       usersById.clear();
@@ -228,7 +236,7 @@ startCombatBtn?.addEventListener("click", () => {
 });
 
 nextTurnBtn?.addEventListener("click", () => {
-  sendMessage({ type: "nextTurn" });
+  sendMessage({ type: "endTurn" });
 });
 
 // ================== ROLE UI ==================
