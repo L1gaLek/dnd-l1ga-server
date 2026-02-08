@@ -10,7 +10,7 @@ const path = require("path");
 
 // ===== Persist: base sheets storage (multiple saves per account) =====
 const BASE_SHEETS_DIR = path.join(__dirname, "data", "baseSheets");
-try { fs.mkdirSync(BASE_SHEETS_DIR, { recursive: true }); } catch {}
+try { fs.mkdirSync(BASE_SHEETS_DIR, { recursive: true }); } catch (e) {}
 
 function safeId(v) {
   return String(v || "").replace(/[^a-zA-Z0-9_-]/g, "");
@@ -30,7 +30,7 @@ function sheetPath(accountId, saveId) {
 
 function ensureAccountDir(accountId) {
   if (!accountId) return false;
-  try { fs.mkdirSync(accountDir(accountId), { recursive: true }); return true; } catch { return false; }
+  try { fs.mkdirSync(accountDir(accountId), { recursive: true }); return true; } catch (e) { return false; }
 }
 
 function readIndex(accountId) {
@@ -96,7 +96,7 @@ function saveBaseSheet(accountId, saveId, name, sheet) {
     sheet._persist.saveId = id;
     sheet._persist.updatedAt = now;
     sheet._persist.name = safeName;
-  } catch {}
+  } catch (e) {}
 
   try {
     fs.writeFileSync(sheetPath(accountId, id), JSON.stringify(sheet, null, 2), "utf-8");
@@ -140,7 +140,7 @@ app.get("/api/fetch", async (req, res) => {
     if (!url) return res.status(400).send("Missing url");
 
     let parsed;
-    try { parsed = new URL(url); } catch { return res.status(400).send("Bad url"); }
+    try { parsed = new URL(url); } catch (e) { return res.status(400).send("Bad url"); }
     if (!(parsed.protocol === "http:" || parsed.protocol === "https:")) return res.status(400).send("Bad protocol");
     if (!parsed.hostname.endsWith("dnd.su")) return res.status(403).send("Forbidden domain");
 
@@ -170,11 +170,11 @@ const wss = new WebSocket.Server({ server });
 setInterval(() => {
   wss.clients.forEach(ws => {
     if (ws.isAlive === false) {
-      try { ws.terminate(); } catch {}
+      try { ws.terminate(); } catch (e) {}
       return;
     }
     ws.isAlive = false;
-    try { ws.ping(); } catch {}
+    try { ws.ping(); } catch (e) {}
   });
 }, 15000);
 
@@ -452,7 +452,7 @@ wss.on("connection", ws => {
 
   ws.on("message", msg => {
   let data;
-  try { data = JSON.parse(msg); } catch { return; }
+  try { data = JSON.parse(msg); } catch (e) { return; }
 
   const lobbyTypes = new Set(["register","listRooms","createRoom","joinRoom","leaveRoom"]);
   let gameState = null;
@@ -680,7 +680,7 @@ case "leaveRoom": {
               else if (typeof parsed.name === "string") nextName = parsed.name;
             }
             if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
-          } catch {}
+          } catch (e) {}
         }
 
         logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}${isBase ? " (Основа)" : ""}`);
@@ -728,7 +728,7 @@ case "leaveRoom": {
             const trimmed = nextName.trim();
             if (trimmed) p.name = trimmed;
           }
-        } catch {}
+        } catch (e) {}
 
         // ✅ Persist: авто-сейв "Основы" (только если уже выбран/создан saveId)
         if (p.isBase) {
@@ -782,7 +782,7 @@ case "leaveRoom": {
           p.sheet._persist.saveId = meta.id;
           p.sheet._persist.name = meta.name;
           p.sheet._persist.updatedAt = meta.updatedAt;
-        } catch {}
+        } catch (e) {}
 
         ws.send(JSON.stringify({ type: "baseSheetSaved", ok: true, meta }));
         break;
@@ -834,7 +834,7 @@ case "leaveRoom": {
             else if (typeof parsed.name === "string") nextName = parsed.name;
           }
           if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
-        } catch {}
+        } catch (e) {}
 
         ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: true, saveId }));
         broadcast();
@@ -867,7 +867,7 @@ case "leaveRoom": {
             else if (typeof parsed.name === "string") nextName = parsed.name;
           }
           if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
-        } catch {}
+        } catch (e) {}
 
         ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: true }));
         broadcast();
