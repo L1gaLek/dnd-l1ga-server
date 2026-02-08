@@ -147,28 +147,42 @@ function logEvent(text) {
   if (room.state.log.length > 100) room.state.log.shift();
 }
 
-// ===== DnD helpers =====
-function abilityMod(score) {
-  const n = Number(score);
-  if (!Number.isFinite(n)) return 0;
-  return Math.floor((n - 10) / 2);
+// ===== Initiative helpers (Dex mod) =====
+function abilityModFromScore(score) {
+  const s = Number(score);
+  if (!Number.isFinite(s)) return 0;
+  return Math.floor((s - 10) / 2);
+}
+
+function getDexScore(player) {
+  // player.sheet.parsed comes from InfoModal import (Charbox/LSS)
+  const s = player?.sheet?.parsed;
+
+  const raw =
+    s?.stats?.dex?.score ??
+    s?.stats?.dex?.value ??
+    s?.stats?.dex ??
+    s?.dexterity ??
+    s?.dex ??
+    null;
+
+  if (raw && typeof raw === "object" && ("value" in raw)) return Number(raw.value) || 10;
+  return Number(raw) || 10;
 }
 
 function getDexMod(player) {
-  try {
-    const dex = player?.sheet?.parsed?.stats?.dex;
-    if (dex && typeof dex === "object") {
-      if (Number.isFinite(Number(dex.modifier))) return Number(dex.modifier);
-      if (Number.isFinite(Number(dex.score))) return abilityMod(Number(dex.score));
-    }
-    // fallback: иногда могут хранить как sheet.parsed.abilities.dex или sheet.stats.dex
-    const alt = player?.sheet?.stats?.dex || player?.sheet?.parsed?.abilities?.dex;
-    if (alt && typeof alt === "object") {
-      if (Number.isFinite(Number(alt.modifier))) return Number(alt.modifier);
-      if (Number.isFinite(Number(alt.score))) return abilityMod(Number(alt.score));
-    }
-  } catch {}
-  return 0;
+  return abilityModFromScore(getDexScore(player));
+}
+
+function broadcastDiceEvent(ev) {
+  const room = getCurrentRoom();
+  if (!room) return;
+  const msg = JSON.stringify({ type: "diceEvent", event: ev });
+  wss.clients.forEach(c => {
+    if (c.readyState !== WebSocket.OPEN) return;
+    if (c.roomId !== room.id) return;
+    c.send(msg);
+  });
 }
 
 function getUserByWS(ws) {
@@ -492,22 +506,21 @@ case "leaveRoom": {
           }
         }
 
-        // Если создаём игрока во время боя — он должен войти в бой со следующего круга
-        const creatingInCombat = (gameState.phase === "combat");
-
-        const newPlayer = {
+        gameState.players.push({
           id: data.player.id || uuidv4(),
           name: data.player.name,
           color: data.player.color,
           size: data.player.size,
           x: null,
           y: null,
-          initiative: (gameState.phase === "initiative" || creatingInCombat) ? null : 0,
+          initiative: 0,
 
-          // флаги инициативы
-          hasRolledInitiative: (gameState.phase === "initiative" || creatingInCombat) ? false : true,
-          pendingInitiativeChoice: creatingInCombat ? true : false,
-          pendingJoinNextRound: creatingInCombat ? true : false,
+          // инициатива
+          hasRolledInitiative: false,
+
+          // если персонаж создан во время боя — сначала нужно выбрать/бросить инициативу
+          pendingInitiativeChoice: (gameState.phase === "combat"),
+          willJoinNextRound: false,
 
           isBase,
 
@@ -517,9 +530,7 @@ case "leaveRoom": {
 
           // ✅ ЛИСТ ПЕРСОНАЖА
           sheet: null
-        };
-
-        gameState.players.push(newPlayer);
+        });
 
         logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}${isBase ? " (Основа)" : ""}`);
         broadcast();
@@ -736,11 +747,100 @@ case "diceEvent": {
             const roll = Math.floor(Math.random() * 20) + 1;
             const dexMod = getDexMod(p);
             const total = roll + dexMod;
+
             p.initiative = total;
             p.hasRolledInitiative = true;
+
+            // ✅ показываем всем тот же результат, что записали в player.initiative
+            broadcastDiceEvent({
+              fromId: user.id,
+              fromName: p.name,
+              kindText: `Инициатива: d20${dexMod >= 0 ? "+" : ""}${dexMod}`,
+              sides: 20,
+              count: 1,
+              bonus: dexMod,
+              rolls: [roll],
+              total,
+              crit: ""
+            });
+
             const sign = dexMod >= 0 ? "+" : "";
             logEvent(`${p.name} бросил инициативу: ${roll}${sign}${dexMod} = ${total}`);
           });
+
+        broadcast();
+        break;
+      }
+
+      // ===== Новый игрок во время боя: выбор инициативы (только для pending) =====
+      case "combatInitChoice": {
+        if (gameState.phase !== "combat") return;
+
+        const user = getUserByWS(ws);
+        if (!user) return;
+
+        const p = gameState.players.find(pl => pl.id === data.id);
+        if (!p) return;
+
+        // только GM или владелец
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+
+        if (!p.pendingInitiativeChoice) return;
+
+        const choice = String(data.choice || "");
+
+        if (choice === "roll") {
+          const roll = Math.floor(Math.random() * 20) + 1;
+          const dexMod = getDexMod(p);
+          const total = roll + dexMod;
+
+          p.initiative = total;
+          p.hasRolledInitiative = true;
+
+          broadcastDiceEvent({
+            fromId: user.id,
+            fromName: p.name,
+            kindText: `Инициатива (новый): d20${dexMod >= 0 ? "+" : ""}${dexMod}`,
+            sides: 20,
+            count: 1,
+            bonus: dexMod,
+            rolls: [roll],
+            total,
+            crit: ""
+          });
+
+          const sign = dexMod >= 0 ? "+" : "";
+          logEvent(`${p.name} (новый) бросил инициативу: ${roll}${sign}${dexMod} = ${total}`);
+        } else if (choice === "base") {
+          // берём инициативу "основы" владельца
+          const base = gameState.players.find(pl => pl.isBase && pl.ownerId === p.ownerId);
+          const baseInit = (base && base.initiative !== null && base.initiative !== undefined)
+            ? Number(base.initiative) || 0
+            : 0;
+
+          p.initiative = baseInit;
+          p.hasRolledInitiative = true;
+
+          broadcastDiceEvent({
+            fromId: user.id,
+            fromName: p.name,
+            kindText: "Инициатива основы",
+            sides: 0,
+            count: 1,
+            bonus: 0,
+            rolls: [baseInit],
+            total: baseInit,
+            crit: ""
+          });
+
+          logEvent(`${p.name} (новый) взял инициативу основы: ${baseInit}`);
+        } else {
+          return;
+        }
+
+        // этот игрок войдёт в порядок хода на СЛЕДУЮЩЕМ круге
+        p.pendingInitiativeChoice = false;
+        p.willJoinNextRound = true;
 
         broadcast();
         break;
@@ -779,48 +879,6 @@ case "diceEvent": {
         break;
       }
 
-      case "combatInitChoice": {
-        if (gameState.phase !== "combat") return;
-
-        const p = gameState.players.find(pl => pl.id === data.id);
-        if (!p) return;
-
-        // только GM или владелец
-        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
-
-        if (!p.pendingInitiativeChoice) return;
-
-        const choice = String(data.choice || "");
-
-        if (choice === "roll") {
-          const roll = Math.floor(Math.random() * 20) + 1;
-          const dexMod = getDexMod(p);
-          const total = roll + dexMod;
-          p.initiative = total;
-          p.hasRolledInitiative = true;
-          const sign = dexMod >= 0 ? "+" : "";
-          logEvent(`${p.name} (новый) бросил инициативу: ${roll}${sign}${dexMod} = ${total}`);
-        } else if (choice === "base") {
-          // берём инициативу "основы" владельца
-          const base = gameState.players.find(pl => pl.isBase && pl.ownerId === p.ownerId);
-          const baseInit = (base && base.initiative !== null && base.initiative !== undefined)
-            ? Number(base.initiative) || 0
-            : 0;
-          p.initiative = baseInit;
-          p.hasRolledInitiative = true;
-          logEvent(`${p.name} (новый) взял инициативу основы: ${baseInit}`);
-        } else {
-          return;
-        }
-
-        // этот игрок войдёт в порядок хода на СЛЕДУЮЩЕМ круге
-        p.pendingInitiativeChoice = false;
-        p.pendingJoinNextRound = true;
-
-        broadcast();
-        break;
-      }
-
       case "endTurn": {
         if (gameState.phase !== "combat") return;
 
@@ -833,29 +891,29 @@ case "diceEvent": {
         const canEnd = isGM(ws) || (current && ownsPlayer(ws, current));
         if (!canEnd) return;
 
+        const prevIndex = gameState.currentTurnIndex;
         const nextIndex = (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-        const newRound = (nextIndex === 0);
-        gameState.currentTurnIndex = nextIndex;
 
-        // если начался новый круг — добавим/пересоберём порядок хода с учётом новых игроков
-        if (newRound) {
-          // включаем всех, у кого уже определена инициатива (и не ждёт выбора)
-          const eligible = (gameState.players || []).filter(pl =>
-            pl && pl.hasRolledInitiative && !pl.pendingInitiativeChoice
-          );
+        const wrapped = (prevIndex === gameState.turnOrder.length - 1 && nextIndex === 0);
 
-          gameState.turnOrder = [...eligible]
-            .sort((a, b) => (Number(b.initiative) || 0) - (Number(a.initiative) || 0))
-            .map(pl => pl.id);
+        // если мы прошли последний ход и начинаем новый круг — добавляем тех, кто должен войти в следующий круг
+        if (wrapped) {
+          const toJoin = (gameState.players || []).filter(p => p && p.willJoinNextRound);
+          if (toJoin.length) {
+            toJoin.forEach(p => { p.willJoinNextRound = false; });
 
-          // сброс флага «ожидает следующий круг»
-          (gameState.players || []).forEach(pl => {
-            if (pl) pl.pendingJoinNextRound = false;
-          });
-
-          gameState.currentTurnIndex = 0;
+            // пересортируем порядок хода по инициативе (теперь с новыми персонажами)
+            gameState.turnOrder = [...new Set(
+              [...gameState.players]
+                .filter(p => p && (p.initiative !== null && p.initiative !== undefined))
+                .sort((a, b) => (Number(b.initiative) || 0) - (Number(a.initiative) || 0))
+                .map(p => p.id)
+            )];
+          }
         }
 
+        // после возможной пересборки порядка хода выставляем индекс
+        gameState.currentTurnIndex = wrapped ? 0 : nextIndex;
         const nextId = gameState.turnOrder[gameState.currentTurnIndex];
         const next = gameState.players.find(p => p.id === nextId);
         logEvent(`Ход игрока ${next?.name || '-'}`);
