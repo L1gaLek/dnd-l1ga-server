@@ -93,6 +93,11 @@ function removeSavedBase(userId, savedId) {
 const app = express();
 app.use(express.static("public"));
 
+// ===== KEEP-ALIVE PING (для Render Free) =====
+app.get("/ping", (req, res) => {
+  res.status(200).send("ok");
+});
+
 // ===== Proxy fetch for dnd.su (to bypass browser CORS) =====
 // Используется в модалке "Инфа" -> "Заклинания" для добавления описаний по ссылке.
 app.get("/api/fetch", async (req, res) => {
@@ -1244,5 +1249,6 @@ function findFirstFreeSpot(state, size) {
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log("🟢 Server on", PORT));
+
 
 
