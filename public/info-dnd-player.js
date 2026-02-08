@@ -58,7 +58,7 @@
     try {
       const raw = path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj);
       return v(raw, fallback);
-    } catch {
+    } catch (e) {
       return fallback;
     }
   }
@@ -631,7 +631,7 @@ function bindLanguagesUi(root, player, canEdit) {
         try {
           const exInput = sheetContent?.querySelector('[data-sheet-path="exhaustion"]');
           if (exInput && exInput instanceof HTMLInputElement) exInput.value = String(lvl);
-        } catch {}
+        } catch (e) {}
 
         markModalInteracted(player.id);
         scheduleSheetSave(player);
@@ -698,7 +698,7 @@ function bindLanguagesUi(root, player, canEdit) {
           if (input && input instanceof HTMLInputElement) input.value = sheet.conditions || "";
           const condChip = sheetContent?.querySelector('[data-cond-open]');
           if (condChip) condChip.classList.toggle('has-value', !!String(sheet.conditions || '').trim());
-        } catch {}
+        } catch (e) {}
         return;
       }
 
@@ -733,7 +733,7 @@ function bindLanguagesUi(root, player, canEdit) {
           if (input && input instanceof HTMLInputElement) input.value = sheet.conditions || "";
           const condChip = sheetContent?.querySelector('[data-cond-open]');
           if (condChip) condChip.classList.toggle('has-value', !!String(sheet.conditions || '').trim());
-        } catch {}
+        } catch (e) {}
         return;
       }
     });
@@ -933,7 +933,7 @@ function ensureWiredCloseHandlers() {
     // Charbox LSS: outer.data — строка JSON
     let inner = null;
     if (outer && typeof outer.data === 'string') {
-      try { inner = JSON.parse(outer.data); } catch { inner = null; }
+      try { inner = JSON.parse(outer.data); } catch (e) { inner = null; }
     }
 
     return {
@@ -1520,7 +1520,7 @@ const weapons = weaponsRaw
 
   function getByPath(obj, path) {
     try { return path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj); }
-    catch { return undefined; }
+    catch (e) { return undefined; }
   }
 
   function scheduleSheetSave(player) {
@@ -1921,7 +1921,7 @@ function bindEditableInputs(root, player, canEdit) {
         const pNow = getOpenedPlayerSafe();
         if (pNow?.sheet?.parsed) syncHpPopupInputs(pNow.sheet.parsed);
       }
-    } catch {}
+    } catch (e) {}
 
 // live updates
 if (path === "proficiency" || path === "proficiencyCustom") {
@@ -1929,7 +1929,7 @@ if (path === "proficiency" || path === "proficiencyCustom") {
   updateSkillsAndPassives(root, player.sheet.parsed);
   try {
     ["str","dex","con","int","wis","cha"].forEach(k => updateDerivedForStat(root, player.sheet.parsed, k));
-  } catch {}
+  } catch (e) {}
 
   // обновить подсказку у кружков спасбросков
   root.querySelectorAll('.lss-save-dot[data-save-key]').forEach(d => {
@@ -2510,7 +2510,7 @@ function bindSlotEditors(root, player, canEdit) {
               }
             });
           }
-        } catch {}
+        } catch (e) {}
 
         // если бросок был из конкретного заклинания — тратим 1 ячейку соответствующего уровня (кроме заговоров)
         if (rollSpellBtn && lvl > 0) {
@@ -2601,7 +2601,7 @@ function normalizeDndSuUrl(url) {
     let href = parsed.href;
     if (!href.endsWith("/")) href += "/";
     return href;
-  } catch {
+  } catch (e) {
     return "";
   }
 }
@@ -2668,7 +2668,7 @@ function extractSpellFromHtml(html) {
         desc = (wrap.innerText || wrap.textContent || "");
       }
     }
-  } catch {
+  } catch (e) {
     name = name || "";
     desc = desc || "";
   }
@@ -2796,10 +2796,10 @@ function parseSpellClassesFromHtml(html) {
           if (seen.has(val)) return;
           seen.add(val);
           out.push({ value: val, label, url: `https://dnd.su/spells/?class=${encodeURIComponent(val)}` });
-        } catch {}
+        } catch (e) {}
       });
     }
-  } catch {}
+  } catch (e) {}
 
   // уникализация
   const uniq = new Map();
@@ -2836,7 +2836,7 @@ function normalizeAnyUrlToAbs(href) {
     let s = u.href;
     if (!s.endsWith("/")) s += "/";
     return s;
-  } catch {
+  } catch (e) {
     return "";
   }
 }
@@ -2876,7 +2876,7 @@ function parseSpellsFromClassHtml(html) {
       seen.add(abs);
       spells.push({ name, href: abs, level: lvl });
     }
-  } catch {}
+  } catch (e) {}
 
   // сорт: сначала по level (0..9..unknown), затем по имени
   const lvlKey = (x) => (x.level == null ? 99 : x.level);
@@ -4509,7 +4509,7 @@ function renderCombatTab(vm) {
         try {
           const d = new Date(ms);
           return d.toLocaleString();
-        } catch { return ""; }
+        } catch (e) { return ""; }
       };
 
       (items || []).forEach((it) => {
