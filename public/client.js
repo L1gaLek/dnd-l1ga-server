@@ -225,7 +225,21 @@ loginDiv.style.display = 'none';
       // если "Инфа" открыта — обновляем ее по свежему state
       window.InfoModal?.refresh?.(players);
     }
-  };
+  
+
+    // ===== Persist: base sheet notifications =====
+    if (msg.type === "baseSheetSaved") {
+      if (msg.ok) alert("Основа сохранена ✅");
+      else alert("Не удалось сохранить основу ❌");
+      return;
+    }
+
+    if (msg.type === "baseSheetLoaded") {
+      if (!msg.ok) alert(msg.message || "Не удалось загрузить основу ❌");
+      else alert("Основа загружена ✅ (сейчас обновится)");
+      return;
+    }
+};
 
   ws.onerror = (e) => {
     loginError.textContent = "Ошибка соединения с сервером";
