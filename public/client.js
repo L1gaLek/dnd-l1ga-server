@@ -66,6 +66,34 @@ const startExplorationBtn = document.getElementById("start-exploration");
 const worldPhasesBox = document.getElementById('world-phases');
 const envEditorBox = document.getElementById('env-editor');
 
+const SUPABASE_URL = "PASTE_URL";
+const SUPABASE_ANON_KEY = "PASTE_ANON_KEY";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const roomId = currentRoomId; // то, что у вас было
+const userId = getOrCreateUserId();
+
+const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+
+const channel = supabase.channel(`room:${roomId}`, {
+  config: { presence: { key: userId } }
+});
+
+channel.on("presence", { event: "sync" }, () => {
+  const state = channel.presenceState();
+  renderOnlineList(state);
+});
+
+channel.on("broadcast", { event: "game" }, ({ payload }) => {
+  handleGameEvent(payload);
+});
+
+await channel.subscribe(async (status) => {
+  if (status === "SUBSCRIBED") {
+    await channel.track({ userId, name: username, role });
+  }
+});
+
 // ================== VARIABLES ==================
 let ws;
 let myId;
@@ -263,6 +291,21 @@ nextTurnBtn?.addEventListener("click", () => {
   // "Конец хода" — перейти к следующему по инициативе
   sendMessage({ type: "endTurn" });
 });
+
+function getOrCreateUserId() {
+  let id = localStorage.getItem("dnd_user_id");
+  if (!id) {
+    id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+    localStorage.setItem("dnd_user_id", id);
+  }
+  return id;
+}
+const myStableUserId = getOrCreateUserId();
+
 
 // ================== ROLE UI ==================
 function setupRoleUI(role) {
@@ -1366,21 +1409,6 @@ function renderRooms(rooms) {
 }
 
 
-function getOrCreateUserId() {
-  let id = localStorage.getItem("dnd_user_id");
-  if (!id) {
-    // UUID v4 без библиотек
-    id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-    localStorage.setItem("dnd_user_id", id);
-  }
-  return id;
-}
-const userId = getOrCreateUserId();
-
 
 function openCreateRoomModal() {
   roomNameInput.value = '';
@@ -1410,4 +1438,5 @@ if (createRoomSubmit) createRoomSubmit.addEventListener('click', () => {
   sendMessage({ type: 'createRoom', name, password, scenario });
   closeCreateRoomModal();
 });
+
 
