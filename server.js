@@ -66,7 +66,8 @@ setInterval(() => {
       return {
   boardWidth: 10,
   boardHeight: 10,
-  phase: "lobby",
+  // фазы: exploration -> initiative -> combat
+  phase: "exploration",
   players: [],      // {id, name, color, size, x, y, initiative, ownerId, ownerName, isBase, sheet}
   walls: [],        // {x, y}
   turnOrder: [],    // массив id игроков по инициативе
@@ -181,6 +182,29 @@ function scheduleUserCleanupIfNeeded(userId) {
     // комнаты сами обновляются через rooms list, но на всякий:
     broadcastRooms();
   }, USER_CLEANUP_MS);
+}
+
+// ================== PHASE HELPERS ==================
+function setPhase(gs, phase) {
+  gs.phase = phase;
+
+  if (phase === 'initiative') {
+    gs.players.forEach(p => {
+      p.initiative = null;
+      p.hasRolledInitiative = false;
+    });
+    gs.turnOrder = [];
+    gs.currentTurnIndex = 0;
+  }
+
+  if (phase === 'exploration') {
+    // свободное перемещение, очередность (если была) просто сохраняем
+    // подсветка хода на клиенте включается только в combat
+  }
+
+  if (phase === 'combat') {
+    // очередь должна быть рассчитана заранее (finishInitiative или setPhase->combat)
+  }
 }
 // ===== Rooms helpers =====
 function listRoomsPayload() {
@@ -427,16 +451,50 @@ case "leaveRoom": {
 
       case "startInitiative": {
         if (!isGM(ws)) return;
-
-        gameState.phase = "initiative";
-
-        gameState.players.forEach(p => {
-          p.initiative = null;
-          p.hasRolledInitiative = false;
-        });
-
+        // обратная совместимость: старая кнопка
+        setPhase(gameState, "initiative");
         logEvent("GM начал фазу инициативы");
         broadcast();
+        break;
+      }
+
+      case "setPhase": {
+        if (!isGM(ws)) return;
+        const next = String(data.phase || "").trim();
+        if (!["exploration", "initiative", "combat"].includes(next)) return;
+
+        // переключение фаз с нужными сбросами/пересчетами
+        if (next === "exploration") {
+          setPhase(gameState, "exploration");
+          logEvent("GM включил фазу исследования");
+          broadcast();
+          break;
+        }
+
+        if (next === "initiative") {
+          setPhase(gameState, "initiative");
+          logEvent("GM включил фазу инициативы");
+          broadcast();
+          break;
+        }
+
+        if (next === "combat") {
+          // перед боем: если нет turnOrder — пересчитываем на основе инициативы
+          if (!Array.isArray(gameState.turnOrder) || gameState.turnOrder.length === 0) {
+            gameState.turnOrder = [...gameState.players]
+              .sort((a, b) => (Number(b.initiative) || 0) - (Number(a.initiative) || 0))
+              .map(p => p.id);
+          }
+
+          autoPlacePlayers();
+          setPhase(gameState, "combat");
+          gameState.currentTurnIndex = 0;
+
+          const first = gameState.players.find(p => p.id === gameState.turnOrder[0]);
+          logEvent(`Бой начался. Первый ход: ${first?.name || '-'}`);
+          broadcast();
+          break;
+        }
         break;
       }
 
@@ -687,29 +745,29 @@ case "diceEvent": {
         if (!allRolled) return;
 
         gameState.turnOrder = [...gameState.players]
-          .sort((a, b) => b.initiative - a.initiative)
+          .sort((a, b) => (Number(b.initiative) || 0) - (Number(a.initiative) || 0))
           .map(p => p.id);
 
-        gameState.phase = "placement";
-        logEvent("Все инициативы определены. Фаза размещения");
+        // фазу не меняем: GM сам переключает (exploration/initiative/combat)
+        logEvent("Все инициативы определены. Очередность хода рассчитана");
         broadcast();
         break;
       }
 
       case "startCombat": {
         if (!isGM(ws)) return;
-        if (gameState.phase !== "placement") return;
-
+        // обратная совместимость: старая кнопка
+        // переход в бой делаем через setPhase
+        if (!Array.isArray(gameState.turnOrder) || gameState.turnOrder.length === 0) {
+          gameState.turnOrder = [...gameState.players]
+            .sort((a, b) => (Number(b.initiative) || 0) - (Number(a.initiative) || 0))
+            .map(p => p.id);
+        }
         autoPlacePlayers();
-
-        gameState.phase = "combat";
+        setPhase(gameState, "combat");
         gameState.currentTurnIndex = 0;
-
-        const first = gameState.players.find(
-          p => p.id === gameState.turnOrder[0]
-        );
-
-        logEvent(`Бой начался. Первый ход: ${first?.name}`);
+        const first = gameState.players.find(p => p.id === gameState.turnOrder[0]);
+        logEvent(`Бой начался. Первый ход: ${first?.name || '-'}`);
         broadcast();
         break;
       }
