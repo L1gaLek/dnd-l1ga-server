@@ -38,6 +38,167 @@
   let openedSheetPlayerId = null;
   let lastCanEdit = false; // GM или владелец текущего открытого персонажа
 
+  // ===== Saved bases overlay state =====
+  let savedBasesOverlay = null;
+  let savedBasesListCache = [];
+  let savedBasesOverlayPlayerId = null;
+
+  function ensureSavedBasesOverlay() {
+    if (savedBasesOverlay) return savedBasesOverlay;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'saved-bases-overlay hidden';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.innerHTML = `
+      <div class="saved-bases-modal">
+        <div class="saved-bases-head">
+          <div>
+            <div class="saved-bases-title">Мои сохранённые персонажи</div>
+            <div class="saved-bases-sub">Список привязан к вашему уникальному id (не к никнейму).</div>
+          </div>
+          <button type="button" class="saved-bases-close" title="Закрыть">✕</button>
+        </div>
+
+        <div class="saved-bases-body">
+          <div class="saved-bases-loading">Загружаю список…</div>
+          <div class="saved-bases-empty hidden">Пока нет сохранённых персонажей. Нажмите «Сохранить основу».</div>
+
+          <div class="saved-bases-list" role="list"></div>
+        </div>
+
+        <div class="saved-bases-footer">
+          <button type="button" class="saved-bases-delete" disabled>Удалить</button>
+          <div style="flex:1"></div>
+          <button type="button" class="saved-bases-refresh">Обновить</button>
+          <button type="button" class="saved-bases-apply" disabled>Загрузить</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+    savedBasesOverlay = overlay;
+
+    const closeBtn = overlay.querySelector('.saved-bases-close');
+    closeBtn?.addEventListener('click', () => closeSavedBasesOverlay());
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeSavedBasesOverlay();
+    });
+
+    overlay.querySelector('.saved-bases-refresh')?.addEventListener('click', () => {
+      try {
+        openSavedBasesOverlay({ loading: true, playerId: savedBasesOverlayPlayerId });
+        ctx?.sendMessage?.({ type: 'listSavedBases' });
+      } catch {}
+    });
+
+    overlay.querySelector('.saved-bases-apply')?.addEventListener('click', () => {
+      const sel = overlay.querySelector('input[name="savedBasePick"]:checked');
+      const savedId = sel?.value;
+      if (!savedId) return;
+      if (!savedBasesOverlayPlayerId) return;
+      try {
+        ctx?.sendMessage?.({ type: 'applySavedBase', playerId: savedBasesOverlayPlayerId, savedId });
+      } catch {}
+    });
+
+    overlay.querySelector('.saved-bases-delete')?.addEventListener('click', () => {
+      const sel = overlay.querySelector('input[name="savedBasePick"]:checked');
+      const savedId = sel?.value;
+      if (!savedId) return;
+      if (!confirm('Удалить сохранённого персонажа?')) return;
+      try {
+        ctx?.sendMessage?.({ type: 'deleteSavedBase', savedId });
+      } catch {}
+    });
+
+    return overlay;
+  }
+
+  function openSavedBasesOverlay({ loading = false, playerId = null } = {}) {
+    const overlay = ensureSavedBasesOverlay();
+    savedBasesOverlayPlayerId = playerId;
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+
+    const loadingEl = overlay.querySelector('.saved-bases-loading');
+    const emptyEl = overlay.querySelector('.saved-bases-empty');
+    const listEl = overlay.querySelector('.saved-bases-list');
+    const applyBtn = overlay.querySelector('.saved-bases-apply');
+    const delBtn = overlay.querySelector('.saved-bases-delete');
+
+    if (loadingEl) loadingEl.style.display = loading ? '' : 'none';
+    emptyEl?.classList.add('hidden');
+    if (listEl) listEl.innerHTML = '';
+    if (applyBtn) applyBtn.disabled = true;
+    if (delBtn) delBtn.disabled = true;
+  }
+
+  function closeSavedBasesOverlay() {
+    if (!savedBasesOverlay) return;
+    savedBasesOverlay.classList.add('hidden');
+    savedBasesOverlay.setAttribute('aria-hidden', 'true');
+    savedBasesOverlayPlayerId = null;
+  }
+
+  function renderSavedBasesList(list) {
+    const overlay = ensureSavedBasesOverlay();
+    const loadingEl = overlay.querySelector('.saved-bases-loading');
+    const emptyEl = overlay.querySelector('.saved-bases-empty');
+    const listEl = overlay.querySelector('.saved-bases-list');
+    const applyBtn = overlay.querySelector('.saved-bases-apply');
+    const delBtn = overlay.querySelector('.saved-bases-delete');
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (!listEl) return;
+
+    listEl.innerHTML = '';
+
+    const arr = Array.isArray(list) ? list : [];
+    savedBasesListCache = arr;
+
+    if (!arr.length) {
+      emptyEl?.classList.remove('hidden');
+      if (applyBtn) applyBtn.disabled = true;
+      if (delBtn) delBtn.disabled = true;
+      return;
+    }
+
+    emptyEl?.classList.add('hidden');
+
+    arr.forEach(item => {
+      const row = document.createElement('label');
+      row.className = 'saved-bases-row';
+      const dt = item?.updatedAt ? new Date(item.updatedAt) : null;
+      const when = dt && !isNaN(dt.getTime())
+        ? dt.toLocaleString()
+        : '';
+      row.innerHTML = `
+        <input type="radio" name="savedBasePick" value="${escapeHtml(String(item.id || ''))}">
+        <div class="saved-bases-row-main">
+          <div class="saved-bases-row-name">${escapeHtml(item.name || 'Персонаж')}</div>
+          <div class="saved-bases-row-meta">${escapeHtml(when)}</div>
+        </div>
+      `;
+      listEl.appendChild(row);
+    });
+
+    listEl.querySelectorAll('input[name="savedBasePick"]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        if (applyBtn) applyBtn.disabled = false;
+        if (delBtn) delBtn.disabled = false;
+      });
+    });
+
+    // auto-select first
+    const first = listEl.querySelector('input[name="savedBasePick"]');
+    if (first) {
+      first.checked = true;
+      if (applyBtn) applyBtn.disabled = false;
+      if (delBtn) delBtn.disabled = false;
+    }
+  }
+
   // UI-состояние модалки (чтобы обновления state не сбрасывали вкладку/скролл)
   // Map<playerId, { activeTab: string, scrollTopByTab: Record<string, number>, lastInteractAt: number }>
   const uiStateByPlayerId = new Map();
@@ -4243,6 +4404,61 @@ function renderCombatTab(vm) {
       });
 
       sheetActions.appendChild(fileInput);
+
+      // ===== Мои сохранённые персонажи (привязка к уникальному userId) =====
+      // Работает даже если пользователь заходит под разными никами.
+      // Сохраняем/загружаем только для персонажа "Основа".
+      const savedWrap = document.createElement('div');
+      savedWrap.className = 'saved-bases-actions';
+
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.textContent = 'Сохранить основу';
+      saveBtn.title = 'Сохранить текущую "Инфу" в ваш личный список (по userId)';
+
+      const loadBtn = document.createElement('button');
+      loadBtn.type = 'button';
+      loadBtn.textContent = 'Загрузить основу';
+      loadBtn.title = 'Открыть список сохранённых персонажей и выбрать, кого загрузить';
+
+      // доступно только если это действительно "Основа"
+      if (!player.isBase) {
+        saveBtn.disabled = true;
+        loadBtn.disabled = true;
+      }
+
+      saveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!player.isBase) return;
+        try {
+          const sheet = player.sheet || { parsed: createEmptySheet(player.name) };
+          ctx?.sendMessage?.({
+            type: 'saveSavedBase',
+            playerId: player.id,
+            sheet
+          });
+        } catch (err) {
+          console.error(err);
+          alert('Не удалось сохранить');
+        }
+      });
+
+      loadBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!player.isBase) return;
+        openSavedBasesOverlay({ loading: true, playerId: player.id });
+        try {
+          ctx?.sendMessage?.({ type: 'listSavedBases' });
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      savedWrap.appendChild(saveBtn);
+      savedWrap.appendChild(loadBtn);
+      sheetActions.appendChild(savedWrap);
     }
 
     const sheet = player.sheet?.parsed || createEmptySheet(player.name);
@@ -4418,7 +4634,47 @@ function renderCombatTab(vm) {
     if (pl) renderSheetModal(pl);
   }
 
-  window.InfoModal = { init, open, refresh, close: closeModal };
+  // callbacks are called from client.js when server answers
+  function onSavedBasesList(list) {
+    // если модалка уже открыта — показываем список поверх
+    openSavedBasesOverlay({ loading: false, playerId: savedBasesOverlayPlayerId || openedSheetPlayerId });
+    renderSavedBasesList(list);
+  }
+
+  function onSavedBaseSaved(msg) {
+    try {
+      // лёгкое уведомление в actions
+      const t = document.createElement('div');
+      t.className = 'sheet-note';
+      t.textContent = `Сохранено: ${msg?.name || 'Персонаж'}`;
+      sheetActions?.appendChild(t);
+      setTimeout(() => { try { t.remove(); } catch {} }, 2600);
+    } catch {}
+  }
+
+  function onSavedBaseApplied() {
+    // сервер уже применил sheet и разошлёт state
+    closeSavedBasesOverlay();
+  }
+
+  function onSavedBaseDeleted(msg) {
+    // удалили — просто перезапросим список
+    try {
+      openSavedBasesOverlay({ loading: true, playerId: savedBasesOverlayPlayerId || openedSheetPlayerId });
+      ctx?.sendMessage?.({ type: 'listSavedBases' });
+    } catch {}
+  }
+
+  window.InfoModal = {
+    init,
+    open,
+    refresh,
+    close: closeModal,
+    onSavedBasesList,
+    onSavedBaseSaved,
+    onSavedBaseApplied,
+    onSavedBaseDeleted
+  };
 })();
 
 
