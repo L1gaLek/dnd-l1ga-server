@@ -90,8 +90,10 @@ joinBtn.addEventListener('click', () => {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host);
 
     const savedUserId = localStorage.getItem("dnd_user_id") || "";
+  const savedUserRole = localStorage.getItem("dnd_user_role") || "";
+  const userIdToSend = (savedUserId && savedUserRole === role) ? savedUserId : "";
 
-  ws.onopen = () => ws.send(JSON.stringify({ type: "register", userId: savedUserId, name, role }));
+  ws.onopen = () => ws.send(JSON.stringify({ type: "register", userId: userIdToSend, name, role }));
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -110,9 +112,11 @@ if (msg.type === 'joinedRoom' && msg.room) {
 if (msg.type === "registered") {
       myId = msg.id;
       localStorage.setItem("dnd_user_id", String(msg.id));
-      myRole = msg.role;
+      localStorage.setItem("dnd_user_role", String(msg.role || ""));
+myRole = msg.role;
       myNameSpan.textContent = msg.name;
       myRoleSpan.textContent = msg.role;
+      myRole = String(msg.role || "");
 
       loginDiv.style.display = 'none';
       roomsDiv.style.display = 'block';
