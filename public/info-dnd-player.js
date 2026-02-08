@@ -927,39 +927,72 @@ function ensureWiredCloseHandlers() {
   }
 
   // ================== SHEET PARSER (Charbox/LSS) ==================
-  function parseCharboxFileText(fileText) {
-    const outer = JSON.parse(fileText);
+  
+function parseCharboxFileText(fileText) {
+  const outer = JSON.parse(fileText);
 
-    // Charbox LSS: outer.data — строка JSON
-    let inner = null;
-    if (outer && typeof outer.data === 'string') {
-      try { inner = JSON.parse(outer.data); } catch { inner = null; }
-    }
+  // 1) Некоторые экспорты кладут русские поля на верхний уровень, а data содержит обычный Charbox/LSS.
+  // Поэтому сначала маппим outer.
+  try { applyRussianImportFields(outer); } catch (e) { console.warn('applyRussianImportFields(outer) failed', e); }
 
-    const parsed = inner || outer;
-
-    // Доп. импорт-правила под русскоязычные экспорты.
-    // Ничего не ломаем для обычного Charbox/LSS: просто аккуратно маппим,
-    // если такие поля присутствуют в загруженном JSON.
-    try {
-      applyRussianImportFields(parsed);
-    } catch (e) {
-      console.warn("applyRussianImportFields failed", e);
-    }
-
-    return {
-      source: "charbox",
-      importedAt: Date.now(),
-      raw: outer,
-      parsed
-    };
+  // Charbox LSS: outer.data — строка JSON
+  let inner = null;
+  if (outer && typeof outer.data === 'string') {
+    try { inner = JSON.parse(outer.data); } catch { inner = null; }
   }
+
+  const parsed = inner || outer;
+
+  // 2) Маппим реальные данные листа
+  try { applyRussianImportFields(parsed); } catch (e) { console.warn('applyRussianImportFields(parsed) failed', e); }
+
+  // 3) Если parsed=inner, но данные промаппились в outer (например, exporter держит RU-поля вне data),
+  // аккуратно переносим результаты в inner.
+  if (inner && outer && typeof outer === 'object') {
+    try {
+      if (outer.info && typeof outer.info === 'object') {
+        inner.info = (inner.info && typeof inner.info === 'object') ? inner.info : {};
+        for (const k of Object.keys(outer.info)) {
+          if (inner.info[k] == null) inner.info[k] = outer.info[k];
+        }
+      }
+      if (outer.notes && typeof outer.notes === 'object') {
+        inner.notes = (inner.notes && typeof inner.notes === 'object') ? inner.notes : {};
+        if (outer.notes.details && typeof outer.notes.details === 'object') {
+          inner.notes.details = (inner.notes.details && typeof inner.notes.details === 'object') ? inner.notes.details : {};
+          for (const k of Object.keys(outer.notes.details)) {
+            if (inner.notes.details[k] == null) inner.notes.details[k] = outer.notes.details[k];
+          }
+        }
+      }
+      if (outer.text && typeof outer.text === 'object') {
+        inner.text = (inner.text && typeof inner.text === 'object') ? inner.text : {};
+        if (outer.text.profPlain && inner.text.profPlain == null) inner.text.profPlain = outer.text.profPlain;
+      }
+      if (outer.combat && typeof outer.combat === 'object') {
+        inner.combat = (inner.combat && typeof inner.combat === 'object') ? inner.combat : {};
+        if (outer.combat.skillsAbilities && inner.combat.skillsAbilities == null) inner.combat.skillsAbilities = outer.combat.skillsAbilities;
+      }
+    } catch (e) {
+      console.warn('RU merge outer->inner failed', e);
+    }
+  }
+
+  return {
+    source: "charbox",
+    importedAt: Date.now(),
+    raw: outer,
+    parsed
+  };
+}
+
 
   // ================== IMPORT HELPERS (RU keys -> UI schema) ==================
   function ensureObjPath(root, pathArr) {
     let cur = root;
     for (const p of pathArr) {
-      if (!cur[p] || typeof cur[p] !== "object") cur[p] = {};
+      if (!cur || typeof cur !== 'object') return null;
+      if (!cur[p] || typeof cur[p] !== 'object') cur[p] = {};
       cur = cur[p];
     }
     return cur;
@@ -967,30 +1000,68 @@ function ensureWiredCloseHandlers() {
 
   function ensureValueObj(root, pathArr) {
     const parent = ensureObjPath(root, pathArr.slice(0, -1));
+    if (!parent) return null;
     const key = pathArr[pathArr.length - 1];
-    if (!parent[key] || typeof parent[key] !== "object") parent[key] = { value: "" };
-    if (!("value" in parent[key])) parent[key].value = "";
+    if (!parent[key] || typeof parent[key] !== 'object') parent[key] = { value: '' };
+    if (!('value' in parent[key])) parent[key].value = '';
     return parent[key];
   }
 
   function asLineValue(v) {
-    if (v == null) return "";
-    if (typeof v === "string") return v.trim();
-    if (typeof v === "number" || typeof v === "boolean") return String(v);
-    if (Array.isArray(v)) return v.map(x => asLineValue(x)).filter(Boolean).join(", ");
-    if (typeof v === "object") {
-      // часто в экспортах бывает { value: "..." }
-      if ("value" in v) return asLineValue(v.value);
-      // или { text: "..." }
-      if ("text" in v) return asLineValue(v.text);
+    if (v == null) return '';
+    if (typeof v === 'string') return v.trim();
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (Array.isArray(v)) return v.map(x => asLineValue(x)).filter(Boolean).join(', ');
+    if (typeof v === 'object') {
+      if ('value' in v) return asLineValue(v.value);
+      if ('text' in v) return asLineValue(v.text);
+      if ('name' in v) return asLineValue(v.name);
     }
-    return "";
+    return '';
+  }
+
+  function normalizeRuKey(k) {
+    return String(k || '')
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/[\s_]+/g, ' ')
+      .replace(/\s*:\s*$/g, '')
+      .trim();
+  }
+
+  function deepFindByRuKey(obj, wantedKeyNorm, maxDepth = 8) {
+    const seen = new Set();
+    const stack = [{ v: obj, d: 0 }];
+    while (stack.length) {
+      const { v, d } = stack.pop();
+      if (!v || typeof v !== 'object') continue;
+      if (seen.has(v)) continue;
+      seen.add(v);
+      if (d > maxDepth) continue;
+
+      if (Array.isArray(v)) {
+        for (const it of v) stack.push({ v: it, d: d + 1 });
+        continue;
+      }
+
+      for (const k of Object.keys(v)) {
+        const nk = normalizeRuKey(k);
+        if (nk === wantedKeyNorm) {
+          const val = v[k];
+          const s = asLineValue(val);
+          if (s) return s;
+        }
+        const child = v[k];
+        if (child && typeof child === 'object') stack.push({ v: child, d: d + 1 });
+      }
+    }
+    return '';
   }
 
   function splitLanguageNames(s) {
-    const t = String(s || "").trim();
+    const t = String(s || '').trim();
     if (!t) return [];
-    // поддержка разделителей: , ; / \ | и переносы
+    // поддержка разделителей: , ; / | и переносы строк
     return t
       .split(/[\n\r,;\/|]+/g)
       .map(x => x.trim())
@@ -998,28 +1069,28 @@ function ensureWiredCloseHandlers() {
   }
 
   function findLanguageInDbByName(name) {
-    const n = String(name || "").trim().toLowerCase();
+    const n = String(name || '').trim().toLowerCase();
     if (!n) return null;
     const all = [
-      ...LANGUAGES_DB.common.map(x => ({ ...x, category: "common" })),
-      ...LANGUAGES_DB.exotic.map(x => ({ ...x, category: "exotic" }))
+      ...(LANGUAGES_DB?.common || []).map(x => ({ ...x, category: 'common' })),
+      ...(LANGUAGES_DB?.exotic || []).map(x => ({ ...x, category: 'exotic' }))
     ];
-    return all.find(l => String(l.name || "").trim().toLowerCase() === n) || null;
+    return all.find(l => String(l.name || '').trim().toLowerCase() === n) || null;
   }
 
   function appendToProfPlain(sheet, linesToAdd) {
-    if (!sheet || typeof sheet !== "object") return;
-    if (!sheet.text || typeof sheet.text !== "object") sheet.text = {};
-    if (!sheet.text.profPlain || typeof sheet.text.profPlain !== "object") sheet.text.profPlain = { value: "" };
-    if (!("value" in sheet.text.profPlain)) sheet.text.profPlain.value = "";
+    if (!sheet || typeof sheet !== 'object') return;
+    if (!sheet.text || typeof sheet.text !== 'object') sheet.text = {};
+    if (!sheet.text.profPlain || typeof sheet.text.profPlain !== 'object') sheet.text.profPlain = { value: '' };
+    if (!('value' in sheet.text.profPlain)) sheet.text.profPlain.value = '';
 
-    const cur = String(sheet.text.profPlain.value || "");
+    const cur = String(sheet.text.profPlain.value || '');
     const curLines = cur.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const set = new Set(curLines.map(x => x.toLowerCase()));
     const toAppend = [];
 
     for (const ln of (linesToAdd || [])) {
-      const line = String(ln || "").trim();
+      const line = String(ln || '').trim();
       if (!line) continue;
       const key = line.toLowerCase();
       if (set.has(key)) continue;
@@ -1027,40 +1098,39 @@ function ensureWiredCloseHandlers() {
       toAppend.push(line);
     }
 
-    const merged = [...curLines, ...toAppend].join("\n");
-    sheet.text.profPlain.value = merged;
+    sheet.text.profPlain.value = [...curLines, ...toAppend].join('\n');
   }
 
+
   function applyRussianImportFields(sheet) {
-    if (!sheet || typeof sheet !== "object") return;
+    if (!sheet || typeof sheet !== 'object') return;
 
-    // 1) Архетипы (Основное)
-    const classArc = asLineValue(sheet["Архетип класса"]);
+    // поддерживаем разные варианты ключей (с двоеточиями/подчёркиваниями/разными пробелами)
+    const classArc = deepFindByRuKey(sheet, normalizeRuKey('Архетип класса'));
     if (classArc) {
-      ensureObjPath(sheet, ["info"]);
-      ensureValueObj(sheet, ["info", "classArchetype"]).value = classArc;
+      ensureObjPath(sheet, ['info']);
+      ensureValueObj(sheet, ['info', 'classArchetype']).value = classArc;
     }
-    const raceArc = asLineValue(sheet["Архетип расы"]);
+
+    const raceArc = deepFindByRuKey(sheet, normalizeRuKey('Архетип расы'));
     if (raceArc) {
-      ensureObjPath(sheet, ["info"]);
-      ensureValueObj(sheet, ["info", "raceArchetype"]).value = raceArc;
+      ensureObjPath(sheet, ['info']);
+      ensureValueObj(sheet, ['info', 'raceArchetype']).value = raceArc;
     }
 
-    // 2) Пол (Личность -> Внешность)
-    const gender = asLineValue(sheet["Пол"]);
+    const gender = deepFindByRuKey(sheet, normalizeRuKey('Пол'));
     if (gender) {
-      ensureObjPath(sheet, ["notes", "details"]);
-      ensureValueObj(sheet, ["notes", "details", "gender"]).value = gender;
+      ensureObjPath(sheet, ['notes', 'details']);
+      ensureValueObj(sheet, ['notes', 'details', 'gender']).value = gender;
     }
 
-    // 3) Знание языков (рядом с заголовком "Языки" + авто-выучивание)
-    const langKnowledge = asLineValue(sheet["Знание языков"]);
+    const langKnowledge = deepFindByRuKey(sheet, normalizeRuKey('Знание языков'));
     if (langKnowledge) {
-      // добавим строку в "Прочие владения..." чтобы подсказка рядом с ЯЗЫКИ появилась автоматически
+      // маленький текст рядом с заголовком ЯЗЫКИ берётся из строки 'Знание языков: ...' в profPlain
       appendToProfPlain(sheet, [`Знание языков: ${langKnowledge}`]);
 
-      // если есть совпадения с базой языков — добавим как выученные
-      ensureObjPath(sheet, ["info"]);
+      // добавляем совпавшие языки как выученные
+      ensureObjPath(sheet, ['info']);
       if (!Array.isArray(sheet.info.languagesLearned)) sheet.info.languagesLearned = [];
 
       const names = splitLanguageNames(langKnowledge);
@@ -1068,8 +1138,8 @@ function ensureWiredCloseHandlers() {
         const found = findLanguageInDbByName(nm);
         if (!found) continue;
         const already = sheet.info.languagesLearned.some(x =>
-          String(x?.id || "") === String(found.id) ||
-          String(x?.name || "").trim().toLowerCase() === String(found.name).trim().toLowerCase()
+          String(x?.id || '') === String(found.id) ||
+          String(x?.name || '').trim().toLowerCase() === String(found.name).trim().toLowerCase()
         );
         if (already) continue;
         sheet.info.languagesLearned.push({
@@ -1077,16 +1147,16 @@ function ensureWiredCloseHandlers() {
           name: found.name,
           typical: found.typical,
           script: found.script,
-          category: found.category || ""
+          category: found.category || ''
         });
       }
     }
 
-    // 4) Прочие владения (в textarea "Прочие владения и заклинания")
-    const resist = asLineValue(sheet["Сопротивляемость к"]);
-    const armorProf = asLineValue(sheet["Владение доспехами"]);
-    const weaponProf = asLineValue(sheet["Владение оружием"]);
-    const toolProf = asLineValue(sheet["Владение инструментами"]);
+    const resist = deepFindByRuKey(sheet, normalizeRuKey('Сопротивляемость к'));
+    const armorProf = deepFindByRuKey(sheet, normalizeRuKey('Владение доспехами'));
+    const weaponProf = deepFindByRuKey(sheet, normalizeRuKey('Владение оружием'));
+    const toolProf = deepFindByRuKey(sheet, normalizeRuKey('Владение инструментами'));
+
     const profLines = [];
     if (resist) profLines.push(`Сопротивляемость к: ${resist}`);
     if (armorProf) profLines.push(`Владение доспехами: ${armorProf}`);
@@ -1094,35 +1164,66 @@ function ensureWiredCloseHandlers() {
     if (toolProf) profLines.push(`Владение инструментами: ${toolProf}`);
     if (profLines.length) appendToProfPlain(sheet, profLines);
 
-    // 5) Умения/способности от класса/расы/предыстории -> вкладка "Бой" -> "Умения и способности"
-    const abilitiesBlock = sheet["Описание умений от класса, расы, предыстории, черт"];
-    let abilitiesText = "";
-    if (typeof abilitiesBlock === "string") {
-      abilitiesText = abilitiesBlock.trim();
-    } else if (abilitiesBlock && typeof abilitiesBlock === "object") {
-      // ожидаемые ключи: "Умение от класса:", "Умение от расы:", "Умение от предыстории:" (и возможно др.)
-      const parts = [];
-      const take = (k) => {
-        const v = asLineValue(abilitiesBlock[k]);
-        if (v) parts.push(`${k} ${v}`.trim());
-      };
-      take("Умение от класса:");
-      take("Умение от расы:");
-      take("Умение от предыстории:");
-      // добавим остальные ключи (если есть), чтобы ничего не потерять
-      for (const k of Object.keys(abilitiesBlock)) {
-        if (k === "Умение от класса:" || k === "Умение от расы:" || k === "Умение от предыстории:") continue;
-        const v = asLineValue(abilitiesBlock[k]);
-        if (v) parts.push(`${k} ${v}`.trim());
-      }
-      abilitiesText = parts.join("\n").trim();
-    }
+    // Умения/способности
+    const abKeyNorm = normalizeRuKey('Описание умений от класса, расы, предыстории, черт');
+    const abilitiesText = deepFindByRuKey(sheet, abKeyNorm);
 
+    // если нашли только общий текст — кладём как есть
     if (abilitiesText) {
-      ensureObjPath(sheet, ["combat"]);
-      ensureValueObj(sheet, ["combat", "skillsAbilities"]).value = abilitiesText;
+      ensureObjPath(sheet, ['combat']);
+      ensureValueObj(sheet, ['combat', 'skillsAbilities']).value = abilitiesText;
+    } else {
+      // попробуем собрать из вложенного объекта, если он есть
+      // (на случай если exporter кладёт это не строкой, а объектом с ключами)
+      try {
+        // найдём сам объект по ключу
+        const stack = [sheet];
+        let node = null;
+        const seen = new Set();
+        while (stack.length && !node) {
+          const v = stack.pop();
+          if (!v || typeof v !== 'object' || seen.has(v)) continue;
+          seen.add(v);
+          if (Array.isArray(v)) {
+            for (const it of v) stack.push(it);
+            continue;
+          }
+          for (const k of Object.keys(v)) {
+            if (normalizeRuKey(k) === abKeyNorm && v[k] && typeof v[k] === 'object') {
+              node = v[k];
+              break;
+            }
+            if (v[k] && typeof v[k] === 'object') stack.push(v[k]);
+          }
+        }
+
+        if (node && typeof node === 'object') {
+          const parts = [];
+          const take = (label) => {
+            const v = node[label];
+            const s = asLineValue(v);
+            if (s) parts.push(`${label} ${s}`.trim());
+          };
+          take('Умение от класса:');
+          take('Умение от расы:');
+          take('Умение от предыстории:');
+          for (const k of Object.keys(node)) {
+            if (k === 'Умение от класса:' || k === 'Умение от расы:' || k === 'Умение от предыстории:') continue;
+            const s = asLineValue(node[k]);
+            if (s) parts.push(`${k} ${s}`.trim());
+          }
+          const combined = parts.join('\n').trim();
+          if (combined) {
+            ensureObjPath(sheet, ['combat']);
+            ensureValueObj(sheet, ['combat', 'skillsAbilities']).value = combined;
+          }
+        }
+      } catch (e) {
+        console.warn('abilities block parse failed', e);
+      }
     }
   }
+
 
   // ================== TIPTAP DOC PARSING ==================
   function tiptapToPlainLines(doc) {
