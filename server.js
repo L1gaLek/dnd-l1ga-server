@@ -548,8 +548,39 @@ case "leaveRoom": {
           if (p.id !== currentId && !notPlacedYet) return;
         }
 
-        p.x = data.x;
-        p.y = data.y;
+        const oldX = p.x, oldY = p.y;
+
+        // clamp to board (учитываем размер)
+        const size = Math.max(1, Math.min(5, Number(p.size) || 1));
+        const maxX = Math.max(0, (gameState.boardWidth || 1) - size);
+        const maxY = Math.max(0, (gameState.boardHeight || 1) - size);
+
+        let nx = Math.max(0, Math.min(Number(data.x) || 0, maxX));
+        let ny = Math.max(0, Math.min(Number(data.y) || 0, maxY));
+
+        // проверка наложения
+        const canPlace = canPlacePlayer(gameState, p.id, nx, ny, size);
+
+        if (!canPlace) {
+          // если персонаж ещё не выставлен — найдём первое свободное место
+          const notPlacedYet = (oldX === null || oldY === null);
+          if (notPlacedYet) {
+            const pos = findFirstFreePosition(gameState, p.id, size);
+            if (pos) {
+              nx = pos.x; ny = pos.y;
+            } else {
+              ws.send(JSON.stringify({ type: "error", message: "Нет свободного места на поле" }));
+              return;
+            }
+          } else {
+            ws.send(JSON.stringify({ type: "error", message: "Клетка занята другим персонажем" }));
+            return;
+          }
+        }
+
+        p.x = nx;
+        p.y = ny;
+
         logEvent(`${p.name} перемещен в (${p.x},${p.y})`);
         broadcast();
         break;
@@ -714,18 +745,30 @@ case "diceEvent": {
         break;
       }
 
-      case "endTurn":
-        if (!isGM(ws)) return;
+      case "endTurn": {
+        if (gameState.phase !== "combat") return;
+
+        const gm = isGM(ws);
+
+        // текущий персонаж
+        const currentId = gameState.turnOrder[gameState.currentTurnIndex];
+        const current = gameState.players.find(p => p.id === currentId);
+
+        // владелец текущего персонажа тоже может завершать ход
+        const ownerCan = !!(current && ownsPlayer(ws, current));
+
+        if (!gm && !ownerCan) return;
 
         if (gameState.turnOrder.length > 0) {
           gameState.currentTurnIndex =
             (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-          const currentId = gameState.turnOrder[gameState.currentTurnIndex];
-          const current = gameState.players.find(p => p.id === currentId);
-          logEvent(`Ход игрока ${current?.name || '-'}`);
+          const nextId = gameState.turnOrder[gameState.currentTurnIndex];
+          const nextP = gameState.players.find(p => p.id === nextId);
+          logEvent(`Ход игрока ${nextP?.name || '-'}`);
           broadcast();
         }
         break;
+      }
 
       case "resetGame":
         if (!isGM(ws)) return;
@@ -806,25 +849,56 @@ function sendFullSync(ws) {
   sendRooms(ws);
 }
 
+function rectsOverlap(ax, ay, as, bx, by, bs) {
+  return (ax < bx + bs) && (ax + as > bx) && (ay < by + bs) && (ay + as > by);
+}
+
+function canPlacePlayer(state, ignorePlayerId, x, y, size) {
+  if (!state || !Array.isArray(state.players)) return false;
+
+  // board bounds (вдруг)
+  const bw = Number(state.boardWidth) || 0;
+  const bh = Number(state.boardHeight) || 0;
+  if (x < 0 || y < 0 || x + size > bw || y + size > bh) return false;
+
+  // no overlap with others
+  for (const other of state.players) {
+    if (!other) continue;
+    if (other.id === ignorePlayerId) continue;
+    if (other.x === null || other.y === null) continue;
+    const os = Math.max(1, Math.min(5, Number(other.size) || 1));
+    if (rectsOverlap(x, y, size, other.x, other.y, os)) return false;
+  }
+  return true;
+}
+
+function findFirstFreePosition(state, ignorePlayerId, size) {
+  const bw = Number(state.boardWidth) || 0;
+  const bh = Number(state.boardHeight) || 0;
+  for (let yy = 0; yy <= bh - size; yy++) {
+    for (let xx = 0; xx <= bw - size; xx++) {
+      if (canPlacePlayer(state, ignorePlayerId, xx, yy, size)) return { x: xx, y: yy };
+    }
+  }
+  return null;
+}
+
 function autoPlacePlayers(state) {
   if (!state || !Array.isArray(state.players)) return;
 
-  let x = 0;
-  let y = 0;
-
   state.players.forEach(p => {
+    if (!p) return;
     if (p.x !== null && p.y !== null) return;
 
-    p.x = x;
-    p.y = y;
+    const size = Math.max(1, Math.min(5, Number(p.size) || 1));
+    const pos = findFirstFreePosition(state, p.id, size);
+    if (!pos) return;
 
-    x++;
-    if (x >= state.boardWidth) {
-      x = 0;
-      y++;
-    }
+    p.x = pos.x;
+    p.y = pos.y;
   });
 }
+
 
 // ================== START ==================
 const PORT = process.env.PORT || 10000;
