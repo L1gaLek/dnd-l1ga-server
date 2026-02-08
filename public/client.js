@@ -73,7 +73,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const roomId = currentRoomId; // то, что у вас было
 const userId = getOrCreateUserId();
 
-// const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
 
 const channel = supabase.channel(`room:${roomId}`, {
   config: { presence: { key: userId } }
@@ -1438,6 +1438,7 @@ if (createRoomSubmit) createRoomSubmit.addEventListener('click', () => {
   sendMessage({ type: 'createRoom', name, password, scenario });
   closeCreateRoomModal();
 });
+
 
 
 
