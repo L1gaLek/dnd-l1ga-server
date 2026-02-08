@@ -313,6 +313,12 @@ button:hover {
   box-shadow: 0 0 12px rgba(255, 165, 0, 0.8);
 }
 
+/* Подсветка в списке "Пользователи и персонажи" */
+.player-list-item.current-turn-list {
+  border-color: orange !important;
+  box-shadow: 0 0 10px rgba(255, 165, 0, 0.35);
+}
+
 /* Если персонаж одновременно "ходит" и "выбран", приоритет у выбора (жёлтый) */
 .player.selected.current-turn {
   outline: 4px solid yellow;
