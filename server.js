@@ -5,129 +5,6 @@ const WebSocket = require("ws");
 const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto"); // уникальные id
 
-const fs = require("fs");
-const path = require("path");
-
-// ===== Persist: base sheets storage (multiple saves per account) =====
-const BASE_SHEETS_DIR = path.join(__dirname, "data", "baseSheets");
-try { fs.mkdirSync(BASE_SHEETS_DIR, { recursive: true }); } catch (e) {}
-
-function safeId(v) {
-  return String(v || "").replace(/[^a-zA-Z0-9_-]/g, "");
-}
-
-function accountDir(accountId) {
-  return path.join(BASE_SHEETS_DIR, safeId(accountId));
-}
-
-function indexPath(accountId) {
-  return path.join(accountDir(accountId), "index.json");
-}
-
-function sheetPath(accountId, saveId) {
-  return path.join(accountDir(accountId), `${safeId(saveId)}.json`);
-}
-
-function ensureAccountDir(accountId) {
-  if (!accountId) return false;
-  try { fs.mkdirSync(accountDir(accountId), { recursive: true }); return true; } catch (e) { return false; }
-}
-
-function readIndex(accountId) {
-  if (!accountId) return { items: [], lastUsed: null };
-  try {
-    const p = indexPath(accountId);
-    if (!fs.existsSync(p)) return { items: [], lastUsed: null };
-    const raw = fs.readFileSync(p, "utf-8");
-    const idx = JSON.parse(raw);
-    if (!idx || typeof idx !== "object") return { items: [], lastUsed: null };
-    if (!Array.isArray(idx.items)) idx.items = [];
-    if (!("lastUsed" in idx)) idx.lastUsed = null;
-    return idx;
-  } catch (e) {
-    console.error("readIndex error:", e);
-    return { items: [], lastUsed: null };
-  }
-}
-
-function writeIndex(accountId, idx) {
-  try {
-    ensureAccountDir(accountId);
-    fs.writeFileSync(indexPath(accountId), JSON.stringify(idx, null, 2), "utf-8");
-    return true;
-  } catch (e) {
-    console.error("writeIndex error:", e);
-    return false;
-  }
-}
-
-function listBaseSheets(accountId) {
-  const idx = readIndex(accountId);
-  // newest first
-  const items = (idx.items || []).slice().sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
-  return { items, lastUsed: idx.lastUsed || null };
-}
-
-function loadBaseSheet(accountId, saveId) {
-  if (!accountId || !saveId) return null;
-  try {
-    const p = sheetPath(accountId, saveId);
-    if (!fs.existsSync(p)) return null;
-    const raw = fs.readFileSync(p, "utf-8");
-    const sheet = JSON.parse(raw);
-    return (sheet && typeof sheet === "object") ? sheet : null;
-  } catch (e) {
-    console.error("loadBaseSheet error:", e);
-    return null;
-  }
-}
-
-function saveBaseSheet(accountId, saveId, name, sheet) {
-  if (!accountId || !sheet || typeof sheet !== "object") return null;
-  ensureAccountDir(accountId);
-
-  const id = safeId(saveId || uuidv4());
-  const now = Date.now();
-  const safeName = (typeof name === "string" && name.trim()) ? name.trim() : "Без имени";
-
-  // встраиваем id в сам sheet (чтобы авто-сейв знал, куда писать)
-  try {
-    sheet._persist = sheet._persist && typeof sheet._persist === "object" ? sheet._persist : {};
-    sheet._persist.saveId = id;
-    sheet._persist.updatedAt = now;
-    sheet._persist.name = safeName;
-  } catch (e) {}
-
-  try {
-    fs.writeFileSync(sheetPath(accountId, id), JSON.stringify(sheet, null, 2), "utf-8");
-  } catch (e) {
-    console.error("saveBaseSheet write error:", e);
-    return null;
-  }
-
-  const idx = readIndex(accountId);
-  const items = Array.isArray(idx.items) ? idx.items : [];
-  const existing = items.find(x => String(x.id) === String(id));
-  if (existing) {
-    existing.name = safeName;
-    existing.updatedAt = now;
-  } else {
-    items.push({ id, name: safeName, updatedAt: now });
-  }
-  idx.items = items;
-  idx.lastUsed = id;
-  writeIndex(accountId, idx);
-
-  return { id, name: safeName, updatedAt: now };
-}
-
-function loadLastUsedBaseSheet(accountId) {
-  const { lastUsed } = listBaseSheets(accountId);
-  if (!lastUsed) return null;
-  return loadBaseSheet(accountId, lastUsed);
-}
-
-
 // ================== EXPRESS ==================
 const app = express();
 app.use(express.static("public"));
@@ -140,7 +17,7 @@ app.get("/api/fetch", async (req, res) => {
     if (!url) return res.status(400).send("Missing url");
 
     let parsed;
-    try { parsed = new URL(url); } catch (e) { return res.status(400).send("Bad url"); }
+    try { parsed = new URL(url); } catch { return res.status(400).send("Bad url"); }
     if (!(parsed.protocol === "http:" || parsed.protocol === "https:")) return res.status(400).send("Bad protocol");
     if (!parsed.hostname.endsWith("dnd.su")) return res.status(403).send("Forbidden domain");
 
@@ -170,11 +47,11 @@ const wss = new WebSocket.Server({ server });
 setInterval(() => {
   wss.clients.forEach(ws => {
     if (ws.isAlive === false) {
-      try { ws.terminate(); } catch (e) {}
+      try { ws.terminate(); } catch {}
       return;
     }
     ws.isAlive = false;
-    try { ws.ping(); } catch (e) {}
+    try { ws.ping(); } catch {}
   });
 }, 15000);
 
@@ -320,7 +197,7 @@ function isGM(ws) {
 
 function ownsPlayer(ws, player) {
   const u = getUserByWS(ws);
-  return !!(u && player && (String(player.ownerId) === String(u.id) || String(player.ownerId) === String(u.accountId) || String(player.ownerId) === String(ws.accountId)));
+  return !!(u && player && player.ownerId === u.id);
 }
 
 function hasAnyPlayersForUser(userId) {
@@ -452,7 +329,7 @@ wss.on("connection", ws => {
 
   ws.on("message", msg => {
   let data;
-  try { data = JSON.parse(msg); } catch (e) { return; }
+  try { data = JSON.parse(msg); } catch { return; }
 
   const lobbyTypes = new Set(["register","listRooms","createRoom","joinRoom","leaveRoom"]);
   let gameState = null;
@@ -479,7 +356,6 @@ wss.on("connection", ws => {
         const name = String(data.name || "").trim();
         const role = String(data.role || "").trim();
         const requestedId = String(data.userId || "").trim();
-        const requestedAccountId = String(data.accountId || "").trim();
 
         if (!name || !role) {
           ws.send(JSON.stringify({ type: "error", message: "Имя и роль обязательны" }));
@@ -497,8 +373,7 @@ wss.on("connection", ws => {
             role,
             connections: new Set(),
             online: true,
-            lastSeen: Date.now(),
-            accountId: requestedAccountId || uuidv4()
+            lastSeen: Date.now()
           };
           usersById.set(id, user);
         } else {
@@ -506,15 +381,12 @@ wss.on("connection", ws => {
           user.name = name;
           user.lastSeen = Date.now();
           user.online = true;
-          if (requestedAccountId) user.accountId = requestedAccountId;
-          if (!user.accountId) user.accountId = uuidv4();
         }
 
         ws.userId = user.id;
-        ws.accountId = user.accountId;
         user.connections.add(ws);
 
-        ws.send(JSON.stringify({ type: "registered", id: user.id, role: user.role, name: user.name, accountId: user.accountId }));
+        ws.send(JSON.stringify({ type: "registered", id: user.id, role: user.role, name: user.name }));
 
         // 🔑 ПОЛНАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЭТОМУ КЛИЕНТУ
         sendRooms(ws);
@@ -620,12 +492,6 @@ case "leaveRoom": {
 
         const isBase = !!data.player?.isBase;
 
-        // ✅ Persist: автоподгрузка сохранённой "Основы" владельца
-        let preloadedSheet = null;
-        if (isBase) {
-          preloadedSheet = loadLastUsedBaseSheet(ws.accountId || user.accountId || user.id);
-        }
-
         // ✅ Основа может быть только одна НА ПОЛЬЗОВАТЕЛЯ
         if (isBase) {
           const baseAlreadyExistsForOwner = gameState.players.some(
@@ -659,29 +525,12 @@ case "leaveRoom": {
           isBase,
 
           // 🔑 СВЯЗЬ С УНИКАЛЬНЫМ ПОЛЬЗОВАТЕЛЕМ
-          ownerId: (isBase ? (ws.accountId || user.accountId || user.id) : user.id),
+          ownerId: user.id,
           ownerName: user.name,
 
-          // ✅ Persist: id сохранённого персонажа (если загружали)
-          baseSaveId: (preloadedSheet && preloadedSheet._persist && preloadedSheet._persist.saveId) ? preloadedSheet._persist.saveId : null,
-
-          // ✅ ЛИСТ ПЕРСОНАЖА (автоподгрузка, если есть сохранение)
-          sheet: preloadedSheet || null
+          // ✅ ЛИСТ ПЕРСОНАЖА
+          sheet: null
         });
-
-        // если загрузили sheet — попробуем взять имя из него
-        if (isBase && preloadedSheet) {
-          const p = gameState.players[gameState.players.length - 1];
-          try {
-            const parsed = p.sheet?.parsed;
-            let nextName = null;
-            if (parsed && typeof parsed === "object") {
-              if (parsed.name && typeof parsed.name === "object" && ("value" in parsed.name)) nextName = parsed.name.value;
-              else if (typeof parsed.name === "string") nextName = parsed.name;
-            }
-            if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
-          } catch (e) {}
-        }
 
         logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}${isBase ? " (Основа)" : ""}`);
         broadcast();
@@ -728,148 +577,7 @@ case "leaveRoom": {
             const trimmed = nextName.trim();
             if (trimmed) p.name = trimmed;
           }
-        } catch (e) {}
-
-        // ✅ Persist: авто-сейв "Основы" (только если уже выбран/создан saveId)
-        if (p.isBase) {
-          const accountId = String(p.ownerId || ws.accountId || "").trim();
-          const saveId = (p.baseSaveId || p.sheet?._persist?.saveId || "").trim();
-          if (accountId && saveId) {
-            const nm = (p.sheet?.parsed?.name && typeof p.sheet.parsed.name === "object" && ("value" in p.sheet.parsed.name))
-              ? p.sheet.parsed.name.value
-              : (typeof p.sheet?.parsed?.name === "string" ? p.sheet.parsed.name : p.name);
-            const meta = saveBaseSheet(accountId, saveId, nm, p.sheet);
-            if (meta && meta.id) p.baseSaveId = meta.id;
-          }
-        }
-
-        broadcast();
-        break;
-      }
-
-
-      // ✅ Persist: сохранить "основу" вручную (кнопка)
-      case "saveBaseSheet": {
-        const p = gameState.players.find(pl => pl.id === data.id);
-        if (!p) return;
-        if (!p.isBase) return;
-
-        // права: GM или владелец
-        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
-
-        const accountId = String(p.ownerId || ws.accountId || "").trim();
-        if (!accountId) {
-          ws.send(JSON.stringify({ type: "baseSheetSaved", ok: false, message: "Нет accountId" }));
-          return;
-        }
-
-        const currentName =
-          (p.sheet?.parsed?.name && typeof p.sheet.parsed.name === "object" && ("value" in p.sheet.parsed.name))
-            ? p.sheet.parsed.name.value
-            : (typeof p.sheet?.parsed?.name === "string" ? p.sheet.parsed.name : p.name);
-
-        const saveId = (p.baseSaveId || p.sheet?._persist?.saveId || "").trim();
-        const meta = saveBaseSheet(accountId, saveId || null, currentName, p.sheet || null);
-        if (!meta) {
-          ws.send(JSON.stringify({ type: "baseSheetSaved", ok: false }));
-          return;
-        }
-
-        p.baseSaveId = meta.id;
-        try {
-          p.sheet = p.sheet || {};
-          p.sheet._persist = p.sheet._persist && typeof p.sheet._persist === "object" ? p.sheet._persist : {};
-          p.sheet._persist.saveId = meta.id;
-          p.sheet._persist.name = meta.name;
-          p.sheet._persist.updatedAt = meta.updatedAt;
-        } catch (e) {}
-
-        ws.send(JSON.stringify({ type: "baseSheetSaved", ok: true, meta }));
-        break;
-      }
-
-      // ✅ Persist: загрузить "основу" вручную (кнопка)
-      case "listBaseSheets": {
-        // список сохранённых персонажей для текущего accountId
-        const accountId = String(ws.accountId || "").trim();
-        if (!accountId) {
-          ws.send(JSON.stringify({ type: "baseSheetsList", ok: false, items: [], message: "Нет accountId" }));
-          return;
-        }
-        const { items, lastUsed } = listBaseSheets(accountId);
-        ws.send(JSON.stringify({ type: "baseSheetsList", ok: true, items, lastUsed }));
-        break;
-      }
-
-      case "loadBaseSheetById": {
-        const p = gameState.players.find(pl => pl.id === data.id);
-        if (!p) return;
-        if (!p.isBase) return;
-
-        // права: GM или владелец
-        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
-
-        const accountId = String(p.ownerId || ws.accountId || "").trim();
-        const saveId = String(data.saveId || "").trim();
-        if (!accountId || !saveId) {
-          ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: false, message: "Не указан saveId" }));
-          return;
-        }
-
-        const sheet = loadBaseSheet(accountId, saveId);
-        if (!sheet) {
-          ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: false, message: "Сохранение не найдено" }));
-          return;
-        }
-
-        p.sheet = sheet;
-        p.baseSaveId = saveId;
-
-        // обновим имя из sheet (если есть)
-        try {
-          const parsed = p.sheet?.parsed;
-          let nextName = null;
-          if (parsed && typeof parsed === "object") {
-            if (parsed.name && typeof parsed.name === "object" && ("value" in parsed.name)) nextName = parsed.name.value;
-            else if (typeof parsed.name === "string") nextName = parsed.name;
-          }
-          if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
-        } catch (e) {}
-
-        ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: true, saveId }));
-        broadcast();
-        break;
-      }
-
-      // legacy: загрузить последнего использованного
-      case "loadBaseSheet": {
-        const p = gameState.players.find(pl => pl.id === data.id);
-        if (!p) return;
-        if (!p.isBase) return;
-
-        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
-
-        const accountId = String(p.ownerId || ws.accountId || "").trim();
-        const sheet = loadLastUsedBaseSheet(accountId);
-        if (!sheet) {
-          ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: false, message: "Сохранённая 'Основа' не найдена" }));
-          return;
-        }
-
-        p.sheet = sheet;
-        p.baseSaveId = sheet?._persist?.saveId || null;
-
-        try {
-          const parsed = p.sheet?.parsed;
-          let nextName = null;
-          if (parsed && typeof parsed === "object") {
-            if (parsed.name && typeof parsed.name === "object" && ("value" in parsed.name)) nextName = parsed.name.value;
-            else if (typeof parsed.name === "string") nextName = parsed.name;
-          }
-          if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
-        } catch (e) {}
-
-        ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: true }));
+        } catch {}
         broadcast();
         break;
       }
