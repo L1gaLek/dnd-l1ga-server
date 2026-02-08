@@ -4,6 +4,90 @@ const http = require("http");
 const WebSocket = require("ws");
 const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto"); // уникальные id
+const fs = require("fs");
+const path = require("path");
+
+// ================== PERSISTENT SAVED BASES (per userId) ==================
+// Храним сохранённые "основы" за уникальным userId (не за ником).
+// Формат: { [userId]: { [savedId]: { id, name, sheet, updatedAt } } }
+const SAVED_BASES_FILE = path.join(__dirname, "saved_bases.json");
+
+function readSavedBasesFromDisk() {
+  try {
+    if (!fs.existsSync(SAVED_BASES_FILE)) return {};
+    const raw = fs.readFileSync(SAVED_BASES_FILE, "utf8");
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return {};
+    return data;
+  } catch (e) {
+    console.warn("[saved_bases] failed to read:", e?.message || e);
+    return {};
+  }
+}
+
+function writeSavedBasesToDisk(store) {
+  try {
+    fs.writeFileSync(SAVED_BASES_FILE, JSON.stringify(store || {}, null, 2), "utf8");
+  } catch (e) {
+    console.warn("[saved_bases] failed to write:", e?.message || e);
+  }
+}
+
+// in-memory cache, persisted to disk
+const savedBasesStore = readSavedBasesFromDisk();
+
+function deepClone(obj) {
+  try { return structuredClone(obj); } catch {}
+  return JSON.parse(JSON.stringify(obj || null));
+}
+
+function getSavedBasesForUser(userId) {
+  const uid = String(userId || "");
+  if (!uid) return {};
+  const u = savedBasesStore[uid];
+  if (!u || typeof u !== "object") return {};
+  return u;
+}
+
+function upsertSavedBase(userId, { name, sheet, overwriteId = null } = {}) {
+  const uid = String(userId || "");
+  if (!uid) return null;
+
+  if (!savedBasesStore[uid] || typeof savedBasesStore[uid] !== "object") {
+    savedBasesStore[uid] = {};
+  }
+
+  const now = Date.now();
+  const safeName = String(name || "Персонаж").trim() || "Персонаж";
+
+  // overwrite by explicit id or by same name
+  let id = overwriteId ? String(overwriteId) : null;
+  if (!id) {
+    const existing = Object.values(savedBasesStore[uid]).find(x => x && x.name === safeName);
+    if (existing && existing.id) id = String(existing.id);
+  }
+  if (!id) id = crypto.randomUUID ? crypto.randomUUID() : uuidv4();
+
+  savedBasesStore[uid][id] = {
+    id,
+    name: safeName,
+    sheet: deepClone(sheet),
+    updatedAt: now
+  };
+  writeSavedBasesToDisk(savedBasesStore);
+  return savedBasesStore[uid][id];
+}
+
+function removeSavedBase(userId, savedId) {
+  const uid = String(userId || "");
+  const sid = String(savedId || "");
+  if (!uid || !sid) return false;
+  if (!savedBasesStore[uid] || typeof savedBasesStore[uid] !== "object") return false;
+  if (!savedBasesStore[uid][sid]) return false;
+  delete savedBasesStore[uid][sid];
+  writeSavedBasesToDisk(savedBasesStore);
+  return true;
+}
 
 // ================== EXPRESS ==================
 const app = express();
@@ -579,6 +663,105 @@ case "leaveRoom": {
           }
         } catch {}
         broadcast();
+        break;
+      }
+
+      // ================== SAVED BASES (per userId) ==================
+      // Сохранить текущую "основу" пользователя в его личный список
+      case "saveSavedBase": {
+        const user = getUserByWS(ws);
+        if (!user) return;
+
+        const p = gameState.players.find(pl => pl.id === data.playerId);
+        if (!p) return;
+        if (!p.isBase) {
+          ws.send(JSON.stringify({ type: "error", message: "Сохранять можно только персонажа 'Основа'." }));
+          return;
+        }
+
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+
+        const sheet = data.sheet;
+        if (!sheet || typeof sheet !== "object") {
+          ws.send(JSON.stringify({ type: "error", message: "Некорректные данные персонажа." }));
+          return;
+        }
+
+        // определим имя
+        let nm = p.name;
+        try {
+          const parsed = sheet.parsed;
+          const n1 = parsed?.name?.value ?? parsed?.name;
+          if (typeof n1 === "string" && n1.trim()) nm = n1.trim();
+        } catch {}
+
+        const savedId = upsertSavedBase(user.id, { name: nm, sheet, overwriteId: data.savedId || null });
+        if (!savedId) {
+          ws.send(JSON.stringify({ type: "error", message: "Не удалось сохранить." }));
+          return;
+        }
+
+        ws.send(JSON.stringify({ type: "savedBaseSaved", savedId, name: nm }));
+        break;
+      }
+
+      // Вернуть список сохранённых персонажей для текущего userId
+      case "listSavedBases": {
+        const user = getUserByWS(ws);
+        if (!user) return;
+        const list = Object.values(getSavedBasesForUser(user.id))
+          .filter(Boolean)
+          .sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
+          .map(x => ({ id: x.id, name: x.name, updatedAt: x.updatedAt }));
+        ws.send(JSON.stringify({ type: "savedBasesList", list }));
+        break;
+      }
+
+      // Применить сохранённого персонажа к текущей "основе" (в комнате)
+      case "applySavedBase": {
+        const user = getUserByWS(ws);
+        if (!user) return;
+
+        const p = gameState.players.find(pl => pl.id === data.playerId);
+        if (!p) return;
+        if (!p.isBase) {
+          ws.send(JSON.stringify({ type: "error", message: "Загружать можно только в персонажа 'Основа'." }));
+          return;
+        }
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+
+        const savedId = String(data.savedId || "");
+        const saved = getSavedBasesForUser(user.id)[savedId];
+        if (!saved) {
+          ws.send(JSON.stringify({ type: "error", message: "Сохранённый персонаж не найден." }));
+          return;
+        }
+
+        p.sheet = deepClone(saved.sheet);
+
+        // синхронизируем имя на основе загруженного sheet
+        try {
+          const parsed = p.sheet?.parsed;
+          const nextName = parsed?.name?.value ?? parsed?.name;
+          if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
+        } catch {}
+
+        broadcast();
+        ws.send(JSON.stringify({ type: "savedBaseApplied", playerId: p.id, savedId }));
+        break;
+      }
+
+      // Удалить сохранённого персонажа из списка пользователя
+      case "deleteSavedBase": {
+        const user = getUserByWS(ws);
+        if (!user) return;
+        const savedId = String(data.savedId || "");
+        const u = getSavedBasesForUser(user.id);
+        if (u && u[savedId]) {
+          delete savedBasesStore[String(user.id)][savedId];
+          writeSavedBasesToDisk(savedBasesStore);
+        }
+        ws.send(JSON.stringify({ type: "savedBaseDeleted", savedId }));
         break;
       }
 
