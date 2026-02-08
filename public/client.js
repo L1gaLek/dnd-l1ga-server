@@ -189,6 +189,20 @@ loginDiv.style.display = 'none';
       }
     }
 
+    // ===== Saved bases (персонажи, привязанные к userId) =====
+    if (msg.type === "savedBasesList" && Array.isArray(msg.list)) {
+      window.InfoModal?.onSavedBasesList?.(msg.list);
+    }
+    if (msg.type === "savedBaseSaved") {
+      window.InfoModal?.onSavedBaseSaved?.(msg);
+    }
+    if (msg.type === "savedBaseApplied") {
+      window.InfoModal?.onSavedBaseApplied?.(msg);
+    }
+    if (msg.type === "savedBaseDeleted") {
+      window.InfoModal?.onSavedBaseDeleted?.(msg);
+    }
+
     if (msg.type === "init" || msg.type === "state") {
       lastState = msg.state;
       boardWidth = msg.state.boardWidth;
