@@ -126,7 +126,10 @@
     <div id="game-container">
 
       <div id="current-turn">
-        Текущий игрок: <span id="current-player">-</span>
+        <div class="current-turn-left">
+          Текущий игрок: <span id="current-player">-</span>
+        </div>
+        <button id="end-turn" class="next-turn-btn" type="button" title="Следующий ход">Следующий ход</button>
       </div>
 
       <div id="board-settings">
@@ -139,22 +142,39 @@
         <button id="create-board">Создать поле</button>
       </div>
 
-      <div id="board-wrapper">
-        <div id="game-board"></div>
+      <div id="battle-area">
+        <div id="board-wrapper">
+          <div id="game-board"></div>
+        </div>
+
+        <!-- Панели справа от поля (видны только GM) -->
+        <div id="right-panels">
+
+          <div id="world-phases" class="sheet-card gm-only">
+            <h3>Фазы мира</h3>
+            <div class="panel-buttons">
+              <button id="phase-exploration" type="button">Фаза исследования</button>
+              <button id="phase-initiative" type="button">Фаза инициативы</button>
+              <button id="phase-combat" type="button">Фаза бой</button>
+            </div>
+          </div>
+
+          <div id="env-panel" class="sheet-card gm-only">
+            <h3>Редактирования окружения</h3>
+            <div id="environment-controls" class="panel-buttons">
+              <button id="edit-environment" type="button">Редактирование окружения: ВЫКЛ</button>
+              <button id="add-wall" type="button" disabled>Добавить стену</button>
+              <button id="remove-wall" type="button" disabled>Удалить стену</button>
+              <button id="reset-game" type="button">Сбросить игру полностью</button>
+              <button id="clear-board" type="button">Очистить поле</button>
+            </div>
+          </div>
+
+        </div>
       </div>
 
       <div id="initiative-warning" style="display:none; color: orange; font-weight: bold;">
         Бросьте инициативу за своих персонажей!
-      </div>
-
-      <div id="environment-controls">
-        <button id="edit-environment">Редактирование окружения: ВЫКЛ</button>
-        <button id="add-wall" disabled>Добавить стену</button>
-        <button id="remove-wall" disabled>Удалить стену</button>
-        <button id="reset-game">Сбросить игру полностью</button>
-        <button id="clear-board">Очистить поле</button>
-        <button id="start-initiative">Фаза инициативы</button>
-        <button id="start-combat">Начало боя</button>
       </div>
 
     </div>
