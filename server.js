@@ -138,11 +138,6 @@ function broadcastUsers() {
     c.send(msg);
   });
 }
-);
-  wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) c.send(msg);
-  });
-}
 
 function logEvent(text) {
   const room = getCurrentRoom();
@@ -150,9 +145,6 @@ function logEvent(text) {
   const time = new Date().toLocaleTimeString();
   room.state.log.push(`${time} — ${text}`);
   if (room.state.log.length > 100) room.state.log.shift();
-}
-— ${text}`);
-  if (gameState.log.length > 100) gameState.log.shift();
 }
 
 function getUserByWS(ws) {
@@ -171,9 +163,14 @@ function ownsPlayer(ws, player) {
 }
 
 function hasAnyPlayersForUser(userId) {
-  return gameState.players.some(p => p.ownerId === userId);
+  // если пользователь владеет персонажами в любой комнате — не удаляем
+  for (const r of rooms.values()) {
+    if (r.state && Array.isArray(r.state.players) && r.state.players.some(p => p.ownerId === userId)) {
+      return true;
+    }
+  }
+  return false;
 }
-
 function scheduleUserCleanupIfNeeded(userId) {
   setTimeout(() => {
     const u = usersById.get(userId);
@@ -181,9 +178,10 @@ function scheduleUserCleanupIfNeeded(userId) {
     if (u.online) return;
     if (hasAnyPlayersForUser(userId)) return; // не удаляем владельца, если есть персонажи
     usersById.delete(userId);
-    broadcastUsers();
-  }
-
+    // комнаты сами обновляются через rooms list, но на всякий:
+    broadcastRooms();
+  }, USER_CLEANUP_MS);
+}
 // ===== Rooms helpers =====
 function listRoomsPayload() {
   return Array.from(rooms.values()).map(r => ({
@@ -266,8 +264,6 @@ function leaveRoom(ws) {
   broadcastRooms();
 }
 
-, USER_CLEANUP_MS);
-}
 
 // ================== WS HANDLERS ==================
 wss.on("connection", ws => {
@@ -800,13 +796,6 @@ function sendFullSync(ws) {
   ws.send(JSON.stringify({ type: "init", state: room.state }));
   ws.send(JSON.stringify({ type: "users", users: makeRoomUsersPayload(room) }));
   sendRooms(ws);
-}
-));
-
-  ws.send(JSON.stringify({
-    type: "users",
-    users: makeUsersPayload()
-  }));
 }
 
 function autoPlacePlayers() {
