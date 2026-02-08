@@ -58,8 +58,13 @@ const editEnvBtn = document.getElementById('edit-environment');
 const addWallBtn = document.getElementById('add-wall');
 const removeWallBtn = document.getElementById('remove-wall');
 
-const startInitiativeBtn = document.getElementById("start-initiative");
-const startCombatBtn = document.getElementById("start-combat");
+// Фазы мира (только GM)
+const phaseExplorationBtn = document.getElementById('phase-exploration');
+const phaseInitiativeBtn = document.getElementById('phase-initiative');
+const phaseCombatBtn = document.getElementById('phase-combat');
+
+// GM-only панели (показываем/скрываем через класс)
+const gmOnlyBlocks = Array.from(document.querySelectorAll('.gm-only'));
 
 // ================== VARIABLES ==================
 let ws;
@@ -67,6 +72,8 @@ let myId;
 let myRole;
 let currentRoomId = null;
 let players = [];
+let lastState = null;
+let lastState = null;
 let boardWidth = parseInt(boardWidthInput.value, 10) || 10;
 let boardHeight = parseInt(boardHeightInput.value, 10) || 10;
 
@@ -168,6 +175,7 @@ loginDiv.style.display = 'none';
 }
 
     if (msg.type === "init" || msg.type === "state") {
+      lastState = msg.state;
       boardWidth = msg.state.boardWidth;
       boardHeight = msg.state.boardHeight;
 
@@ -210,16 +218,26 @@ loginDiv.style.display = 'none';
   };
 });
 
-startInitiativeBtn?.addEventListener("click", () => {
-  sendMessage({ type: "startInitiative" });
+phaseExplorationBtn?.addEventListener('click', () => {
+  sendMessage({ type: 'setPhase', phase: 'exploration' });
 });
 
-startCombatBtn?.addEventListener("click", () => {
-  sendMessage({ type: "startCombat" });
+phaseInitiativeBtn?.addEventListener('click', () => {
+  sendMessage({ type: 'setPhase', phase: 'initiative' });
+});
+
+phaseCombatBtn?.addEventListener('click', () => {
+  sendMessage({ type: 'setPhase', phase: 'combat' });
 });
 
 // ================== ROLE UI ==================
 function setupRoleUI(role) {
+  // GM-only панели
+  gmOnlyBlocks.forEach(el => {
+    if (role === 'GM') el.classList.add('is-visible');
+    else el.classList.remove('is-visible');
+  });
+
   if (role === "Spectator") {
     addPlayerBtn.style.display = 'none';
     rollBtn.style.display = 'none';
@@ -230,6 +248,10 @@ function setupRoleUI(role) {
     clearBoardBtn.style.display = 'none';
   } else if (role === "DnD-Player") {
     resetGameBtn.style.display = 'none';
+    // ход переключает GM
+    endTurnBtn.style.display = 'none';
+  } else if (role === 'GM') {
+    endTurnBtn.style.display = 'inline-block';
   }
 }
 
@@ -1075,38 +1097,44 @@ function sendMessage(msg) {
 }
 
 function updatePhaseUI(state) {
+  const phase = state?.phase || 'exploration';
+
+  // --- roll initiative button ---
   const allRolled = state.players?.length
-    ? state.players.every(p => p.hasRolledInitiative)
+    ? state.players.every(p => !!p.hasRolledInitiative)
     : false;
 
-  if (state.phase === "initiative") {
-    rollInitiativeBtn.style.display = "inline-block";
-    rollInitiativeBtn.classList.add("is-active");
+  if (phase === 'initiative' && myRole !== 'Spectator') {
+    rollInitiativeBtn.style.display = 'inline-block';
+    rollInitiativeBtn.classList.add('is-active');
 
-    startInitiativeBtn.classList.remove('active', 'ready', 'pending');
-    startInitiativeBtn.classList.add(allRolled ? 'ready' : 'active');
-
-    if (myRole === 'GM' && allRolled && !finishInitiativeSent) {
+    // когда все бросили — один раз отправляем finishInitiative (строит turnOrder)
+    if (allRolled && !finishInitiativeSent) {
       finishInitiativeSent = true;
       sendMessage({ type: 'finishInitiative' });
     }
   } else {
-    rollInitiativeBtn.style.display = "none";
-    rollInitiativeBtn.classList.remove("is-active");
-    startInitiativeBtn.classList.remove('active', 'ready', 'pending');
+    rollInitiativeBtn.style.display = 'none';
+    rollInitiativeBtn.classList.remove('is-active');
     finishInitiativeSent = false;
   }
 
-  startCombatBtn.classList.remove('active', 'ready', 'pending');
+  // --- phase buttons (GM) ---
+  const setPhaseBtnState = (btn, isActive) => {
+    if (!btn) return;
+    btn.classList.add('phase-btn');
+    btn.classList.toggle('is-active', !!isActive);
+    btn.classList.toggle('is-inactive', !isActive);
+  };
+  setPhaseBtnState(phaseExplorationBtn, phase === 'exploration');
+  setPhaseBtnState(phaseInitiativeBtn, phase === 'initiative');
+  setPhaseBtnState(phaseCombatBtn, phase === 'combat');
 
-  if (state.phase === 'placement') {
-    startCombatBtn.disabled = false;
-    startCombatBtn.classList.add('pending');
-  } else if (state.phase === 'combat') {
-    startCombatBtn.disabled = false;
-    startCombatBtn.classList.add('ready');
-  } else {
-    startCombatBtn.disabled = true;
+  // --- next turn (GM) ---
+  if (endTurnBtn) {
+    const enabled = (myRole === 'GM') && (phase === 'combat') && (state.turnOrder?.length > 0);
+    endTurnBtn.disabled = !enabled;
+    endTurnBtn.classList.toggle('is-active', enabled);
   }
 
   updateCurrentPlayer(state);
