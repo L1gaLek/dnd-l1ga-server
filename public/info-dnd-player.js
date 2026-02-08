@@ -4211,6 +4211,39 @@ function renderCombatTab(vm) {
     sheetActions.appendChild(note);
 
     if (canEdit) {
+      // ===== Persist buttons: save/load base sheet =====
+      const persistRow = document.createElement('div');
+      persistRow.style.display = 'flex';
+      persistRow.style.gap = '8px';
+      persistRow.style.flexWrap = 'wrap';
+      persistRow.style.margin = '8px 0 10px';
+
+      const btnSave = document.createElement('button');
+      btnSave.type = 'button';
+      btnSave.textContent = 'Сохранить основу';
+      btnSave.addEventListener('click', () => {
+        ctx.sendMessage({ type: "saveBaseSheet", id: player.id });
+        const tmp = document.createElement('div');
+        tmp.className = 'sheet-note';
+        tmp.textContent = "Сохраняю основу…";
+        sheetActions.appendChild(tmp);
+      });
+
+      const btnLoad = document.createElement('button');
+      btnLoad.type = 'button';
+      btnLoad.textContent = 'Загрузить основу';
+      btnLoad.addEventListener('click', () => {
+        ctx.sendMessage({ type: "loadBaseSheet", id: player.id });
+        const tmp = document.createElement('div');
+        tmp.className = 'sheet-note';
+        tmp.textContent = "Загружаю основу…";
+        sheetActions.appendChild(tmp);
+      });
+
+      persistRow.appendChild(btnSave);
+      persistRow.appendChild(btnLoad);
+      sheetActions.appendChild(persistRow);
+
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
       fileInput.accept = '.json,application/json';
