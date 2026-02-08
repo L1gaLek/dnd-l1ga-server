@@ -161,11 +161,14 @@ loginDiv.style.display = 'none';
     }
 
     if (msg.type === "error") {
-      const text = msg.message || "Ошибка";
-      if (loginDiv && loginDiv.style.display !== "none") {
+      const text = String(msg.message || "Ошибка");
+      // если мы ещё на экране логина
+      if (loginDiv && loginDiv.style.display !== 'none') {
         loginError.textContent = text;
+      } else if (roomsDiv && roomsDiv.style.display !== 'none') {
+        roomsError.textContent = text;
       } else {
-        // во время игры
+        // в игре — показываем как быстрое уведомление
         alert(text);
       }
     }
@@ -236,6 +239,7 @@ startCombatBtn?.addEventListener("click", () => {
 });
 
 nextTurnBtn?.addEventListener("click", () => {
+  // "Конец хода" — перейти к следующему по инициативе
   sendMessage({ type: "endTurn" });
 });
 
@@ -457,7 +461,13 @@ function updatePlayerList() {
       li.addEventListener('click', () => {
         selectedPlayer = p;
         if (p.x === null || p.y === null) {
-          sendMessage({ type: 'movePlayer', id: p.id, x: 0, y: 0 });
+          const size = Number(p.size) || 1;
+          const spot = findFirstFreeSpotClient(size);
+          if (!spot) {
+            alert("Нет свободных клеток для размещения персонажа");
+            return;
+          }
+          sendMessage({ type: 'movePlayer', id: p.id, x: spot.x, y: spot.y });
         }
       });
 
@@ -564,6 +574,33 @@ function setPlayerPosition(player) {
   }
 }
 
+// ================== NO-OVERLAP HELPERS (CLIENT SIDE) ==================
+function rectsOverlap(ax, ay, as, bx, by, bs) {
+  return ax < (bx + bs) && (ax + as) > bx && ay < (by + bs) && (ay + as) > by;
+}
+
+function isAreaFreeClient(ignoreId, x, y, size) {
+  for (const other of players) {
+    if (!other) continue;
+    if (ignoreId && other.id === ignoreId) continue;
+    if (other.x === null || other.y === null) continue;
+    const os = Number(other.size) || 1;
+    if (rectsOverlap(x, y, size, other.x, other.y, os)) return false;
+  }
+  return true;
+}
+
+function findFirstFreeSpotClient(size) {
+  const maxX = boardWidth - size;
+  const maxY = boardHeight - size;
+  for (let y = 0; y <= maxY; y++) {
+    for (let x = 0; x <= maxX; x++) {
+      if (isAreaFreeClient(null, x, y, size)) return { x, y };
+    }
+  }
+  return null;
+}
+
 // ================== ADD PLAYER ==================
 addPlayerBtn.addEventListener('click', () => {
   const name = playerNameInput.value.trim();
@@ -592,6 +629,13 @@ board.addEventListener('click', e => {
   let y = parseInt(cell.dataset.y, 10);
   if (x + selectedPlayer.size > boardWidth) x = boardWidth - selectedPlayer.size;
   if (y + selectedPlayer.size > boardHeight) y = boardHeight - selectedPlayer.size;
+
+  // быстрый локальный чек (сервер всё равно проверит)
+  const size = Number(selectedPlayer.size) || 1;
+  if (!isAreaFreeClient(selectedPlayer.id, x, y, size)) {
+    alert("Эта клетка занята другим персонажем");
+    return;
+  }
 
   sendMessage({ type: 'movePlayer', id: selectedPlayer.id, x, y });
   const el = playerElements.get(selectedPlayer.id);
