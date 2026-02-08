@@ -195,27 +195,69 @@ button:hover {
   padding: 5px 10px;
 }
 
-/* Подсветки фаз (используем классы на конкретных кнопках) */
-#start-initiative.active {
-  background-color: red;
-  color: white;
+/* ===== GM-only blocks ===== */
+.gm-only { display: none; }
+.gm-only.is-visible { display: block; }
+
+/* ===== Board + right panels layout ===== */
+#battle-area {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
 }
 
-#start-initiative.ready {
-  background-color: green;
-  color: white;
+#right-panels {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
 }
 
-/* Оранжевая подсветка: можно начинать бой */
-#start-combat.pending {
-  background-color: orange;
-  color: black;
+#world-phases,
+#env-panel {
+  width: 240px;
 }
 
-#start-combat.ready {
-  background-color: green;
-  color: white;
+.panel-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
+
+/* Current turn row + next turn button */
+#current-turn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.next-turn-btn {
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+}
+
+.next-turn-btn.is-active {
+  background-color: #c26a00; /* тёмно-оранжевый */
+  color: #111;
+}
+
+.next-turn-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Phase buttons highlight */
+.phase-btn.is-active {
+  background-color: #2e8b57;
+  color: #fff;
+}
+
+.phase-btn.is-inactive {
+  opacity: 0.85;
+}
+
+/* (старые стили фаз start-initiative/start-combat удалены — теперь используются phase-* кнопки) */
 
 /* Подсветка игрока, который сейчас ходит */
 .player.current-turn {
