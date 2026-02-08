@@ -25,6 +25,9 @@ const roomScenarioInput = document.getElementById('roomScenarioInput');
 const gameUI = document.getElementById('main-container');
 const myNameSpan = document.getElementById('myName');
 const myRoleSpan = document.getElementById('myRole');
+const myRoomSpan = document.getElementById('myRoom');
+const myScenarioSpan = document.getElementById('myScenario');
+const diceViz = document.getElementById('dice-viz');
 
 const board = document.getElementById('game-board');
 const playerList = document.getElementById('player-list');
@@ -62,6 +65,7 @@ const startCombatBtn = document.getElementById("start-combat");
 let ws;
 let myId;
 let myRole;
+let currentRoomId = null;
 let players = [];
 let boardWidth = parseInt(boardWidthInput.value, 10) || 10;
 let boardHeight = parseInt(boardHeightInput.value, 10) || 10;
@@ -76,6 +80,9 @@ let finishInitiativeSent = false;
 
 // users map (ownerId -> {name, role})
 const usersById = new Map();
+
+// стартово прячем панель бросков до входа в комнату
+if (diceViz) diceViz.style.display = 'none';
 
 // ================== JOIN GAME ==================
 joinBtn.addEventListener('click', () => {
@@ -103,10 +110,16 @@ joinBtn.addEventListener('click', () => {
 // ===== Rooms lobby messages =====
 if (msg.type === 'rooms' && Array.isArray(msg.rooms)) {
   renderRooms(msg.rooms);
+  if (!currentRoomId && diceViz) diceViz.style.display = 'none';
 }
 if (msg.type === 'joinedRoom' && msg.room) {
   roomsDiv.style.display = 'none';
   gameUI.style.display = 'block';
+
+  currentRoomId = msg.room.id || null;
+  if (myRoomSpan) myRoomSpan.textContent = msg.room.name || '-';
+  if (myScenarioSpan) myScenarioSpan.textContent = msg.room.scenario || '-';
+  if (diceViz) diceViz.style.display = 'block';
 }
 
 if (msg.type === "registered") {
@@ -118,7 +131,13 @@ myRole = msg.role;
       myRoleSpan.textContent = msg.role;
       myRole = String(msg.role || "");
 
-      loginDiv.style.display = 'none';
+      
+
+      currentRoomId = null;
+      if (diceViz) diceViz.style.display = 'none';
+      if (myRoomSpan) myRoomSpan.textContent = '-';
+      if (myScenarioSpan) myScenarioSpan.textContent = '-';
+loginDiv.style.display = 'none';
       roomsDiv.style.display = 'block';
       gameUI.style.display = 'none';
       roomsError.textContent = '';
@@ -272,8 +291,16 @@ function updatePlayerList() {
   if (!playerList) return;
   playerList.innerHTML = '';
 
-  // Группируем игроков по владельцу
+  // Сначала создаём группы по пользователям (даже если у них ещё нет персонажей)
   const grouped = {};
+  usersById.forEach((u, ownerId) => {
+    grouped[ownerId] = {
+      ownerName: (u && u.name) ? u.name : 'Unknown',
+      players: []
+    };
+  });
+
+  // Добавляем персонажей в соответствующие группы
   players.forEach(p => {
     if (!grouped[p.ownerId]) {
       grouped[p.ownerId] = {
@@ -307,6 +334,16 @@ function updatePlayerList() {
 
     const ul = document.createElement('ul');
     ul.className = 'owner-players';
+
+    if (!group.players || group.players.length === 0) {
+      const emptyLi = document.createElement('li');
+      emptyLi.className = 'player-list-item';
+      const text = document.createElement('span');
+      text.classList.add('player-name-text');
+      text.textContent = 'Персонажей нет';
+      emptyLi.appendChild(text);
+      ul.appendChild(emptyLi);
+    }
 
     group.players.forEach(p => {
       const li = document.createElement('li');
