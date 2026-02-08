@@ -5,6 +5,44 @@ const WebSocket = require("ws");
 const { v4: uuidv4 } = require("uuid");
 const crypto = require("crypto"); // уникальные id
 
+const fs = require("fs");
+const path = require("path");
+
+// ===== Persist: base sheets storage =====
+const BASE_SHEETS_DIR = path.join(__dirname, "data", "baseSheets");
+try { fs.mkdirSync(BASE_SHEETS_DIR, { recursive: true }); } catch {}
+
+function baseSheetPath(userId) {
+  const safe = String(userId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  return path.join(BASE_SHEETS_DIR, `${safe}.json`);
+}
+
+function saveBaseSheetForUser(userId, sheet) {
+  if (!userId || !sheet || typeof sheet !== "object") return false;
+  try {
+    fs.writeFileSync(baseSheetPath(userId), JSON.stringify(sheet, null, 2), "utf-8");
+    return true;
+  } catch (e) {
+    console.error("saveBaseSheetForUser error:", e);
+    return false;
+  }
+}
+
+function loadBaseSheetForUser(userId) {
+  if (!userId) return null;
+  try {
+    const p = baseSheetPath(userId);
+    if (!fs.existsSync(p)) return null;
+    const raw = fs.readFileSync(p, "utf-8");
+    const sheet = JSON.parse(raw);
+    return (sheet && typeof sheet === "object") ? sheet : null;
+  } catch (e) {
+    console.error("loadBaseSheetForUser error:", e);
+    return null;
+  }
+}
+
+
 // ================== EXPRESS ==================
 const app = express();
 app.use(express.static("public"));
@@ -492,6 +530,12 @@ case "leaveRoom": {
 
         const isBase = !!data.player?.isBase;
 
+        // ✅ Persist: автоподгрузка сохранённой "Основы" владельца
+        let preloadedSheet = null;
+        if (isBase) {
+          preloadedSheet = loadBaseSheetForUser(user.id);
+        }
+
         // ✅ Основа может быть только одна НА ПОЛЬЗОВАТЕЛЯ
         if (isBase) {
           const baseAlreadyExistsForOwner = gameState.players.some(
@@ -528,9 +572,23 @@ case "leaveRoom": {
           ownerId: user.id,
           ownerName: user.name,
 
-          // ✅ ЛИСТ ПЕРСОНАЖА
-          sheet: null
+          // ✅ ЛИСТ ПЕРСОНАЖА (автоподгрузка, если есть сохранение)
+          sheet: preloadedSheet || null
         });
+
+        // если загрузили sheet — попробуем взять имя из него
+        if (isBase && preloadedSheet) {
+          const p = gameState.players[gameState.players.length - 1];
+          try {
+            const parsed = p.sheet?.parsed;
+            let nextName = null;
+            if (parsed && typeof parsed === "object") {
+              if (parsed.name && typeof parsed.name === "object" && ("value" in parsed.name)) nextName = parsed.name.value;
+              else if (typeof parsed.name === "string") nextName = parsed.name;
+            }
+            if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
+          } catch {}
+        }
 
         logEvent(`Игрок ${data.player.name} создан пользователем ${user.name}${isBase ? " (Основа)" : ""}`);
         broadcast();
@@ -578,6 +636,58 @@ case "leaveRoom": {
             if (trimmed) p.name = trimmed;
           }
         } catch {}
+
+        // ✅ Persist: сохраняем "Инфу" основы владельца на диск
+        saveBaseSheetForUser(p.ownerId, p.sheet);
+
+        broadcast();
+        break;
+      }
+
+
+      // ✅ Persist: сохранить "основу" вручную (кнопка)
+      case "saveBaseSheet": {
+        const p = gameState.players.find(pl => pl.id === data.id);
+        if (!p) return;
+        if (!p.isBase) return;
+
+        // права: GM или владелец
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+
+        const ok = saveBaseSheetForUser(p.ownerId, p.sheet);
+        ws.send(JSON.stringify({ type: "baseSheetSaved", ok: !!ok }));
+        break;
+      }
+
+      // ✅ Persist: загрузить "основу" вручную (кнопка)
+      case "loadBaseSheet": {
+        const p = gameState.players.find(pl => pl.id === data.id);
+        if (!p) return;
+        if (!p.isBase) return;
+
+        // права: GM или владелец
+        if (!isGM(ws) && !ownsPlayer(ws, p)) return;
+
+        const sheet = loadBaseSheetForUser(p.ownerId);
+        if (!sheet) {
+          ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: false, message: "Сохранённая 'Основа' не найдена" }));
+          return;
+        }
+
+        p.sheet = sheet;
+
+        // обновим имя из sheet (если есть)
+        try {
+          const parsed = p.sheet?.parsed;
+          let nextName = null;
+          if (parsed && typeof parsed === "object") {
+            if (parsed.name && typeof parsed.name === "object" && ("value" in parsed.name)) nextName = parsed.name.value;
+            else if (typeof parsed.name === "string") nextName = parsed.name;
+          }
+          if (typeof nextName === "string" && nextName.trim()) p.name = nextName.trim();
+        } catch {}
+
+        ws.send(JSON.stringify({ type: "baseSheetLoaded", ok: true }));
         broadcast();
         break;
       }
