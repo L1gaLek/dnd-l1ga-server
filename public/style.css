@@ -201,6 +201,7 @@ button:hover {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .next-turn-btn {
@@ -211,9 +212,9 @@ button:hover {
 }
 
 .next-turn-btn.is-active {
-  background-color: #b35400; /* тёмно-оранжевый */
+  background-color: rgb(37,103,14); /* зелёный для текущего игрока */
   color: #fff;
-  border-color: #b35400;
+  border-color: rgb(37,103,14);
 }
 
 .next-turn-btn:disabled {
@@ -221,6 +222,17 @@ button:hover {
   cursor: not-allowed;
 }
 
+
+#board-column{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+
+#board-column #current-turn{
+  width: 100%;
+  justify-content: center;
+}
 #board-row {
   display: flex;
   align-items: flex-start;
