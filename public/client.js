@@ -72,6 +72,7 @@ let myId;
 let myRole;
 let currentRoomId = null;
 let players = [];
+let lastState = null;
 let boardWidth = parseInt(boardWidthInput.value, 10) || 10;
 let boardHeight = parseInt(boardHeightInput.value, 10) || 10;
 
@@ -79,9 +80,6 @@ let selectedPlayer = null;
 let editEnvironment = false;
 let wallMode = null;
 let mouseDown = false;
-
-let lastState = null;
-let currentTurnId = null;
 
 const playerElements = new Map();
 let finishInitiativeSent = false;
@@ -183,8 +181,13 @@ loginDiv.style.display = 'none';
     }
 
     if (msg.type === "diceEvent" && msg.event) {
-  pushOtherDiceEvent(msg.event);
-}
+      // показываем всем "Броски других", а себе — обновляем основную панель броска
+      if (msg.event.fromId && typeof myId !== "undefined" && msg.event.fromId === myId) {
+        applyDiceEventToMain(msg.event);
+      } else {
+        pushOtherDiceEvent(msg.event);
+      }
+    }
 
     if (msg.type === "init" || msg.type === "state") {
       lastState = msg.state;
@@ -293,8 +296,6 @@ function renderLog(logs) {
 function updateCurrentPlayer(state) {
   const inCombat = (state && state.phase === 'combat');
 
-  currentTurnId = null;
-
   // по умолчанию
   if (nextTurnBtn) {
     nextTurnBtn.style.display = inCombat ? 'inline-block' : 'none';
@@ -309,7 +310,6 @@ function updateCurrentPlayer(state) {
   }
 
   const id = state.turnOrder[state.currentTurnIndex];
-  currentTurnId = id;
   const p = players.find(pl => pl.id === id);
   currentPlayerSpan.textContent = p ? p.name : '-';
 
@@ -347,6 +347,10 @@ function roleToClass(role) {
 function updatePlayerList() {
   if (!playerList) return;
   playerList.innerHTML = '';
+
+  const currentTurnId = (lastState && lastState.phase === 'combat' && Array.isArray(lastState.turnOrder) && lastState.turnOrder.length)
+    ? lastState.turnOrder[lastState.currentTurnIndex]
+    : null;
 
   // Сначала создаём группы по пользователям (даже если у них ещё нет персонажей)
   const grouped = {};
@@ -406,9 +410,8 @@ function updatePlayerList() {
       const li = document.createElement('li');
       li.className = 'player-list-item';
 
-      // подсветка текущего хода в списке
-      if (lastState?.phase === 'combat' && currentTurnId && p.id === currentTurnId) {
-        li.classList.add('current-turn-list');
+      if (currentTurnId && p.id === currentTurnId) {
+        li.classList.add('is-current-turn');
       }
 
       const indicator = document.createElement('span');
@@ -438,30 +441,32 @@ function updatePlayerList() {
       const actions = document.createElement('div');
       actions.className = 'player-actions';
 
-      // Во время фазы "Бой": если персонаж создан прямо сейчас — даём выбор инициативы (только для него)
-      if (lastState?.phase === 'combat' && p.pendingInitiativeChoice) {
-        const canChoose = (myRole === 'GM') || (p.ownerId === myId);
+      // ===== Новый игрок во время боя: выбор инициативы (только для него) =====
+      if (lastState && lastState.phase === 'combat' && p.pendingInitiativeChoice && (myRole === 'GM' || p.ownerId === myId)) {
+        const box = document.createElement('div');
+        box.className = 'init-choice-box';
 
         const rollInitBtn = document.createElement('button');
+        rollInitBtn.className = 'init-choice-btn';
         rollInitBtn.textContent = 'Бросить инициативу';
-        rollInitBtn.disabled = !canChoose;
-        rollInitBtn.title = canChoose ? 'd20 + модификатор Ловкости' : 'Только владелец или GM';
+        rollInitBtn.title = 'd20 + модификатор Ловкости';
         rollInitBtn.onclick = (e) => {
           e.stopPropagation();
           sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'roll' });
         };
 
         const baseInitBtn = document.createElement('button');
+        baseInitBtn.className = 'init-choice-btn';
         baseInitBtn.textContent = 'Инициатива основы';
-        baseInitBtn.disabled = !canChoose;
-        baseInitBtn.title = canChoose ? 'Взять инициативу "основы" владельца' : 'Только владелец или GM';
+        baseInitBtn.title = 'Взять инициативу из персонажа "основа" владельца';
         baseInitBtn.onclick = (e) => {
           e.stopPropagation();
           sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'base' });
         };
 
-        actions.appendChild(rollInitBtn);
-        actions.appendChild(baseInitBtn);
+        box.appendChild(rollInitBtn);
+        box.appendChild(baseInitBtn);
+        actions.appendChild(box);
       }
 
       // КНОПКА "ИНФА" — теперь вызывает внешний модуль
@@ -476,8 +481,12 @@ function updatePlayerList() {
       }
 
       // ===== Новый игрок во время боя: выбор инициативы (только для этого нового) =====
-      if (lastState?.phase === 'combat' && p.pendingInitiativeChoice && (myRole === 'GM' || p.ownerId === myId)) {
+      if (lastState && lastState.phase === 'combat' && p.pendingInitiativeChoice && (myRole === 'GM' || p.ownerId === myId)) {
+        const box = document.createElement('div');
+        box.className = 'init-choice-box';
+
         const rollInitBtn = document.createElement('button');
+        rollInitBtn.className = 'init-choice-btn';
         rollInitBtn.textContent = 'Бросить инициативу';
         rollInitBtn.title = 'd20 + модификатор Ловкости';
         rollInitBtn.onclick = (e) => {
@@ -486,6 +495,7 @@ function updatePlayerList() {
         };
 
         const baseInitBtn = document.createElement('button');
+        baseInitBtn.className = 'init-choice-btn';
         baseInitBtn.textContent = 'Инициатива основы';
         baseInitBtn.title = 'Взять инициативу из персонажа "основа"';
         baseInitBtn.onclick = (e) => {
@@ -493,8 +503,9 @@ function updatePlayerList() {
           sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'base' });
         };
 
-        actions.appendChild(rollInitBtn);
-        actions.appendChild(baseInitBtn);
+        box.appendChild(rollInitBtn);
+        box.appendChild(baseInitBtn);
+        actions.appendChild(box);
       }
 
       // изменение размера
@@ -723,6 +734,32 @@ function ensureOthersDiceUI() {
   othersDiceWrap.innerHTML = `<div class="dice-others__title">Броски других</div>`;
   document.body.appendChild(othersDiceWrap);
   return othersDiceWrap;
+}
+
+// показываем результат броска в основной панели (используется для серверных инициатив и т.п.)
+function applyDiceEventToMain(ev) {
+  if (!ev) return;
+
+  // подпись
+  if (diceVizKind) {
+    diceVizKind.textContent = ev.kindText || (ev.sides ? `d${ev.sides}` : "Бросок");
+  }
+
+  // значение — итог (с бонусом)
+  if (diceVizValue) {
+    diceVizValue.textContent = String(Number(ev.total) || 0);
+  }
+
+  // фишки — только "сырой" кубик (rolls)
+  const rolls = Array.isArray(ev.rolls) ? ev.rolls.map(n => Number(n) || 0) : [];
+  renderRollChips(rolls.length ? rolls : [Number(ev.total) || 0], -1, (Number(ev.sides) || null));
+
+  // крит-подсветку оставляем только для чистого d20 (без бонуса)
+  if (Number(ev.sides) === 20 && Number(ev.count) === 1 && (Number(ev.bonus) || 0) === 0 && rolls.length === 1) {
+    applyPureD20CritUI(rolls[0]);
+  } else {
+    clearCritUI();
+  }
 }
 
 function pushOtherDiceEvent(ev) {
@@ -1145,15 +1182,8 @@ endTurnBtn?.addEventListener('click', () => sendMessage({ type: 'endTurn' }));
 
 // ================== INITIATIVE ==================
 rollInitiativeBtn.addEventListener('click', async () => {
-  // 1) визуальный бросок у тебя (анимация + журнал + diceEvent для других)
-  await window.DicePanel.roll({
-    sides: 20,
-    count: 1,
-    bonus: 0,
-    kindText: 'Инициатива'
-  });
-
-  // 2) серверная логика инициативы (чтобы флаг hasRolledInitiative / порядок работали как сейчас)
+  // Инициатива считается на сервере (d20 + модификатор Ловкости).
+  // Сервер рассылает diceEvent — мы покажем его у себя в панели и у других в "Броски других".
   sendMessage({ type: 'rollInitiative' });
 });
 
