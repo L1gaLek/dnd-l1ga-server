@@ -201,7 +201,6 @@ button:hover {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  justify-content: center;
 }
 
 .next-turn-btn {
@@ -212,9 +211,10 @@ button:hover {
 }
 
 .next-turn-btn.is-active {
-  background-color: rgb(37,103,14); /* зелёный для текущего игрока */
+  /* Активная кнопка "Конец хода" (когда можно нажимать) */
+  background-color: rgb(37, 103, 14);
   color: #fff;
-  border-color: rgb(37,103,14);
+  border-color: rgb(37, 103, 14);
 }
 
 .next-turn-btn:disabled {
@@ -222,21 +222,26 @@ button:hover {
   cursor: not-allowed;
 }
 
-
-#board-column{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-}
-
-#board-column #current-turn{
-  width: 100%;
-  justify-content: center;
-}
 #board-row {
   display: flex;
   align-items: flex-start;
   gap: 12px;
+}
+
+/* Колонка с полем: ширина = ширина поля, чтобы "Текущий игрок" и настройки
+   всегда центрировались относительно самого поля, а не относительно правой панели */
+#board-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+}
+
+#board-col #current-turn,
+#board-col #board-settings {
+  width: 100%;
+  justify-content: center;
 }
 
 #right-panel {
