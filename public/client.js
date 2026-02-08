@@ -80,6 +80,9 @@ let editEnvironment = false;
 let wallMode = null;
 let mouseDown = false;
 
+let lastState = null;
+let currentTurnId = null;
+
 const playerElements = new Map();
 let finishInitiativeSent = false;
 
@@ -184,6 +187,7 @@ loginDiv.style.display = 'none';
 }
 
     if (msg.type === "init" || msg.type === "state") {
+      lastState = msg.state;
       boardWidth = msg.state.boardWidth;
       boardHeight = msg.state.boardHeight;
 
@@ -289,6 +293,8 @@ function renderLog(logs) {
 function updateCurrentPlayer(state) {
   const inCombat = (state && state.phase === 'combat');
 
+  currentTurnId = null;
+
   // по умолчанию
   if (nextTurnBtn) {
     nextTurnBtn.style.display = inCombat ? 'inline-block' : 'none';
@@ -303,6 +309,7 @@ function updateCurrentPlayer(state) {
   }
 
   const id = state.turnOrder[state.currentTurnIndex];
+  currentTurnId = id;
   const p = players.find(pl => pl.id === id);
   currentPlayerSpan.textContent = p ? p.name : '-';
 
@@ -399,6 +406,11 @@ function updatePlayerList() {
       const li = document.createElement('li');
       li.className = 'player-list-item';
 
+      // подсветка текущего хода в списке
+      if (lastState?.phase === 'combat' && currentTurnId && p.id === currentTurnId) {
+        li.classList.add('current-turn-list');
+      }
+
       const indicator = document.createElement('span');
       indicator.classList.add('placement-indicator');
       const placed = (p.x !== null && p.y !== null);
@@ -426,6 +438,32 @@ function updatePlayerList() {
       const actions = document.createElement('div');
       actions.className = 'player-actions';
 
+      // Во время фазы "Бой": если персонаж создан прямо сейчас — даём выбор инициативы (только для него)
+      if (lastState?.phase === 'combat' && p.pendingInitiativeChoice) {
+        const canChoose = (myRole === 'GM') || (p.ownerId === myId);
+
+        const rollInitBtn = document.createElement('button');
+        rollInitBtn.textContent = 'Бросить инициативу';
+        rollInitBtn.disabled = !canChoose;
+        rollInitBtn.title = canChoose ? 'd20 + модификатор Ловкости' : 'Только владелец или GM';
+        rollInitBtn.onclick = (e) => {
+          e.stopPropagation();
+          sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'roll' });
+        };
+
+        const baseInitBtn = document.createElement('button');
+        baseInitBtn.textContent = 'Инициатива основы';
+        baseInitBtn.disabled = !canChoose;
+        baseInitBtn.title = canChoose ? 'Взять инициативу "основы" владельца' : 'Только владелец или GM';
+        baseInitBtn.onclick = (e) => {
+          e.stopPropagation();
+          sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'base' });
+        };
+
+        actions.appendChild(rollInitBtn);
+        actions.appendChild(baseInitBtn);
+      }
+
       // КНОПКА "ИНФА" — теперь вызывает внешний модуль
       if (p.isBase) {
         const infoBtn = document.createElement('button');
@@ -435,6 +473,28 @@ function updatePlayerList() {
           window.InfoModal?.open?.(p);
         });
         actions.appendChild(infoBtn);
+      }
+
+      // ===== Новый игрок во время боя: выбор инициативы (только для этого нового) =====
+      if (lastState?.phase === 'combat' && p.pendingInitiativeChoice && (myRole === 'GM' || p.ownerId === myId)) {
+        const rollInitBtn = document.createElement('button');
+        rollInitBtn.textContent = 'Бросить инициативу';
+        rollInitBtn.title = 'd20 + модификатор Ловкости';
+        rollInitBtn.onclick = (e) => {
+          e.stopPropagation();
+          sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'roll' });
+        };
+
+        const baseInitBtn = document.createElement('button');
+        baseInitBtn.textContent = 'Инициатива основы';
+        baseInitBtn.title = 'Взять инициативу из персонажа "основа"';
+        baseInitBtn.onclick = (e) => {
+          e.stopPropagation();
+          sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'base' });
+        };
+
+        actions.appendChild(rollInitBtn);
+        actions.appendChild(baseInitBtn);
       }
 
       // изменение размера
