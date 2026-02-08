@@ -20,6 +20,44 @@
   <p id="loginError" style="color:red;"></p>
 </div>
 
+
+<!-- ================== ROOMS LOBBY ================== -->
+<div id="rooms-container" style="display:none;">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+    <h2 style="margin:0;">Комнаты</h2>
+    <button id="createRoomBtn">Создать комнату</button>
+  </div>
+
+  <div id="rooms-list" style="margin-top:12px;"></div>
+  <p id="roomsError" style="color:#ff6b6b; margin-top:10px;"></p>
+</div>
+
+<!-- ===== Create room modal ===== -->
+<div id="createRoomModal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Создать комнату</div>
+        <div class="modal-subtitle">Пароль необязателен</div>
+      </div>
+      <button id="createRoomClose" class="modal-close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="sheet-card" style="display:flex; flex-direction:column; gap:10px;">
+        <input id="roomNameInput" type="text" placeholder="Название комнаты">
+        <input id="roomPasswordInput" type="text" placeholder="Пароль (необязательно)">
+        <input id="roomScenarioInput" type="text" placeholder="Название сценария D&D (необязательно)">
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:6px;">
+          <button id="createRoomCancel">Отмена</button>
+          <button id="createRoomSubmit">Создать</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ================== MAIN GAME ================== -->
 <div id="main-container" style="display:none;">
 
