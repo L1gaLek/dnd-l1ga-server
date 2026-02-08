@@ -112,7 +112,7 @@ joinBtn.addEventListener('click', () => {
   if (!accountId) {
     try {
       accountId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("acc_" + Math.random().toString(16).slice(2) + Date.now());
-    } catch {
+    } catch (e) {
       accountId = "acc_" + Math.random().toString(16).slice(2) + Date.now();
     }
     localStorage.setItem("dnd_account_id", accountId);
@@ -1148,7 +1148,7 @@ if (S === 20 && C === 1 && B === 0) {
           }
         });
       }
-    } catch {}
+    } catch (e) {}
   }
 
   diceAnimBusy = false;
