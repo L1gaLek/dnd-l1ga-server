@@ -20,6 +20,44 @@
   <p id="loginError" style="color:red;"></p>
 </div>
 
+
+<!-- ================== ROOMS LOBBY ================== -->
+<div id="rooms-container" style="display:none;">
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+    <h2 style="margin:0;">Комнаты</h2>
+    <button id="createRoomBtn">Создать комнату</button>
+  </div>
+
+  <div id="rooms-list" style="margin-top:12px;"></div>
+  <p id="roomsError" style="color:#ff6b6b; margin-top:10px;"></p>
+</div>
+
+<!-- ===== Create room modal ===== -->
+<div id="createRoomModal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Создать комнату</div>
+        <div class="modal-subtitle">Пароль необязателен</div>
+      </div>
+      <button id="createRoomClose" class="modal-close">✕</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="sheet-card" style="display:flex; flex-direction:column; gap:10px;">
+        <input id="roomNameInput" type="text" placeholder="Название комнаты">
+        <input id="roomPasswordInput" type="text" placeholder="Пароль (необязательно)">
+        <input id="roomScenarioInput" type="text" placeholder="Название сценария D&D (необязательно)">
+
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:6px;">
+          <button id="createRoomCancel">Отмена</button>
+          <button id="createRoomSubmit">Создать</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ================== MAIN GAME ================== -->
 <div id="main-container" style="display:none;">
 
@@ -75,7 +113,7 @@
       </div>
     </div>
 
-    <!-- ИГРОКИ И ИНИЦИАТИВА -->
+    <!-- ПОЛЬЗОВАТЕЛИ И ПЕРСОНАЖИ -->
     <div id="player-list-container">
       <h3>Пользователи и персонажи:</h3>
       <ul id="player-list"></ul>
@@ -127,7 +165,46 @@
 <div id="dice-viz" class="dice-viz">
   <div class="dice-viz-title">Бросок</div>
 
+  <!-- Инициатива: отдельная кнопка внутри панели, НЕ выпирает -->
+  <button id="roll-initiative" class="dice-viz-btn dice-viz-btn--initiative" type="button">
+    Инициатива
+  </button>
 
+  <!-- Строка броска: кубик + количество + Бросить -->
+  <div class="dice-viz-controls">
+    <select id="dice" class="dice-viz-select" title="Выбор кубика">
+      <option value="2">d2</option>
+      <option value="4">d4</option>
+      <option value="6">d6</option>
+      <option value="8">d8</option>
+      <option value="10">d10</option>
+      <option value="12">d12</option>
+      <option value="20" selected>d20</option>
+      <option value="100">d100</option>
+    </select>
+
+    <input id="dice-count"
+           class="dice-viz-count"
+           type="number"
+           min="1"
+           max="20"
+           value="1"
+           title="Количество кубиков">
+
+    <button id="roll" class="dice-viz-btn dice-viz-btn--roll" type="button">Бросить</button>
+  </div>
+
+  <canvas id="dice-canvas" width="220" height="140"></canvas>
+
+  <div id="dice-rolls" class="dice-viz-rolls" aria-label="Результаты броска"></div>
+
+  <div class="dice-viz-meta">
+    <span id="dice-viz-kind">d20 × 1</span>
+    <span id="dice-viz-value">—</span>
+  </div>
+</div>
+
+</div><!-- /#main-container -->
 
 <!-- ================== MODAL: SHEET INFO ================== -->
 <div id="sheet-modal" class="modal-overlay hidden" aria-hidden="true">
@@ -150,53 +227,5 @@
 <script src="info-dnd-player.js" defer></script>
 <script src="client.js" defer></script>
 
-<!-- Инициатива: отдельная кнопка внутри панели, НЕ выпирает -->
-<button id="roll-initiative" class="dice-viz-btn dice-viz-btn--initiative" type="button">
-  Инициатива
-</button>
-
-<!-- Строка броска: кубик + количество + Бросить -->
-<div class="dice-viz-controls">
-  <select id="dice" class="dice-viz-select" title="Выбор кубика">
-    <option value="2">d2</option>
-    <option value="4">d4</option>
-    <option value="6">d6</option>
-    <option value="8">d8</option>
-    <option value="10">d10</option>
-    <option value="12">d12</option>
-    <option value="20" selected>d20</option>
-    <option value="100">d100</option>
-  </select>
-
-  <input id="dice-count"
-         class="dice-viz-count"
-         type="number"
-         min="1"
-         max="20"
-         value="1"
-         title="Количество кубиков">
-
-  <button id="roll" class="dice-viz-btn dice-viz-btn--roll" type="button">Бросить</button>
-</div>
-
-  <canvas id="dice-canvas" width="220" height="140"></canvas>
-
-  <div id="dice-rolls" class="dice-viz-rolls" aria-label="Результаты броска"></div>
-
-  <div class="dice-viz-meta">
-    <span id="dice-viz-kind">d20 × 1</span>
-    <span id="dice-viz-value">—</span>
-  </div>
-</div>
-  
-
 </body>
 </html>
-
-
-
-
-
-
-
-
