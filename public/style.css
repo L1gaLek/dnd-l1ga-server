@@ -195,69 +195,100 @@ button:hover {
   padding: 5px 10px;
 }
 
-/* ===== GM-only blocks ===== */
-.gm-only { display: none; }
-.gm-only.is-visible { display: block; }
-
-/* ===== Board + right panels layout ===== */
-#battle-area {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-}
-
-#right-panels {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-}
-
-#world-phases,
-#env-panel {
-  width: 240px;
-}
-
-.panel-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Current turn row + next turn button */
+/* ===== Новая правая колонка: Фазы мира + Редактирование окружения ===== */
 #current-turn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .next-turn-btn {
   padding: 6px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.18);
+  border: 1px solid #555;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 .next-turn-btn.is-active {
-  background-color: #c26a00; /* тёмно-оранжевый */
-  color: #111;
+  background-color: #b35400; /* тёмно-оранжевый */
+  color: #fff;
+  border-color: #b35400;
 }
 
 .next-turn-btn:disabled {
-  opacity: 0.55;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* Phase buttons highlight */
-.phase-btn.is-active {
-  background-color: #2e8b57;
+#board-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+#right-panel {
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.side-box {
+  border: 1px solid #444;
+  border-radius: 10px;
+  background: #141414;
+  padding: 10px;
+}
+
+.side-box h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
   color: #fff;
 }
 
-.phase-btn.is-inactive {
-  opacity: 0.85;
+.side-box button {
+  width: 100%;
+  margin: 0 0 8px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
 }
 
-/* (старые стили фаз start-initiative/start-combat удалены — теперь используются phase-* кнопки) */
+.side-box button:last-child {
+  margin-bottom: 0;
+}
+
+/* Подсветки фаз (используем классы на конкретных кнопках) */
+#start-exploration.active {
+  background-color: #2d6cdf;
+  color: white;
+}
+
+#start-initiative.active {
+  background-color: red;
+  color: white;
+}
+
+#start-initiative.ready {
+  background-color: green;
+  color: white;
+}
+
+/* Оранжевая подсветка: можно начинать бой */
+#start-combat.pending {
+  background-color: orange;
+  color: black;
+}
+
+#start-combat.ready {
+  background-color: green;
+  color: white;
+}
+
+#start-exploration.active {
+  background-color: #2e6fdd;
+  color: white;
+}
 
 /* Подсветка игрока, который сейчас ходит */
 .player.current-turn {
