@@ -2,7 +2,8 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
-const { v4: uuidv4 } = require("uuid"); // уникальные id
+const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto"); // уникальные id
 
 // ================== EXPRESS ==================
 const app = express();
@@ -56,7 +57,13 @@ setInterval(() => {
 
 
 // ================== GAME STATE ==================
-let gameState = {
+    // ================== ROOMS ==================
+    function hashPassword(pw) {
+      return crypto.createHash("sha256").update(String(pw || ""), "utf8").digest("hex");
+    }
+
+    function createInitialGameState() {
+      return {
   boardWidth: 10,
   boardHeight: 10,
   phase: "lobby",
@@ -66,6 +73,24 @@ let gameState = {
   currentTurnIndex: 0,
   log: []
 };
+    }
+
+    // roomId -> { id, name, scenario, passwordHash|null, state, usersById: Map }
+    const rooms = new Map();
+    const DEFAULT_ROOM_ID = "main";
+    rooms.set(DEFAULT_ROOM_ID, {
+      id: DEFAULT_ROOM_ID,
+      name: "Основная",
+      scenario: "",
+      passwordHash: null,
+      state: createInitialGameState(),
+      usersById: new Map()
+    });
+
+    let currentRoomId = null;
+    function getRoom(id) { return rooms.get(id) || null; }
+    function getCurrentRoom() { return currentRoomId ? getRoom(currentRoomId) : null; }
+
 
 // ================== USERS (stable identities) ==================
 // userId -> { id, name, role, connections:Set<ws>, online:boolean, lastSeen:number }
@@ -76,12 +101,15 @@ const USER_CLEANUP_MS = 10 * 60 * 1000;
 
 // ================== HELPERS ==================
 function broadcast() {
-  const msg = JSON.stringify({ type: "state", state: gameState });
+  const room = getCurrentRoom();
+  if (!room) return;
+  const msg = JSON.stringify({ type: "state", state: room.state });
   wss.clients.forEach(c => {
-    if (c.readyState === WebSocket.OPEN) c.send(msg);
+    if (c.readyState !== WebSocket.OPEN) return;
+    if (c.roomId !== room.id) return;
+    c.send(msg);
   });
 }
-
 function makeUsersPayload() {
   return Array.from(usersById.values()).map(u => ({
     id: u.id,
@@ -91,16 +119,39 @@ function makeUsersPayload() {
   }));
 }
 
+function makeRoomUsersPayload(room) {
+  return Array.from(room.usersById.values()).map(u => ({
+    id: u.id,
+    name: u.name,
+    role: u.role,
+    online: !!u.online
+  }));
+}
+
 function broadcastUsers() {
-  const msg = JSON.stringify({ type: "users", users: makeUsersPayload() });
+  const room = getCurrentRoom();
+  if (!room) return;
+  const msg = JSON.stringify({ type: "users", users: makeRoomUsersPayload(room) });
+  wss.clients.forEach(c => {
+    if (c.readyState !== WebSocket.OPEN) return;
+    if (c.roomId !== room.id) return;
+    c.send(msg);
+  });
+}
+);
   wss.clients.forEach(c => {
     if (c.readyState === WebSocket.OPEN) c.send(msg);
   });
 }
 
 function logEvent(text) {
+  const room = getCurrentRoom();
+  if (!room) return;
   const time = new Date().toLocaleTimeString();
-  gameState.log.push(`${time} — ${text}`);
+  room.state.log.push(`${time} — ${text}`);
+  if (room.state.log.length > 100) room.state.log.shift();
+}
+— ${text}`);
   if (gameState.log.length > 100) gameState.log.shift();
 }
 
@@ -131,7 +182,91 @@ function scheduleUserCleanupIfNeeded(userId) {
     if (hasAnyPlayersForUser(userId)) return; // не удаляем владельца, если есть персонажи
     usersById.delete(userId);
     broadcastUsers();
-  }, USER_CLEANUP_MS);
+  }
+
+// ===== Rooms helpers =====
+function listRoomsPayload() {
+  return Array.from(rooms.values()).map(r => ({
+    id: r.id,
+    name: r.name,
+    scenario: r.scenario || "",
+    hasPassword: !!r.passwordHash,
+    uniqueUsers: Array.from(r.usersById.values()).filter(u => u.online).length
+  }));
+}
+
+function sendRooms(ws) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({ type: "rooms", rooms: listRoomsPayload() }));
+}
+
+function broadcastRooms() {
+  const msg = JSON.stringify({ type: "rooms", rooms: listRoomsPayload() });
+  wss.clients.forEach(c => {
+    if (c.readyState === WebSocket.OPEN) c.send(msg);
+  });
+}
+
+function joinRoom(ws, roomId, password) {
+  const room = getRoom(roomId);
+  if (!room) {
+    ws.send(JSON.stringify({ type: "error", message: "Комната не найдена" }));
+    return;
+  }
+
+  if (room.passwordHash) {
+    const ok = hashPassword(password || "") === room.passwordHash;
+    if (!ok) {
+      ws.send(JSON.stringify({ type: "error", message: "Неверный пароль комнаты" }));
+      return;
+    }
+  }
+
+  // выйти из предыдущей комнаты
+  if (ws.roomId && ws.roomId !== roomId) {
+    leaveRoom(ws);
+  }
+
+  ws.roomId = roomId;
+
+  const u = getUserByWS(ws);
+  if (u) room.usersById.set(u.id, { id: u.id, name: u.name, role: u.role, online: true });
+
+  ws.send(JSON.stringify({ type: "joinedRoom", room: { id: room.id, name: room.name, scenario: room.scenario || "", hasPassword: !!room.passwordHash } }));
+
+  currentRoomId = room.id;
+  sendRooms(ws);
+  broadcastUsers();
+  broadcast();
+  currentRoomId = null;
+
+  broadcastRooms();
+}
+
+function leaveRoom(ws) {
+  if (!ws.roomId) return;
+  const room = getRoom(ws.roomId);
+  if (!room) { ws.roomId = null; return; }
+
+  const u = getUserByWS(ws);
+  if (u && room.usersById.has(u.id)) {
+    const ru = room.usersById.get(u.id);
+    ru.online = false;
+    room.usersById.set(u.id, ru);
+  }
+
+  const oldRoomId = ws.roomId;
+  ws.roomId = null;
+
+  currentRoomId = oldRoomId;
+  broadcastUsers();
+  broadcast();
+  currentRoomId = null;
+
+  broadcastRooms();
+}
+
+, USER_CLEANUP_MS);
 }
 
 // ================== WS HANDLERS ==================
@@ -144,9 +279,27 @@ wss.on("connection", ws => {
   ws.send(JSON.stringify({ type: "init", state: gameState }));
 
   ws.on("message", msg => {
-    let data;
-    try { data = JSON.parse(msg); } catch { return; }
+  let data;
+  try { data = JSON.parse(msg); } catch { return; }
 
+  const lobbyTypes = new Set(["register","listRooms","createRoom","joinRoom","leaveRoom"]);
+  let gameState = null;
+
+  if (!lobbyTypes.has(data.type)) {
+    if (!ws.roomId) {
+      ws.send(JSON.stringify({ type: "error", message: "Сначала войдите в комнату" }));
+      return;
+    }
+    const room = getRoom(ws.roomId);
+    if (!room) {
+      ws.send(JSON.stringify({ type: "error", message: "Комната не найдена" }));
+      return;
+    }
+    currentRoomId = room.id;
+    gameState = room.state;
+  }
+
+  try {
     switch (data.type) {
 
       // ================= РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЯ =================
@@ -194,7 +347,7 @@ wss.on("connection", ws => {
         ws.send(JSON.stringify({ type: "registered", id: user.id, role: user.role, name: user.name }));
 
         // 🔑 ПОЛНАЯ СИНХРОНИЗАЦИЯ ТОЛЬКО ЭТОМУ КЛИЕНТУ
-        sendFullSync(ws);
+        sendRooms(ws);
 
         broadcastUsers();
         broadcast();
@@ -202,7 +355,63 @@ wss.on("connection", ws => {
         break;
       }
 
-      // ================= ИГРОВОЙ ЛОГИК =================
+      
+
+// ================= ROOMS: LOBBY =================
+case "listRooms": {
+  sendRooms(ws);
+  break;
+}
+
+case "createRoom": {
+  const u = getUserByWS(ws);
+  if (!u) {
+    ws.send(JSON.stringify({ type: "error", message: "Сначала войдите в игру" }));
+    return;
+  }
+
+  const name = String(data.name || "").trim();
+  const password = String(data.password || "");
+  const scenario = String(data.scenario || "").trim();
+
+  if (!name) {
+    ws.send(JSON.stringify({ type: "error", message: "Название комнаты обязательно" }));
+    return;
+  }
+
+  const id = "r_" + uuidv4().slice(0, 8);
+  rooms.set(id, {
+    id,
+    name,
+    scenario,
+    passwordHash: password ? hashPassword(password) : null,
+    state: createInitialGameState(),
+    usersById: new Map()
+  });
+
+  broadcastRooms();
+  // авто-вход создателя
+  joinRoom(ws, id, password);
+  break;
+}
+
+case "joinRoom": {
+  const roomId = String(data.roomId || "").trim();
+  const password = String(data.password || "");
+  if (!roomId) {
+    ws.send(JSON.stringify({ type: "error", message: "roomId обязателен" }));
+    return;
+  }
+  joinRoom(ws, roomId, password);
+  break;
+}
+
+case "leaveRoom": {
+  leaveRoom(ws);
+  sendRooms(ws);
+  break;
+}
+// ================= ИГРОВОЙ ЛОГИК =================
       case "resizeBoard":
         if (!isGM(ws)) return;
 
@@ -537,31 +746,62 @@ case "diceEvent": {
         logEvent("Поле очищено: стены удалены, все персонажи убраны с поля");
         broadcast();
         break;
+      }
+    } finally {
+      currentRoomId = null;
     }
   });
 
   ws.on("close", () => {
-    const user = getUserByWS(ws);
-    if (user) {
-      user.connections.delete(ws);
-      user.lastSeen = Date.now();
-      if (user.connections.size === 0) {
-        user.online = false;
-        scheduleUserCleanupIfNeeded(user.id);
-      }
+  // отметим оффлайн в комнате, если был
+  if (ws.roomId) {
+    const room = getRoom(ws.roomId);
+    const u = getUserByWS(ws);
+    if (room && u && room.usersById.has(u.id)) {
+      const ru = room.usersById.get(u.id);
+      ru.online = false;
+      room.usersById.set(u.id, ru);
+      currentRoomId = room.id;
+      broadcastUsers();
+      broadcast();
+      currentRoomId = null;
     }
+    ws.roomId = null;
+  }
 
-    broadcastUsers();
-    broadcast();
-  });
+  const user = getUserByWS(ws);
+  if (user) {
+    user.connections.delete(ws);
+    user.lastSeen = Date.now();
+
+    if (user.connections.size === 0) {
+      user.online = false;
+      scheduleUserCleanupIfNeeded(user.id);
+    }
+  }
+
+  broadcastRooms();
+});
 });
 function sendFullSync(ws) {
   if (ws.readyState !== WebSocket.OPEN) return;
 
-  ws.send(JSON.stringify({
-    type: "init",
-    state: gameState
-  }));
+  if (!ws.roomId) {
+    sendRooms(ws);
+    return;
+  }
+
+  const room = getRoom(ws.roomId);
+  if (!room) {
+    ws.send(JSON.stringify({ type: "error", message: "Комната не найдена" }));
+    return;
+  }
+
+  ws.send(JSON.stringify({ type: "init", state: room.state }));
+  ws.send(JSON.stringify({ type: "users", users: makeRoomUsersPayload(room) }));
+  sendRooms(ws);
+}
+));
 
   ws.send(JSON.stringify({
     type: "users",
