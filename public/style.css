@@ -64,9 +64,12 @@ body {
   overflow-x: hidden;
 }
 
-#action-log h3, #player-list-container h3 {
+#action-log h3,
+#player-management h3,
+#player-list-container h3 {
   margin-top: 0;
   color: #fff;
+  font-size: 13px;
 }
 
 #action-log ul, #player-list {
