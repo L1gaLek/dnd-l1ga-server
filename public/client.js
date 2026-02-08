@@ -1365,6 +1365,23 @@ function renderRooms(rooms) {
   });
 }
 
+
+function getOrCreateUserId() {
+  let id = localStorage.getItem("dnd_user_id");
+  if (!id) {
+    // UUID v4 без библиотек
+    id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+    localStorage.setItem("dnd_user_id", id);
+  }
+  return id;
+}
+const userId = getOrCreateUserId();
+
+
 function openCreateRoomModal() {
   roomNameInput.value = '';
   roomPasswordInput.value = '';
@@ -1393,3 +1410,4 @@ if (createRoomSubmit) createRoomSubmit.addEventListener('click', () => {
   sendMessage({ type: 'createRoom', name, password, scenario });
   closeCreateRoomModal();
 });
+
