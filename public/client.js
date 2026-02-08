@@ -480,34 +480,6 @@ function updatePlayerList() {
         actions.appendChild(infoBtn);
       }
 
-      // ===== Новый игрок во время боя: выбор инициативы (только для этого нового) =====
-      if (lastState && lastState.phase === 'combat' && p.pendingInitiativeChoice && (myRole === 'GM' || p.ownerId === myId)) {
-        const box = document.createElement('div');
-        box.className = 'init-choice-box';
-
-        const rollInitBtn = document.createElement('button');
-        rollInitBtn.className = 'init-choice-btn';
-        rollInitBtn.textContent = 'Бросить инициативу';
-        rollInitBtn.title = 'd20 + модификатор Ловкости';
-        rollInitBtn.onclick = (e) => {
-          e.stopPropagation();
-          sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'roll' });
-        };
-
-        const baseInitBtn = document.createElement('button');
-        baseInitBtn.className = 'init-choice-btn';
-        baseInitBtn.textContent = 'Инициатива основы';
-        baseInitBtn.title = 'Взять инициативу из персонажа "основа"';
-        baseInitBtn.onclick = (e) => {
-          e.stopPropagation();
-          sendMessage({ type: 'combatInitChoice', id: p.id, choice: 'base' });
-        };
-
-        box.appendChild(rollInitBtn);
-        box.appendChild(baseInitBtn);
-        actions.appendChild(box);
-      }
-
       // изменение размера
       if (myRole === "GM" || p.ownerId === myId) {
         const sizeSelect = document.createElement('select');
@@ -1184,6 +1156,11 @@ endTurnBtn?.addEventListener('click', () => sendMessage({ type: 'endTurn' }));
 rollInitiativeBtn.addEventListener('click', async () => {
   // Инициатива считается на сервере (d20 + модификатор Ловкости).
   // Сервер рассылает diceEvent — мы покажем его у себя в панели и у других в "Броски других".
+  // UX: сразу показываем визуальную "заглушку" в панели броска, чтобы действие было видно мгновенно.
+  clearCritUI();
+  renderRollChips([null], -1, 20);
+  if (diceVizKind) diceVizKind.textContent = 'Инициатива: d20';
+  if (diceVizValue) diceVizValue.textContent = '…';
   sendMessage({ type: 'rollInitiative' });
 });
 
