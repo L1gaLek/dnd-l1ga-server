@@ -2046,10 +2046,7 @@ textarea[data-sheet-path="text.profPlain.value"]{
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px;
-  border-radius: 12px;
-  border: 2px solid rgba(255,165,0,0.75);
-  background: rgba(0,0,0,0.12);
+  padding: 0;
   margin-bottom: 6px;
 }
 
