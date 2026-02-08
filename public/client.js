@@ -70,6 +70,7 @@ const envEditorBox = document.getElementById('env-editor');
 let ws;
 let myId;
 let myRole;
+let myAccountId;
 let currentRoomId = null;
 let players = [];
 let lastState = null;
@@ -106,7 +107,18 @@ joinBtn.addEventListener('click', () => {
   const savedUserRole = localStorage.getItem("dnd_user_role") || "";
   const userIdToSend = (savedUserId && savedUserRole === role) ? savedUserId : "";
 
-  ws.onopen = () => ws.send(JSON.stringify({ type: "register", userId: userIdToSend, name, role }));
+  // ✅ Постоянный accountId (не зависит от имени входа). Это "я на этом браузере".
+  let accountId = localStorage.getItem("dnd_account_id") || "";
+  if (!accountId) {
+    try {
+      accountId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("acc_" + Math.random().toString(16).slice(2) + Date.now());
+    } catch {
+      accountId = "acc_" + Math.random().toString(16).slice(2) + Date.now();
+    }
+    localStorage.setItem("dnd_account_id", accountId);
+  }
+
+  ws.onopen = () => ws.send(JSON.stringify({ type: "register", userId: userIdToSend, accountId, name, role }));
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
@@ -130,6 +142,8 @@ if (msg.type === 'joinedRoom' && msg.room) {
 
 if (msg.type === "registered") {
       myId = msg.id;
+      myAccountId = msg.accountId || myAccountId || localStorage.getItem("dnd_account_id") || "";
+      if (myAccountId) localStorage.setItem("dnd_account_id", String(myAccountId));
       localStorage.setItem("dnd_user_id", String(msg.id));
       localStorage.setItem("dnd_user_role", String(msg.role || ""));
 myRole = msg.role;
@@ -156,6 +170,7 @@ loginDiv.style.display = 'none';
         window.InfoModal.init({
           sendMessage,
           getMyId: () => myId,
+          getMyAccountId: () => myAccountId,
           getMyRole: () => myRole
         });
       }
@@ -237,6 +252,33 @@ loginDiv.style.display = 'none';
     if (msg.type === "baseSheetLoaded") {
       if (!msg.ok) alert(msg.message || "Не удалось загрузить основу ❌");
       else alert("Основа загружена ✅ (сейчас обновится)");
+      return;
+    }
+
+    if (msg.type === "baseSheetsList") {
+      if (!msg.ok) {
+        alert(msg.message || "Не удалось получить список сохранений ❌");
+        return;
+      }
+      const items = Array.isArray(msg.items) ? msg.items : [];
+      if (typeof window.showBaseSheetsPicker === "function") {
+        window.showBaseSheetsPicker(items, (saveId) => {
+          const targetId = window.__baseLoadTargetPlayerId || null;
+          if (!targetId) return;
+          sendMessage({ type: "loadBaseSheetById", id: targetId, saveId });
+        });
+      } else {
+        // fallback: обычный prompt
+        const names = items.map((it, i) => `${i+1}) ${it.name}`).join("
+");
+        const ans = prompt("Выберите персонажа для загрузки:
+" + (names || "(пусто)"));
+        const n = parseInt(ans, 10);
+        if (!isNaN(n) && items[n-1]) {
+          const targetId = window.__baseLoadTargetPlayerId || null;
+          if (targetId) sendMessage({ type: "loadBaseSheetById", id: targetId, saveId: items[n-1].id });
+        }
+      }
       return;
     }
 };
