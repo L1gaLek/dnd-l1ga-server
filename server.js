@@ -184,15 +184,19 @@ function scheduleUserCleanupIfNeeded(userId) {
 }
 // ===== Rooms helpers =====
 function listRoomsPayload() {
-  return Array.from(rooms.values()).map(r => ({
-    id: r.id,
-    name: r.name,
-    scenario: r.scenario || "",
-    hasPassword: !!r.passwordHash,
-    uniqueUsers: Array.from(r.usersById.values()).filter(u => u.online).length
-  }));
+  return Array.from(rooms.values()).map(r => {
+    const onlineUsers = Array.from(r.usersById.values()).filter(u => u && u.online);
+    const hasGMOnline = onlineUsers.some(u => u.role === "GM");
+    return {
+      id: r.id,
+      name: r.name,
+      scenario: r.scenario || "",
+      hasPassword: !!r.passwordHash,
+      uniqueUsers: onlineUsers.length,
+      hasGMOnline
+    };
+  });
 }
-
 function sendRooms(ws) {
   if (ws.readyState !== WebSocket.OPEN) return;
   ws.send(JSON.stringify({ type: "rooms", rooms: listRoomsPayload() }));
@@ -244,7 +248,7 @@ if (u && u.role === "GM") {
   ws.send(JSON.stringify({ type: "joinedRoom", room: { id: room.id, name: room.name, scenario: room.scenario || "", hasPassword: !!room.passwordHash } }));
 
   currentRoomId = room.id;
-  sendRooms(ws);
+  sendFullSync(ws);
   broadcastUsers();
   broadcast();
   currentRoomId = null;
