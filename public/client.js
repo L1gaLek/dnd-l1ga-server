@@ -449,6 +449,7 @@ function updatePlayerList() {
         const rollInitBtn = document.createElement('button');
         rollInitBtn.className = 'init-choice-btn';
         rollInitBtn.textContent = 'Бросить инициативу';
+        rollInitBtn.classList.add('mini-action-btn');
         rollInitBtn.title = 'd20 + модификатор Ловкости';
         rollInitBtn.onclick = (e) => {
           e.stopPropagation();
@@ -458,6 +459,7 @@ function updatePlayerList() {
         const baseInitBtn = document.createElement('button');
         baseInitBtn.className = 'init-choice-btn';
         baseInitBtn.textContent = 'Инициатива основы';
+        baseInitBtn.classList.add('mini-action-btn');
         baseInitBtn.title = 'Взять инициативу из персонажа "основа" владельца';
         baseInitBtn.onclick = (e) => {
           e.stopPropagation();
@@ -709,12 +711,16 @@ function ensureOthersDiceUI() {
 }
 
 // показываем результат броска в основной панели (используется для серверных инициатив и т.п.)
-function applyDiceEventToMain(ev) {
+async function applyDiceEventToMain(ev) {
   if (!ev) return;
+
+  const sides = Number(ev.sides) || null;
+  const count = Number(ev.count) || 1;
+  const bonus = Number(ev.bonus) || 0;
 
   // подпись
   if (diceVizKind) {
-    diceVizKind.textContent = ev.kindText || (ev.sides ? `d${ev.sides}` : "Бросок");
+    diceVizKind.textContent = ev.kindText || (sides ? `d${sides}` : "Бросок");
   }
 
   // значение — итог (с бонусом)
@@ -724,10 +730,22 @@ function applyDiceEventToMain(ev) {
 
   // фишки — только "сырой" кубик (rolls)
   const rolls = Array.isArray(ev.rolls) ? ev.rolls.map(n => Number(n) || 0) : [];
-  renderRollChips(rolls.length ? rolls : [Number(ev.total) || 0], -1, (Number(ev.sides) || null));
+  renderRollChips(rolls.length ? rolls : [Number(ev.total) || 0], -1, sides);
+
+  // анимация кубика (как при обычном "Бросить")
+  if (!diceAnimBusy && diceCtx && diceCanvas && sides && rolls.length) {
+    diceAnimBusy = true;
+    try {
+      for (const r of rolls) {
+        await animateSingleRoll(sides, r);
+      }
+    } finally {
+      diceAnimBusy = false;
+    }
+  }
 
   // крит-подсветку оставляем только для чистого d20 (без бонуса)
-  if (Number(ev.sides) === 20 && Number(ev.count) === 1 && (Number(ev.bonus) || 0) === 0 && rolls.length === 1) {
+  if (sides === 20 && count === 1 && bonus === 0 && rolls.length === 1) {
     applyPureD20CritUI(rolls[0]);
   } else {
     clearCritUI();
