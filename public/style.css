@@ -313,12 +313,6 @@ button:hover {
   box-shadow: 0 0 12px rgba(255, 165, 0, 0.8);
 }
 
-/* Подсветка в списке "Пользователи и персонажи" */
-.player-list-item.current-turn-list {
-  border-color: orange !important;
-  box-shadow: 0 0 10px rgba(255, 165, 0, 0.35);
-}
-
 /* Если персонаж одновременно "ходит" и "выбран", приоритет у выбора (жёлтый) */
 .player.selected.current-turn {
   outline: 4px solid yellow;
@@ -2046,6 +2040,37 @@ textarea[data-sheet-path="text.profPlain.value"]{
 }
 
 .dice-viz-btn:disabled{ opacity: .55; cursor: not-allowed; }
+
+/* ===== Initiative choice (new player during combat) ===== */
+.init-choice-box{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 2px solid rgba(255,165,0,0.75);
+  background: rgba(0,0,0,0.12);
+  margin-bottom: 6px;
+}
+
+.init-choice-btn{
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255,165,0,0.75);
+  background: rgba(255,165,0,0.12);
+  color: #fff;
+  padding: 8px 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.init-choice-btn:disabled{ opacity: .55; cursor: not-allowed; }
+
+/* ===== Current turn highlight in "Пользователи и персонажи" ===== */
+.player-list-item.is-current-turn{
+  outline: 2px solid rgba(255,165,0,0.9);
+  box-shadow: 0 0 0 2px rgba(255,165,0,0.18);
+}
 
 #dice-canvas{
   width: 250px;
