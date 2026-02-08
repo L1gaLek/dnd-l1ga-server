@@ -220,15 +220,26 @@ function joinRoom(ws, roomId, password) {
     }
   }
 
-  // выйти из предыдущей комнаты
+  
+// ===== правило: в комнате может быть только один GM =====
+const u = getUserByWS(ws);
+if (u && u.role === "GM") {
+  const existingOnlineGM = Array.from(room.usersById.values()).some(x =>
+    x && x.role === "GM" && x.online && x.id !== u.id
+  );
+  if (existingOnlineGM) {
+    ws.send(JSON.stringify({ type: "error", message: "В этой комнате уже есть GM" }));
+    return;
+  }
+}
+
+// выйти из предыдущей комнаты
   if (ws.roomId && ws.roomId !== roomId) {
     leaveRoom(ws);
   }
 
   ws.roomId = roomId;
-
-  const u = getUserByWS(ws);
-  if (u) room.usersById.set(u.id, { id: u.id, name: u.name, role: u.role, online: true });
+      if (u) room.usersById.set(u.id, { id: u.id, name: u.name, role: u.role, online: true });
 
   ws.send(JSON.stringify({ type: "joinedRoom", room: { id: room.id, name: room.name, scenario: room.scenario || "", hasPassword: !!room.passwordHash } }));
 
@@ -313,13 +324,6 @@ wss.on("connection", ws => {
         let user = requestedId ? usersById.get(requestedId) : null;
 
         if (!user) {
-          // Только один GM (но переподключение к существующему GM разрешено выше)
-          const gmExists = Array.from(usersById.values()).some(u => u.role === "GM");
-          if (role === "GM" && gmExists) {
-            ws.send(JSON.stringify({ type: "error", message: "GM уже существует" }));
-            return;
-          }
-
           const id = uuidv4();
           user = {
             id,
