@@ -271,8 +271,8 @@ wss.on("connection", ws => {
   ws.isAlive = true;
   ws.on("pong", () => { ws.isAlive = true; });
 
-  // Инициализация у нового клиента
-  ws.send(JSON.stringify({ type: "init", state: gameState }));
+  // Клиент подключился: сначала лобби комнат
+  sendRooms(ws);
 
   ws.on("message", msg => {
   let data;
