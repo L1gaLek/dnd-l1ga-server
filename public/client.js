@@ -5,6 +5,23 @@ const usernameInput = document.getElementById('username');
 const roleSelect = document.getElementById('role');
 const loginError = document.getElementById('loginError');
 
+
+
+// ===== Rooms lobby UI =====
+const roomsDiv = document.getElementById('rooms-container');
+const roomsList = document.getElementById('rooms-list');
+const roomsError = document.getElementById('roomsError');
+
+const createRoomBtn = document.getElementById('createRoomBtn');
+const createRoomModal = document.getElementById('createRoomModal');
+const createRoomClose = document.getElementById('createRoomClose');
+const createRoomCancel = document.getElementById('createRoomCancel');
+const createRoomSubmit = document.getElementById('createRoomSubmit');
+
+const roomNameInput = document.getElementById('roomNameInput');
+const roomPasswordInput = document.getElementById('roomPasswordInput');
+const roomScenarioInput = document.getElementById('roomScenarioInput');
+
 const gameUI = document.getElementById('main-container');
 const myNameSpan = document.getElementById('myName');
 const myRoleSpan = document.getElementById('myRole');
@@ -79,15 +96,29 @@ joinBtn.addEventListener('click', () => {
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
 
-    if (msg.type === "registered") {
+    
+
+// ===== Rooms lobby messages =====
+if (msg.type === 'rooms' && Array.isArray(msg.rooms)) {
+  renderRooms(msg.rooms);
+}
+if (msg.type === 'joinedRoom' && msg.room) {
+  roomsDiv.style.display = 'none';
+  gameUI.style.display = 'block';
+}
+
+if (msg.type === "registered") {
       myId = msg.id;
       localStorage.setItem("dnd_user_id", String(msg.id));
       myRole = msg.role;
       myNameSpan.textContent = msg.name;
       myRoleSpan.textContent = msg.role;
 
-      loginDiv.style.display = "none";
-      gameUI.style.display = "block";
+      loginDiv.style.display = 'none';
+      roomsDiv.style.display = 'block';
+      gameUI.style.display = 'none';
+      roomsError.textContent = '';
+      sendMessage({ type: 'listRooms' });
 
       setupRoleUI(myRole);
 
@@ -1044,3 +1075,89 @@ function updatePhaseUI(state) {
 
 
 
+
+
+// ================== ROOMS LOBBY UI ==================
+function renderRooms(rooms) {
+  if (!roomsList) return;
+  roomsError.textContent = '';
+  roomsList.innerHTML = '';
+
+  if (!rooms.length) {
+    roomsList.textContent = 'Комнат пока нет.';
+    return;
+  }
+
+  rooms.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'sheet-card';
+    card.style.marginBottom = '10px';
+    card.style.display = 'flex';
+    card.style.alignItems = 'center';
+    card.style.justifyContent = 'space-between';
+    card.style.gap = '12px';
+
+    const left = document.createElement('div');
+    left.style.minWidth = '0';
+
+    const title = document.createElement('div');
+    title.style.fontWeight = '900';
+    title.textContent = r.name;
+
+    const meta = document.createElement('div');
+    meta.style.fontSize = '12px';
+    meta.style.color = '#aaa';
+    meta.textContent =
+      `Пользователей: ${r.uniqueUsers} • Пароль: ${r.hasPassword ? 'да' : 'нет'}`
+      + (r.scenario ? ` • Сценарий: ${r.scenario}` : '');
+
+    left.appendChild(title);
+    left.appendChild(meta);
+
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.gap = '8px';
+
+    const joinBtn2 = document.createElement('button');
+    joinBtn2.textContent = 'Войти';
+    joinBtn2.onclick = () => {
+      const pw = r.hasPassword ? prompt('Пароль комнаты:') : '';
+      sendMessage({ type: 'joinRoom', roomId: r.id, password: pw || '' });
+    };
+
+    right.appendChild(joinBtn2);
+    card.appendChild(left);
+    card.appendChild(right);
+
+    roomsList.appendChild(card);
+  });
+}
+
+function openCreateRoomModal() {
+  roomNameInput.value = '';
+  roomPasswordInput.value = '';
+  roomScenarioInput.value = '';
+  createRoomModal.classList.remove('hidden');
+}
+
+function closeCreateRoomModal() {
+  createRoomModal.classList.add('hidden');
+}
+
+if (createRoomBtn) createRoomBtn.addEventListener('click', openCreateRoomModal);
+if (createRoomClose) createRoomClose.addEventListener('click', closeCreateRoomModal);
+if (createRoomCancel) createRoomCancel.addEventListener('click', closeCreateRoomModal);
+
+if (createRoomSubmit) createRoomSubmit.addEventListener('click', () => {
+  const name = roomNameInput.value.trim();
+  const password = roomPasswordInput.value || '';
+  const scenario = roomScenarioInput.value.trim();
+
+  if (!name) {
+    roomsError.textContent = 'Введите название комнаты';
+    return;
+  }
+
+  sendMessage({ type: 'createRoom', name, password, scenario });
+  closeCreateRoomModal();
+});
