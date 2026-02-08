@@ -58,7 +58,7 @@
     try {
       const raw = path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj);
       return v(raw, fallback);
-    } catch (e) {
+    } catch {
       return fallback;
     }
   }
@@ -631,7 +631,7 @@ function bindLanguagesUi(root, player, canEdit) {
         try {
           const exInput = sheetContent?.querySelector('[data-sheet-path="exhaustion"]');
           if (exInput && exInput instanceof HTMLInputElement) exInput.value = String(lvl);
-        } catch (e) {}
+        } catch {}
 
         markModalInteracted(player.id);
         scheduleSheetSave(player);
@@ -698,7 +698,7 @@ function bindLanguagesUi(root, player, canEdit) {
           if (input && input instanceof HTMLInputElement) input.value = sheet.conditions || "";
           const condChip = sheetContent?.querySelector('[data-cond-open]');
           if (condChip) condChip.classList.toggle('has-value', !!String(sheet.conditions || '').trim());
-        } catch (e) {}
+        } catch {}
         return;
       }
 
@@ -733,7 +733,7 @@ function bindLanguagesUi(root, player, canEdit) {
           if (input && input instanceof HTMLInputElement) input.value = sheet.conditions || "";
           const condChip = sheetContent?.querySelector('[data-cond-open]');
           if (condChip) condChip.classList.toggle('has-value', !!String(sheet.conditions || '').trim());
-        } catch (e) {}
+        } catch {}
         return;
       }
     });
@@ -933,7 +933,7 @@ function ensureWiredCloseHandlers() {
     // Charbox LSS: outer.data — строка JSON
     let inner = null;
     if (outer && typeof outer.data === 'string') {
-      try { inner = JSON.parse(outer.data); } catch (e) { inner = null; }
+      try { inner = JSON.parse(outer.data); } catch { inner = null; }
     }
 
     return {
@@ -1520,7 +1520,7 @@ const weapons = weaponsRaw
 
   function getByPath(obj, path) {
     try { return path.split('.').reduce((acc, k) => (acc ? acc[k] : undefined), obj); }
-    catch (e) { return undefined; }
+    catch { return undefined; }
   }
 
   function scheduleSheetSave(player) {
@@ -1921,7 +1921,7 @@ function bindEditableInputs(root, player, canEdit) {
         const pNow = getOpenedPlayerSafe();
         if (pNow?.sheet?.parsed) syncHpPopupInputs(pNow.sheet.parsed);
       }
-    } catch (e) {}
+    } catch {}
 
 // live updates
 if (path === "proficiency" || path === "proficiencyCustom") {
@@ -1929,7 +1929,7 @@ if (path === "proficiency" || path === "proficiencyCustom") {
   updateSkillsAndPassives(root, player.sheet.parsed);
   try {
     ["str","dex","con","int","wis","cha"].forEach(k => updateDerivedForStat(root, player.sheet.parsed, k));
-  } catch (e) {}
+  } catch {}
 
   // обновить подсказку у кружков спасбросков
   root.querySelectorAll('.lss-save-dot[data-save-key]').forEach(d => {
@@ -2510,7 +2510,7 @@ function bindSlotEditors(root, player, canEdit) {
               }
             });
           }
-        } catch (e) {}
+        } catch {}
 
         // если бросок был из конкретного заклинания — тратим 1 ячейку соответствующего уровня (кроме заговоров)
         if (rollSpellBtn && lvl > 0) {
@@ -2601,7 +2601,7 @@ function normalizeDndSuUrl(url) {
     let href = parsed.href;
     if (!href.endsWith("/")) href += "/";
     return href;
-  } catch (e) {
+  } catch {
     return "";
   }
 }
@@ -2668,7 +2668,7 @@ function extractSpellFromHtml(html) {
         desc = (wrap.innerText || wrap.textContent || "");
       }
     }
-  } catch (e) {
+  } catch {
     name = name || "";
     desc = desc || "";
   }
@@ -2796,10 +2796,10 @@ function parseSpellClassesFromHtml(html) {
           if (seen.has(val)) return;
           seen.add(val);
           out.push({ value: val, label, url: `https://dnd.su/spells/?class=${encodeURIComponent(val)}` });
-        } catch (e) {}
+        } catch {}
       });
     }
-  } catch (e) {}
+  } catch {}
 
   // уникализация
   const uniq = new Map();
@@ -2836,7 +2836,7 @@ function normalizeAnyUrlToAbs(href) {
     let s = u.href;
     if (!s.endsWith("/")) s += "/";
     return s;
-  } catch (e) {
+  } catch {
     return "";
   }
 }
@@ -2876,7 +2876,7 @@ function parseSpellsFromClassHtml(html) {
       seen.add(abs);
       spells.push({ name, href: abs, level: lvl });
     }
-  } catch (e) {}
+  } catch {}
 
   // сорт: сначала по level (0..9..unknown), затем по имени
   const lvlKey = (x) => (x.level == null ? 99 : x.level);
@@ -4194,8 +4194,7 @@ function renderCombatTab(vm) {
 
     const myRole = ctx.getMyRole?.();
     const myId = ctx.getMyId?.();
-    const myAccountId = ctx.getMyAccountId?.();
-    const canEdit = (myRole === "GM" || String(player.ownerId) === String(myId) || (myAccountId && String(player.ownerId) === String(myAccountId)));
+    const canEdit = (myRole === "GM" || String(player.ownerId) === String(myId));
     lastCanEdit = !!canEdit;
 
     sheetTitle.textContent = `Инфа: ${player.name}`;
@@ -4212,40 +4211,6 @@ function renderCombatTab(vm) {
     sheetActions.appendChild(note);
 
     if (canEdit) {
-      // ===== Persist buttons: save/load base sheet =====
-      const persistRow = document.createElement('div');
-      persistRow.style.display = 'flex';
-      persistRow.style.gap = '8px';
-      persistRow.style.flexWrap = 'wrap';
-      persistRow.style.margin = '8px 0 10px';
-
-      const btnSave = document.createElement('button');
-      btnSave.type = 'button';
-      btnSave.textContent = 'Сохранить основу';
-      btnSave.addEventListener('click', () => {
-        ctx.sendMessage({ type: "saveBaseSheet", id: player.id });
-        const tmp = document.createElement('div');
-        tmp.className = 'sheet-note';
-        tmp.textContent = "Сохраняю основу…";
-        sheetActions.appendChild(tmp);
-      });
-
-      const btnLoad = document.createElement('button');
-      btnLoad.type = 'button';
-      btnLoad.textContent = 'Загрузить основу';
-      btnLoad.addEventListener('click', () => {
-        window.__baseLoadTargetPlayerId = player.id;
-        ctx.sendMessage({ type: "listBaseSheets" });
-        const tmp = document.createElement('div');
-        tmp.className = 'sheet-note';
-        tmp.textContent = "Загружаю основу…";
-        sheetActions.appendChild(tmp);
-      });
-
-      persistRow.appendChild(btnSave);
-      persistRow.appendChild(btnLoad);
-      sheetActions.appendChild(persistRow);
-
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
       fileInput.accept = '.json,application/json';
@@ -4452,124 +4417,6 @@ function renderCombatTab(vm) {
     const pl = players.find(x => x.id === openedSheetPlayerId);
     if (pl) renderSheetModal(pl);
   }
-
-
-  // ===== Persist: picker modal for saved base sheets =====
-  // items: [{id,name,updatedAt}]
-  // onPick(saveId)
-  window.showBaseSheetsPicker = function(items, onPick) {
-    try {
-      // remove existing
-      const existing = document.getElementById("baseSheetsPickerOverlay");
-      if (existing) existing.remove();
-
-      const overlay = document.createElement("div");
-      overlay.id = "baseSheetsPickerOverlay";
-      overlay.style.position = "fixed";
-      overlay.style.inset = "0";
-      overlay.style.background = "rgba(0,0,0,0.55)";
-      overlay.style.zIndex = "99999";
-      overlay.style.display = "flex";
-      overlay.style.alignItems = "center";
-      overlay.style.justifyContent = "center";
-      overlay.addEventListener("click", (e) => {
-        if (e.target === overlay) overlay.remove();
-      });
-
-      const box = document.createElement("div");
-      box.style.width = "min(720px, calc(100vw - 24px))";
-      box.style.maxHeight = "min(70vh, 520px)";
-      box.style.overflow = "auto";
-      box.style.background = "#1f1f1f";
-      box.style.border = "1px solid rgba(255,255,255,0.12)";
-      box.style.borderRadius = "12px";
-      box.style.padding = "14px";
-      box.style.boxShadow = "0 12px 40px rgba(0,0,0,0.45)";
-
-      const title = document.createElement("div");
-      title.style.fontSize = "16px";
-      title.style.fontWeight = "700";
-      title.style.marginBottom = "10px";
-      title.textContent = "Выберите сохранённого персонажа";
-      box.appendChild(title);
-
-      const hint = document.createElement("div");
-      hint.style.opacity = "0.85";
-      hint.style.fontSize = "12px";
-      hint.style.marginBottom = "10px";
-      hint.textContent = items && items.length ? "Нажмите «Загрузить» напротив нужного персонажа." : "Сохранений пока нет. Сначала нажмите «Сохранить основу» у текущего персонажа.";
-      box.appendChild(hint);
-
-      const list = document.createElement("div");
-      list.style.display = "flex";
-      list.style.flexDirection = "column";
-      list.style.gap = "8px";
-
-      const fmt = (ms) => {
-        try {
-          const d = new Date(ms);
-          return d.toLocaleString();
-        } catch (e) { return ""; }
-      };
-
-      (items || []).forEach((it) => {
-        const row = document.createElement("div");
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.justifyContent = "space-between";
-        row.style.gap = "10px";
-        row.style.padding = "10px";
-        row.style.border = "1px solid rgba(255,255,255,0.10)";
-        row.style.borderRadius = "10px";
-        row.style.background = "rgba(255,255,255,0.04)";
-
-        const left = document.createElement("div");
-        const nm = document.createElement("div");
-        nm.style.fontWeight = "700";
-        nm.textContent = it.name || "Без имени";
-        const meta = document.createElement("div");
-        meta.style.fontSize = "12px";
-        meta.style.opacity = "0.8";
-        meta.textContent = it.updatedAt ? ("Обновлено: " + fmt(it.updatedAt)) : "";
-        left.appendChild(nm);
-        left.appendChild(meta);
-
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.textContent = "Загрузить";
-        btn.addEventListener("click", () => {
-          overlay.remove();
-          if (typeof onPick === "function") onPick(it.id);
-        });
-
-        row.appendChild(left);
-        row.appendChild(btn);
-        list.appendChild(row);
-      });
-
-      box.appendChild(list);
-
-      const bottom = document.createElement("div");
-      bottom.style.display = "flex";
-      bottom.style.justifyContent = "flex-end";
-      bottom.style.marginTop = "12px";
-
-      const closeBtn = document.createElement("button");
-      closeBtn.type = "button";
-      closeBtn.textContent = "Закрыть";
-      closeBtn.addEventListener("click", () => overlay.remove());
-      bottom.appendChild(closeBtn);
-
-      box.appendChild(bottom);
-
-      overlay.appendChild(box);
-      document.body.appendChild(overlay);
-    } catch (e) {
-      console.error(e);
-      alert("Не удалось открыть список сохранений");
-    }
-  };
-
 
   window.InfoModal = { init, open, refresh, close: closeModal };
 })();
